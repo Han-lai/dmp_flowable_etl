@@ -42,5 +42,8 @@ Exploration / MVP
 - [x] 資料表結構探索完成
 - [x] Bronze 層 DDL 建立完成
 - [x] 同步 SQL 腳本建立完成
-- [ ] Docker 環境實際部署
+- [x] Docker 環境部署完成
+  - ClickHouse Server 24.3.18.7 運行正常
+  - Bronze Database 已建立
+  - JDBC Bridge 已部署（待內網連線測試）
 - [ ] 首次全量同步執行

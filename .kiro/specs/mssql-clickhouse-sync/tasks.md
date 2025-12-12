@@ -38,8 +38,8 @@
 - [x] 2. 建立 ClickHouse Bronze Database 與資料表
 
 
-  - [ ] 2.1 建立 Bronze Database
-    - 執行 `CREATE DATABASE bronze`
+  - [x] 2.1 建立 Bronze Database
+    - 執行 `CREATE DATABASE bronze`（Docker 啟動時自動建立）
     - 建立同步狀態追蹤表 `bronze._sync_log`
     - _Requirements: 3.2_
 

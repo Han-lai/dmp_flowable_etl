@@ -52,3 +52,18 @@
 **原因**：
 - 大表全量同步耗時
 - 小表全量同步簡單可靠
+
+---
+
+### 2025-12-12: JDBC Bridge Datasource 設定修正
+
+**決策**：移除 datasource 設定檔中的 `driverClassName` 屬性
+
+**原因**：
+- ClickHouse JDBC Bridge 2.1.0 不支援 `driverClassName` 屬性
+- JDBC Driver 會自動從 `driverUrls` 指定的 JAR 檔載入
+- 移除後可避免 "Failed to set property driverClassName" 錯誤
+
+**修改檔案**：
+- docker/jdbc-bridge/config/datasources/mssql_bpm.json
+- docker/jdbc-bridge/config/datasources/mssql_common.json
