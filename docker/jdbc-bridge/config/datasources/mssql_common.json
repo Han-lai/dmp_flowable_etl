@@ -1,0 +1,16 @@
+{
+  "mssql_common": {
+    "aliases": ["common", "dmp"],
+    "driverUrls": [
+      "/app/drivers/mssql-jdbc-12.4.2.jre11.jar"
+    ],
+    "driverClassName": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+    "jdbcUrl": "jdbc:sqlserver://twtpesqldv2.delta.corp:1433;databaseName=APP_SRV_COMMON;encrypt=false;trustServerCertificate=true",
+    "username": "DMP_APP_SRV",
+    "password": "APP@DB#01",
+    "maximumPoolSize": 5,
+    "connectionTimeout": 30000,
+    "idleTimeout": 600000,
+    "maxLifetime": 1800000
+  }
+}

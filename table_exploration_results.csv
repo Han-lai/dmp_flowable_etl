@@ -1,0 +1,17 @@
+database,table,columns,row_count,primary_keys,time_columns
+APP_SRV_BPM,ACT_HI_IDENTITYLINK,11,516771,['ID_'],['CREATE_TIME_']
+APP_SRV_BPM,ACT_HI_PROCINST,21,15625,['ID_'],"['START_TIME_', 'END_TIME_']"
+APP_SRV_BPM,ACT_HI_TASKINST,28,46922,['ID_'],"['START_TIME_', 'CLAIM_TIME_', 'END_TIME_', 'DUE_DATE_', 'LAST_UPDATED_TIME_']"
+APP_SRV_BPM,ACT_HI_VARINST,18,610916,['ID_'],"['CREATE_TIME_', 'LAST_UPDATED_TIME_']"
+APP_SRV_BPM,ACT_RE_PROCDEF,18,7074,['ID_'],[]
+APP_SRV_COMMON,DMPFunctionClientMapping,9,57,['ID'],"['UpdateDatetime', 'CreateDatetime']"
+APP_SRV_COMMON,DMPFunctionConfig,12,184,['ID'],"['UpdateDatetime', 'CreateDatetime']"
+APP_SRV_COMMON,EmpNodeRoleMapping,5,2746,"['EmpCode', 'NodeCode', 'Vx']",['UpdateTime']
+APP_SRV_COMMON,EmpOrgInfoMapping,5,1129,"['EmpCode', 'MFGFactoryId', 'Plant']",['UpdateTime']
+APP_SRV_COMMON,EmpUserGroupMapping,4,1217,"['EmpCode', 'UserGroupId']",['UpdateTime']
+APP_SRV_COMMON,FlowableTaskStats,39,730973,[],"['TaskCreateTime', 'TaskClaimTime', 'TaskEndTime', 'SyncTime', 'LastUpdatedTime', 'TaskCreateDate', 'TaskClaimDate', 'TaskEndDate']"
+APP_SRV_COMMON,HR_Employee,52,182280,[],"['TerminateDate', 'ModifyDate']"
+APP_SRV_COMMON,ProcessRoleGroup,8,19,['GroupCode'],"['UpdateDatetime', 'CreateDatetime']"
+APP_SRV_COMMON,ProcessRoleGroupMapping,12,690,['ID'],"['UpdateDatetime', 'CreateDatetime']"
+APP_SRV_COMMON,ProcessRoleUserMapping,12,12714,['ID'],"['UpdateDatetime', 'CreateDatetime']"
+APP_SRV_COMMON,UserGroup,5,9,[],['UpdateTime']
