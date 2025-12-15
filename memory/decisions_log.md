@@ -55,15 +55,24 @@
 
 ---
 
-### 2025-12-12: JDBC Bridge Datasource 設定修正
+### 2024-12-12: MSSQL Mock Schema
 
-**決策**：移除 datasource 設定檔中的 `driverClassName` 屬性
+**決策**：使用完整 schema（與真實系統一致）
 
 **原因**：
-- ClickHouse JDBC Bridge 2.1.0 不支援 `driverClassName` 屬性
-- JDBC Driver 會自動從 `driverUrls` 指定的 JAR 檔載入
-- 移除後可避免 "Failed to set property driverClassName" 錯誤
+- 方便測試與驗證
+- 避免欄位不一致問題
 
-**修改檔案**：
-- docker/jdbc-bridge/config/datasources/mssql_bpm.json
-- docker/jdbc-bridge/config/datasources/mssql_common.json
+**表數量**：
+- APP_SRV_BPM：5 張表（21-28 欄）
+- APP_SRV_COMMON：11 張表（4-52 欄）
+
+---
+
+### 2024-12-12: ClickHouse 連線設定
+
+**決策**：手動建立 listen.xml 設定 `0.0.0.0`
+
+**原因**：
+- 預設只監聽 localhost
+- 需要外部連線存取
