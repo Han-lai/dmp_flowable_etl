@@ -21,7 +21,13 @@ services:
     command: >
       /bin/bash -c "
       mkdir -p /etc/clickhouse-server/config.d &&
-      echo '<clickhouse><listen_host>0.0.0.0</listen_host></clickhouse>' > /etc/clickhouse-server/config.d/listen.xml &&
+      echo '<clickhouse>
+        <listen_host>0.0.0.0</listen_host>
+        <jdbc_bridge>
+          <host>jdbc-bridge</host>
+          <port>9019</port>
+        </jdbc_bridge>
+      </clickhouse>' > /etc/clickhouse-server/config.d/config.xml &&
       /entrypoint.sh
       "
 
@@ -31,6 +37,9 @@ services:
     container_name: clickhouse-jdbc-bridge
     ports:
       - "9019:9019"
+    volumes:
+      - ./jdbc-bridge/config:/app/config
+      - ./jdbc-bridge/drivers:/app/drivers
     environment:
       - CONFIG_PATH=/app/config
     depends_on:
