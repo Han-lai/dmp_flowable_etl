@@ -1,48 +1,46 @@
-version: '3.8'
+# services:
+#   # ClickHouse Server
+#   clickhouse:
+#     image: clickhouse/clickhouse-server:24.3
+#     container_name: clickhouse-server
+#     ports:
+#       - "8121:8123"   # HTTP interface
+#       - "9001:9000"   # Native TCP interface (changed from 9000 to 9001)
+#     volumes:
+#       - clickhouse-data:/var/lib/clickhouse
+#       - ./clickhouse/config:/etc/clickhouse-server/config.d
+#       - ./clickhouse/users:/etc/clickhouse-server/users.d
+#     environment:
+#       - CLICKHOUSE_DB=bronze
+#       - CLICKHOUSE_USER=default
+#       - CLICKHOUSE_PASSWORD=clickhouse123
+#     ulimits:
+#       nofile:
+#         soft: 262144
+#         hard: 262144
+#     networks:
+#       - clickhouse-net
 
-services:
-  # ClickHouse Server
-  clickhouse:
-    image: clickhouse/clickhouse-server:24.3
-    container_name: clickhouse-server
-    ports:
-      - "8123:8123"   # HTTP interface
-      - "9000:9000"   # Native TCP interface
-    volumes:
-      - clickhouse-data:/var/lib/clickhouse
-      - ./clickhouse/config:/etc/clickhouse-server/config.d
-      - ./clickhouse/users:/etc/clickhouse-server/users.d
-    environment:
-      - CLICKHOUSE_DB=bronze
-      - CLICKHOUSE_USER=default
-      - CLICKHOUSE_PASSWORD=
-    ulimits:
-      nofile:
-        soft: 262144
-        hard: 262144
-    networks:
-      - clickhouse-net
+#   # JDBC Bridge for connecting to MSSQL
+#   jdbc-bridge:
+#     image: clickhouse/jdbc-bridge:2.1.0
+#     container_name: clickhouse-jdbc-bridge
+#     ports:
+#       - "9019:9019"
+#     volumes:
+#       - ./jdbc-bridge/config:/app/config
+#       - ./jdbc-bridge/drivers:/app/drivers
+#       - ./jdbc-bridge/scripts:/app/scripts
+#     environment:
+#       - CONFIG_PATH=/app/config
+#     depends_on:
+#       - clickhouse
+#     networks:
+#       - clickhouse-net
 
-  # JDBC Bridge for connecting to MSSQL
-  jdbc-bridge:
-    image: clickhouse/jdbc-bridge:2.1.0
-    container_name: clickhouse-jdbc-bridge
-    ports:
-      - "9019:9019"
-    volumes:
-      - ./jdbc-bridge/config:/app/config
-      - ./jdbc-bridge/drivers:/app/drivers
-      - ./jdbc-bridge/scripts:/app/scripts
-    environment:
-      - CONFIG_PATH=/app/config
-    depends_on:
-      - clickhouse
-    networks:
-      - clickhouse-net
+# volumes:
+#   clickhouse-data:
 
-volumes:
-  clickhouse-data:
-
-networks:
-  clickhouse-net:
-    driver: bridge
+# networks:
+#   clickhouse-net:
+#     driver: bridge

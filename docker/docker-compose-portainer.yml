@@ -1,0 +1,46 @@
+services:
+  # ClickHouse Server
+  clickhouse:
+    image: clickhouse/clickhouse-server:24.3
+    container_name: clickhouse-server
+    ports:
+      - "8123:8123"
+      - "9001:9000"
+    volumes:
+      - clickhouse-data:/var/lib/clickhouse
+    environment:
+      - CLICKHOUSE_DB=bronze
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=default
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - clickhouse-net
+    command: >
+      /bin/bash -c "
+      mkdir -p /etc/clickhouse-server/config.d &&
+      echo '<clickhouse><listen_host>0.0.0.0</listen_host></clickhouse>' > /etc/clickhouse-server/config.d/listen.xml &&
+      /entrypoint.sh
+      "
+
+  # JDBC Bridge for connecting to MSSQL
+  jdbc-bridge:
+    image: clickhouse/jdbc-bridge:2.1.0
+    container_name: clickhouse-jdbc-bridge
+    ports:
+      - "9019:9019"
+    environment:
+      - CONFIG_PATH=/app/config
+    depends_on:
+      - clickhouse
+    networks:
+      - clickhouse-net
+
+volumes:
+  clickhouse-data:
+
+networks:
+  clickhouse-net:
+    driver: bridge

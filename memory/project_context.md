@@ -22,7 +22,9 @@ DMP Flowable 資料同步
 Exploration / MVP
 
 ## 專案目標
-將 MSSQL 資料同步到 ClickHouse Bronze 層
+1. 探索真實 MSSQL 資料表結構
+2. 建立本機 MSSQL Docker Sandbox 測試環境
+3. 將 MSSQL 資料同步到 ClickHouse Bronze 層
 
 ## 資料來源
 
@@ -32,18 +34,39 @@ Exploration / MVP
 | APP_SRV_COMMON | DMP 人員/組織資料 | 11 |
 
 ## 技術棧
-- 來源：MSSQL Server
+- 來源：MSSQL Server（真實 + Mock Docker）
 - 目標：ClickHouse
 - 同步方式：JDBC Bridge
-- 部署：Docker Compose
+- 部署：Docker Compose / Portainer
+
+## Docker 服務
+
+| 服務 | 位置 | 用途 |
+|------|------|------|
+| ClickHouse + JDBC Bridge | `docker/docker-compose.yml` | 資料倉儲 |
+| MSSQL Mock | `docker/mssql-mock/docker-compose.yml` | 本機測試 |
+
+## 連線資訊
+
+### ClickHouse（VM）
+- Host: 10.136.218.207
+- Port: 8123
+- User: default
+- Password: clickhouse123
+
+### MSSQL Mock（本機）
+- Host: localhost
+- Port: 1433
+- User: sa
+- Password: YourStrong@Passw0rd
 
 ## 目前狀態
 - [x] MSSQL 連線測試完成
-- [x] 資料表結構探索完成
+- [x] 資料表結構探索完成（16 張表，完整 schema）
 - [x] Bronze 層 DDL 建立完成
 - [x] 同步 SQL 腳本建立完成
-- [x] Docker 環境部署完成
-  - ClickHouse Server 24.3.18.7 運行正常
-  - Bronze Database 已建立
-  - JDBC Bridge 已部署（待內網連線測試）
+- [x] ClickHouse Docker 部署完成（VM）
+- [x] MSSQL Mock Docker 設定完成（完整 schema）
+- [ ] MSSQL Mock 實際部署
+- [ ] JDBC Bridge datasource 設定
 - [ ] 首次全量同步執行
