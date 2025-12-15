@@ -4,9 +4,9 @@
     "driverUrls": [
       "/app/drivers/mssql-jdbc-12.4.2.jre11.jar"
     ],
-    "jdbcUrl": "jdbc:sqlserver://twtpesqldv2.delta.corp:1433;databaseName=APP_SRV_COMMON;encrypt=false;trustServerCertificate=true",
-    "username": "DMP_APP_SRV",
-    "password": "APP@DB#01",
+    "jdbcUrl": "jdbc:sqlserver://host.docker.internal:1433;databaseName=APP_SRV_COMMON;encrypt=false;trustServerCertificate=true",
+    "username": "sa",
+    "password": "YourStrong@Passw0rd",
     "maximumPoolSize": 5,
     "connectionTimeout": 30000,
     "idleTimeout": 600000,

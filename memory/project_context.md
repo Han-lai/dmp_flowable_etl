@@ -65,8 +65,29 @@ Exploration / MVP
 - [x] 資料表結構探索完成（16 張表，完整 schema）
 - [x] Bronze 層 DDL 建立完成
 - [x] 同步 SQL 腳本建立完成
-- [x] ClickHouse Docker 部署完成（VM）
-- [x] MSSQL Mock Docker 設定完成（完整 schema）
-- [ ] MSSQL Mock 實際部署
-- [ ] JDBC Bridge datasource 設定
+- [x] ClickHouse Docker 部署完成（本機 Portainer）
+- [x] MSSQL Mock Docker 部署完成（本機）
+- [x] MSSQL Mock 資料複製完成（每表 10 筆測試資料）
+- [x] JDBC Bridge Docker 部署完成
+- [x] JDBC Bridge datasource 設定完成（指向 Mock MSSQL）
+- [ ] JDBC Bridge 與 ClickHouse 整合測試（卡點）
 - [ ] 首次全量同步執行
+
+## 已建立的腳本
+
+| 腳本 | 用途 |
+|------|------|
+| `scripts/copy_data_to_mock.py` | 從真實 MSSQL 複製資料到 Mock |
+| `scripts/check_target_data.py` | 檢查 Mock MSSQL 資料 |
+| `scripts/check_clickhouse.py` | 檢查 ClickHouse 狀態和表格 |
+| `scripts/check_jdbc_bridge.py` | 檢查 JDBC Bridge 服務狀態 |
+
+## 當前卡點
+
+### JDBC Bridge 無法載入 datasources
+- **現象**：JDBC Bridge 服務有啟動（port 9019 回應 405），但 datasources 沒有載入
+- **原因**：Portainer 部署時，相對路徑 `./jdbc-bridge/config` 可能無法正確掛載
+- **待嘗試**：
+  1. 使用絕對路徑掛載 volumes
+  2. 或改用 docker-compose CLI 部署（非 Portainer）
+  3. 或將 config 檔案 COPY 進 image
