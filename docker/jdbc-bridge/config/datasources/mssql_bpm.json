@@ -1,15 +1,10 @@
 {
-  "mssql_bpm": {
-    "aliases": ["bpm", "flowable"],
-    "driverUrls": [
-      "/app/drivers/mssql-jdbc-12.4.2.jre11.jar"
-    ],
-    "jdbcUrl": "jdbc:sqlserver://host.docker.internal:1433;databaseName=APP_SRV_BPM;encrypt=false;trustServerCertificate=true",
-    "username": "sa",
-    "password": "YourStrong@Passw0rd",
-    "maximumPoolSize": 5,
-    "connectionTimeout": 30000,
-    "idleTimeout": 600000,
-    "maxLifetime": 1800000
-  }
+  "driverUrls": [
+    "/app/drivers/mssql-jdbc-12.4.2.jre11.jar"
+  ],
+  "driverClassName": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+  "jdbcUrl": "jdbc:sqlserver://host.docker.internal:1433;databaseName=APP_SRV_BPM;encrypt=false;trustServerCertificate=true",
+  "username": "sa",
+  "password": "YourStrong@Passw0rd",
+  "maximumPoolSize": 5
 }
