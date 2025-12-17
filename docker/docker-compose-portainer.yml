@@ -4,7 +4,7 @@ services:
     image: clickhouse/clickhouse-server:24.3
     container_name: clickhouse-server
     ports:
-      - "8123:8123"
+      - "8121:8123"
       - "9001:9000"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
@@ -38,7 +38,8 @@ services:
     ports:
       - "9019:9019"
     volumes:
-      - ./jdbc-bridge/config:/app/config
+      - ./jdbc-bridge/config/datasources:/etc/clickhouse-jdbc-bridge/config/datasources
+      - ./jdbc-bridge/drivers:/etc/clickhouse-jdbc-bridge/drivers
       - ./jdbc-bridge/drivers:/app/drivers
     environment:
       - CONFIG_PATH=/app/config

@@ -4,29 +4,23 @@
 
 - [x] 1. 部署 ClickHouse JDBC Bridge
 
-
-
   - [x] 1.1 建立 JDBC Bridge Docker 設定
-
     - 建立 docker-compose.yml 包含 jdbc-bridge 服務
-    - 下載 MSSQL JDBC Driver (mssql-jdbc-12.4.2.jre11.jar)
+    - 使用 MSSQL JDBC Driver (mssql-jdbc-7.4.1.jre8.jar)
     - 建立 config 目錄結構
     - _Requirements: 1.1, 3.1_
 
-
-
   - [x] 1.2 設定 MSSQL 資料源連線
-
-    - 建立 datasources/mssql_bpm.json（APP_SRV_BPM 連線）
-    - 建立 datasources/mssql_common.json（APP_SRV_COMMON 連線）
+    - 建立 datasources/mssql_master.json（連線到 master，可存取 APP_SRV_BPM 和 APP_SRV_COMMON）
+    - 建立 datasources/postgres_cleaned_data.json（PostgreSQL 連線）
+    - 關鍵設定：需加上 `driverClassName: com.microsoft.sqlserver.jdbc.SQLServerDriver`
     - 測試 JDBC Bridge 啟動與連線
     - _Requirements: 1.1, 1.2_
 
   - [x] 1.3 驗證 JDBC Bridge 連線
-
-    - 從 ClickHouse 執行 `SELECT * FROM jdbc('mssql_bpm', 'SELECT 1')` 測試連線
-    - 驗證可查詢 APP_SRV_BPM 的 ACT_HI_PROCINST 表
-    - 驗證可查詢 APP_SRV_COMMON 的 HR_Employee 表
+    - 從 ClickHouse 執行 `SELECT * FROM jdbc('mssql_master', 'SELECT 1')` 測試連線
+    - 可透過 `APP_SRV_BPM.dbo.表名` 查詢 BPM 資料庫
+    - 可透過 `APP_SRV_COMMON.dbo.表名` 查詢 COMMON 資料庫
     - _Requirements: 1.1, 1.2, 1.3_
 
 
