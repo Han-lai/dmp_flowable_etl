@@ -74,5 +74,37 @@
 **決策**：手動建立 listen.xml 設定 `0.0.0.0`
 
 **原因**：
-- 預設只監聽 localhost
+- 預設只監聯 localhost
 - 需要外部連線存取
+
+---
+
+### 2024-12-17: JDBC Bridge MSSQL 連線成功
+
+**決策**：使用單一 `mssql_master` datasource 連線到 master database
+
+**原因**：
+- 可透過 `APP_SRV_BPM.dbo.表名` 和 `APP_SRV_COMMON.dbo.表名` 存取不同資料庫
+- 簡化 datasource 管理
+
+**關鍵設定**：
+- 必須加上 `driverClassName: com.microsoft.sqlserver.jdbc.SQLServerDriver`
+- 使用 JDBC Driver 7.4.1.jre8（較新版本 12.x 連線失敗）
+- 使用 IP `10.136.158.140` 而非 hostname（container 內 DNS 解析問題）
+
+**放棄選項**：
+- 分開建立 `mssql_bpm` 和 `mssql_common`（不需要）
+- 使用 JDBC Driver 12.x（連線失敗）
+- 使用 hostname `twtpesqldv2.delta.corp`（DNS 解析不穩定）
+
+---
+
+### 2024-12-17: 新增 PostgreSQL 連線
+
+**決策**：新增 `postgres_cleaned_data` datasource
+
+**連線資訊**：
+- Host: `10.136.218.208:5505`
+- Database: `cleaned_data_db`
+
+**用途**：未來可能需要從 PostgreSQL 同步資料

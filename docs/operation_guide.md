@@ -1,5 +1,68 @@
 # MSSQL → ClickHouse 同步操作手冊
 
+## 0. JDBC Bridge Datasource 設定
+
+### 目錄結構
+
+```
+jdbc-bridge/
+├── config/
+│   └── datasources/
+│       ├── mssql_master.json
+│       └── postgres_cleaned_data.json
+└── drivers/
+    └── (保持空白，使用網路下載)
+```
+
+### MSSQL Datasource 設定（mssql_master.json）
+
+```json
+{
+  "mssql_master": {
+    "driverUrls": ["https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/7.4.1.jre8/mssql-jdbc-7.4.1.jre8.jar"],
+    "driverClassName": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
+    "jdbcUrl": "jdbc:sqlserver://10.136.158.140:1433;databaseName=master;encrypt=false;trustServerCertificate=true",
+    "username": "DMP_APP_SRV",
+    "password": "APP@DB#01"
+  }
+}
+```
+
+**重要**：
+- `driverClassName` 是必要的，否則連線會失敗
+- 使用 7.4.1.jre8 版本（較新版本可能失敗）
+- 使用 IP 而非 hostname
+
+### PostgreSQL Datasource 設定（postgres_cleaned_data.json）
+
+```json
+{
+  "postgres_cleaned_data": {
+    "driverUrls": ["https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.1/postgresql-42.7.1.jar"],
+    "jdbcUrl": "jdbc:postgresql://10.136.218.208:5505/cleaned_data_db",
+    "username": "dbtuser",
+    "password": "pssd"
+  }
+}
+```
+
+### 測試連線
+
+在 ClickHouse 執行：
+
+```sql
+-- 測試 MSSQL
+SELECT * FROM jdbc('mssql_master', 'SELECT 1 as test')
+
+-- 測試 PostgreSQL
+SELECT * FROM jdbc('postgres_cleaned_data', 'SELECT 1 as test')
+
+-- 查詢 MSSQL 資料庫
+SELECT * FROM jdbc('mssql_master', 'SELECT TOP 10 * FROM APP_SRV_BPM.dbo.ACT_HI_PROCINST')
+```
+
+---
+
 ## 1. 環境啟動
 
 ### 啟動 Docker 服務
@@ -80,12 +143,17 @@ cat validation/data_quality_check.sql | docker exec -i clickhouse-server clickho
 
 ### Q1: JDBC Bridge 無法連線到 MSSQL
 
-**症狀：** `jdbc()` 函數執行時報錯
+**症狀：** `jdbc()` 函數執行時報錯，或 log 顯示 `Failed to add NamedDataSource`
 
 **解決方案：**
-1. 確認 MSSQL Server 允許遠端連線
-2. 確認防火牆開放 1433 port
-3. 檢查 `docker/jdbc-bridge/config/datasources/*.json` 連線資訊
+1. 確認 datasource JSON 格式正確（無特殊字元）
+2. **必須加上 `driverClassName`**：
+   ```json
+   "driverClassName": "com.microsoft.sqlserver.jdbc.SQLServerDriver"
+   ```
+3. 使用 JDBC Driver **7.4.1.jre8**（較新版本可能失敗）
+4. 使用 IP 而非 hostname（container 內 DNS 可能無法解析）
+5. 確認防火牆開放 1433 port
 
 ### Q2: ClickHouse 無法連線到 JDBC Bridge
 
@@ -105,6 +173,35 @@ cat validation/data_quality_check.sql | docker exec -i clickhouse-server clickho
 **解決方案：**
 1. 執行 Full Load 重新同步
 2. 檢查 `bronze._sync_log` 確認同步狀態
+
+### Q4: 所有 Datasource 都載入失敗
+
+**症狀：** Log 顯示所有 datasource 都 `Failed to add`
+
+**可能原因：**
+1. `drivers/` 目錄有損壞的 jar 檔
+2. JSON 檔案有不可見的特殊字元（如 non-breaking space）
+
+**解決方案：**
+1. 清空 `drivers/` 目錄
+2. 重新建立 JSON 檔案（用 `cat << 'EOF'` 避免特殊字元）
+3. 重啟 jdbc-bridge container
+
+### Q5: 密碼含特殊字元導致 JSON 解析錯誤
+
+**症狀：** 密碼含 `@` 或 `#` 時，shell echo 指令會解析錯誤
+
+**解決方案：**
+使用 heredoc 避免特殊字元被解析：
+```bash
+cat > datasources/mssql_master.json << 'EOF'
+{
+  "mssql_master": {
+    "password": "APP@DB#01"
+  }
+}
+EOF
+```
 
 ---
 

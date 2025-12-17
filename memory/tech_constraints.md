@@ -44,10 +44,31 @@ Database 2: APP_SRV_COMMON
 - Portainer 部署時相對路徑 volume 掛載可能失敗
 - JDBC Bridge 需要 ClickHouse 設定 `jdbc_bridge.host` 和 `jdbc_bridge.port`
 
-## Docker 服務狀態（2024-12-15）
+## Docker 服務狀態（2024-12-17 更新）
 
 | 服務 | 容器名稱 | Port | 狀態 |
 |------|----------|------|------|
 | ClickHouse | clickhouse-server | 8123, 9001 | ✅ 運行中 |
-| JDBC Bridge | clickhouse-jdbc-bridge | 9019 | ⚠️ 服務啟動但 datasources 未載入 |
+| JDBC Bridge | clickhouse-jdbc-bridge | 9019 | ✅ 運行中，datasources 已載入 |
 | MSSQL Mock | mssql-mock | 1433 | ✅ 運行中，有測試資料 |
+
+## JDBC Bridge 連線狀態（2024-12-17）
+
+| Datasource | 目標 | 狀態 |
+|------------|------|------|
+| `mssql_master` | MSSQL `10.136.158.140:1433` | ✅ 連線成功 |
+| `postgres_cleaned_data` | PostgreSQL `10.136.218.208:5505` | ✅ 連線成功 |
+
+## MSSQL JDBC Driver 限制
+
+| Driver 版本 | 狀態 | 說明 |
+|-------------|------|------|
+| 12.4.2.jre11 | ❌ 失敗 | 連線失敗，原因不明 |
+| 11.x | ❌ 失敗 | 連線失敗 |
+| 8.4.1.jre11 | ❌ 失敗 | 連線失敗 |
+| **7.4.1.jre8** | ✅ 成功 | 需加上 `driverClassName` |
+
+**關鍵發現**：
+- MSSQL datasource 必須明確指定 `driverClassName: com.microsoft.sqlserver.jdbc.SQLServerDriver`
+- PostgreSQL 不需要指定 `driverClassName`（自動偵測）
+- 在 `drivers/` 目錄放置本地 jar 檔會導致所有 datasource 載入失敗
