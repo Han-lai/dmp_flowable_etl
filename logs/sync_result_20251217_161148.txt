@@ -1,0 +1,28 @@
+================================================================================
+同步結果 Summary - 2025-12-17 16:10:37
+================================================================================
+步驟                                                 耗時(秒)      筆數           狀態
+--------------------------------------------------------------------------------
+CREATE DATABASE bronze                             0.02       -            success
+SYNC bronze.bpm_act_hi_procinst                    0.65       15930        success
+SYNC bronze.bpm_act_hi_taskinst                    1.57       47638        success
+SYNC bronze.bpm_act_hi_identitylink                7.00       529283       success
+SYNC bronze.bpm_act_hi_varinst                     17.05      622919       success
+SYNC bronze.bpm_act_re_procdef                     0.28       7249         success
+SYNC bronze.common_flowable_task_stats             36.43      732337       success
+SYNC bronze.common_hr_employee                     6.99       169907       success
+SYNC bronze.common_process_role_user_mapping       0.43       31298        success
+SYNC bronze.common_process_role_group              0.12       19           success
+SYNC bronze.common_process_role_group_mapping      0.12       690          success
+SYNC bronze.common_emp_node_role_mapping           0.12       2778         success
+SYNC bronze.common_emp_org_info_mapping            0.11       1142         success
+SYNC bronze.common_emp_user_group_mapping          0.11       1240         success
+SYNC bronze.common_user_group                      0.11       9            success
+SYNC bronze.common_dmp_function_config             0.07       185          success
+SYNC bronze.common_dmp_function_client_mapping     0.05       57           success
+--------------------------------------------------------------------------------
+總耗時                                                71.41     
+總筆數                                                           2,162,681
+成功/失敗                                                         17/0
+================================================================================
+
