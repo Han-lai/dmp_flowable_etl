@@ -1,0 +1,26 @@
+{
+  "postgres_cleaned_data": {
+    "driverUrls": [
+      "https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.1/postgresql-42.7.1.jar"
+    ],
+    "jdbcUrl": "jdbc:postgresql://10.136.218.208:5505/cleaned_data_db",
+    "username": "dbtuser",
+    "password": "pssd"
+  }
+}
+
+// rm /app/config/datasources/postgres_cleaned_data.json
+
+
+// cat > /app/config/datasources/postgres_cleaned_data.json << 'EOF'
+// {
+//   "postgres_cleaned_data": {
+//     "driverUrls": [
+//       "https://repo1.maven.org/maven2/org/postgresql/postgresql/42.7.1/postgresql-42.7.1.jar"
+//     ],
+//     "jdbcUrl": "jdbc:postgresql://10.136.218.208:5505/cleaned_data_db",
+//     "username": "dbtuser",
+//     "password": "pssd"
+//   }
+// }
+// EOF
