@@ -1,0 +1,72 @@
+========================================================================================================================
+Database 比較結果 - 2025-12-18 15:46:09
+bronze (JDBC Bridge) vs default (Airbyte)
+========================================================================================================================
+
+【1. Row Count 比較】
+----------------------------------------------------------------------------------------------------
+Bronze Table                                  Default Table                             jdbc_bridge       Airbyte      Diff
+----------------------------------------------------------------------------------------------------
+bronze.bpm_act_hi_identitylink                default.ACT_HI_IDENTITYLINK                   539,351      539,351      +0
+bronze.bpm_act_hi_procinst                    default.ACT_HI_PROCINST                       16,075       16,075       +0
+bronze.bpm_act_hi_taskinst                    default.ACT_HI_TASKINST                       48,034       48,034       +0
+bronze.bpm_act_hi_varinst                     default.ACT_HI_VARINST                        628,278      628,278      +0
+bronze.bpm_act_re_procdef                     default.ACT_RE_PROCDEF                        7,249        7,249        +0
+bronze.common_dmp_function_client_mapping     default.DMPFunctionClientMapping              57           57           +0
+bronze.common_dmp_function_config             default.DMPFunctionConfig                     185          185          +0
+bronze.common_emp_node_role_mapping           default.EmpNodeRoleMapping                    2,778        2,778        +0
+bronze.common_emp_org_info_mapping            default.EmpOrgInfoMapping                     1,145        1,145        +0
+bronze.common_emp_user_group_mapping          default.EmpUserGroupMapping                   1,255        1,255        +0
+bronze.common_flowable_task_stats             default.FlowableTaskStats                     732,345      732,345      +0
+bronze.common_hr_employee                     default.HR_Employee                           125,667      125,667      +0
+bronze.common_process_role_group              default.ProcessRoleGroup                      19           19           +0
+bronze.common_process_role_group_mapping      default.ProcessRoleGroupMapping               688          688          +0
+bronze.common_process_role_user_mapping       default.ProcessRoleUserMapping                31,298       31,298       +0
+bronze.common_user_group                      default.UserGroup                             9            8            -1
+
+【2. 資料大小比較】
+----------------------------------------------------------------------------------------------------
+Bronze Table                                  Default Table                            jdbc_bridge Size     Airbyte Size
+----------------------------------------------------------------------------------------------------
+bronze.bpm_act_hi_identitylink                default.ACT_HI_IDENTITYLINK                   9.47 MiB        22.65 MiB
+bronze.bpm_act_hi_procinst                    default.ACT_HI_PROCINST                       1.30 MiB        1.72 MiB
+bronze.bpm_act_hi_taskinst                    default.ACT_HI_TASKINST                       3.96 MiB        5.16 MiB
+bronze.bpm_act_hi_varinst                     default.ACT_HI_VARINST                        17.54 MiB       32.85 MiB
+bronze.bpm_act_re_procdef                     default.ACT_RE_PROCDEF                        117.43 KiB      297.42 KiB
+bronze.common_dmp_function_client_mapping     default.DMPFunctionClientMapping              1.32 KiB        3.21 KiB
+bronze.common_dmp_function_config             default.DMPFunctionConfig                     2.72 KiB        7.85 KiB
+bronze.common_emp_node_role_mapping           default.EmpNodeRoleMapping                    20.59 KiB       93.05 KiB
+bronze.common_emp_org_info_mapping            default.EmpOrgInfoMapping                     15.43 KiB       42.87 KiB
+bronze.common_emp_user_group_mapping          default.EmpUserGroupMapping                   14.86 KiB       44.89 KiB
+bronze.common_flowable_task_stats             default.FlowableTaskStats                     80.43 MiB       106.41 MiB
+bronze.common_hr_employee                     default.HR_Employee                           23.79 MiB       23.28 MiB
+bronze.common_process_role_group              default.ProcessRoleGroup                      1.06 KiB        1.82 KiB
+bronze.common_process_role_group_mapping      default.ProcessRoleGroupMapping               7.49 KiB        24.11 KiB
+bronze.common_process_role_user_mapping       default.ProcessRoleUserMapping                282.32 KiB      1.05 MiB
+bronze.common_user_group                      default.UserGroup                             500.00 B        1.28 KiB
+
+【3. Schema 比較 (欄位數)】
+----------------------------------------------------------------------------------------------------
+Bronze Table                                  Default Table                                 Bronze     Default    Extra (Airbyte)
+----------------------------------------------------------------------------------------------------
+bronze.bpm_act_hi_identitylink                default.ACT_HI_IDENTITYLINK                   11         15         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.bpm_act_hi_procinst                    default.ACT_HI_PROCINST                       21         25         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.bpm_act_hi_taskinst                    default.ACT_HI_TASKINST                       28         32         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.bpm_act_hi_varinst                     default.ACT_HI_VARINST                        18         22         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.bpm_act_re_procdef                     default.ACT_RE_PROCDEF                        18         22         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_dmp_function_client_mapping     default.DMPFunctionClientMapping              9          13         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_dmp_function_config             default.DMPFunctionConfig                     12         16         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_emp_node_role_mapping           default.EmpNodeRoleMapping                    5          9          _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_emp_org_info_mapping            default.EmpOrgInfoMapping                     5          9          _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_emp_user_group_mapping          default.EmpUserGroupMapping                   4          8          _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_flowable_task_stats             default.FlowableTaskStats                     39         43         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_hr_employee                     default.HR_Employee                           52         56         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_process_role_group              default.ProcessRoleGroup                      8          12         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_process_role_group_mapping      default.ProcessRoleGroupMapping               12         16         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_process_role_user_mapping       default.ProcessRoleUserMapping                12         16         _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+bronze.common_user_group                      default.UserGroup                             5          9          _airbyte_raw_id, _airbyte_extracted_at, _airbyte_meta, _airbyte_generation_id
+
+========================================================================================================================
+總耗時: 2.00 秒
+比較表數: 16 (成功: 16, 失敗: 0)
+========================================================================================================================
