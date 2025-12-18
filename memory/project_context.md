@@ -69,9 +69,28 @@ Exploration / MVP
 - [x] MSSQL Mock Docker 部署完成（本機）
 - [x] MSSQL Mock 資料複製完成（每表 10 筆測試資料）
 - [x] JDBC Bridge Docker 部署完成
-- [x] JDBC Bridge datasource 設定完成（指向 Mock MSSQL）
-- [ ] JDBC Bridge 與 ClickHouse 整合測試（卡點）
-- [ ] 首次全量同步執行
+- [x] JDBC Bridge datasource 設定完成（指向真實 MSSQL）
+- [x] JDBC Bridge 與 ClickHouse 整合測試完成
+- [x] 首次全量同步執行完成（16 張表，2,134,433 筆）
+- [x] 資料驗證完成（MSSQL vs ClickHouse 比對）
+- [x] JDBC Bridge vs Airbyte 方案比較完成
+
+## 第一階段完成狀態
+**完成日期**：2024-12-18
+
+### 同步成果
+| 指標 | 數值 |
+|------|------|
+| 同步表數 | 16 張 |
+| 總筆數 | 2,134,433 筆 |
+| 同步時間 | 1 分 5 秒 |
+| 平均速度 | 32,837 筆/秒 |
+| 儲存空間 | ~137 MB |
+
+### 方案比較結論
+- JDBC Bridge 同步速度為 Airbyte 的 **7.7 倍**
+- JDBC Bridge 儲存空間節省 **30%**
+- 建議採用「混合式方案」：大表用 Airbyte 增量同步，小表用 JDBC Bridge 全量同步
 
 ## 已建立的腳本
 
@@ -81,13 +100,11 @@ Exploration / MVP
 | `scripts/check_target_data.py` | 檢查 Mock MSSQL 資料 |
 | `scripts/check_clickhouse.py` | 檢查 ClickHouse 狀態和表格 |
 | `scripts/check_jdbc_bridge.py` | 檢查 JDBC Bridge 服務狀態 |
+| `scripts/compare_databases.py` | 比較 JDBC Bridge vs Airbyte 資料 |
+| `sync/sync_to_clickhouse.py` | JDBC Bridge 全量同步程式 |
+| `validation/validate_sync.py` | 資料完整性驗證 |
 
-## 當前卡點
-
-### JDBC Bridge 無法載入 datasources
-- **現象**：JDBC Bridge 服務有啟動（port 9019 回應 405），但 datasources 沒有載入
-- **原因**：Portainer 部署時，相對路徑 `./jdbc-bridge/config` 可能無法正確掛載
-- **待嘗試**：
-  1. 使用絕對路徑掛載 volumes
-  2. 或改用 docker-compose CLI 部署（非 Portainer）
-  3. 或將 config 檔案 COPY 進 image
+## 下一步（第二階段）
+- [ ] 實作 Incremental Load 同步
+- [ ] 建立 Silver 層資料轉換
+- [ ] 建立監控與告警機制
