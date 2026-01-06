@@ -3,19 +3,67 @@
 ## 專案概述
 DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 ClickHouse，建立 Bronze/Silver 層資料倉儲。
 
-## 目前狀態 (2024-12-24)
+## 目前狀態 (2026-01-02)
 
 ### 已完成
 - ✅ Bronze 層：16 張表同步完成
-- ✅ Silver 層：4 張 View + 4 張 RMV 建立完成
+- ✅ Silver 層：5 張 View + 5 張 RMV 建立完成
 - ✅ 17 個指標驗證完成
 - ✅ View vs RMV 效能比較完成 (RMV 快 4-10 倍)
-- ✅ View vs RMV 資料正確性驗證完成 (9 個指標一致)
+- ✅ View vs RMV 資料正確性驗證完成
 - ✅ 邏輯等價性驗證完成 (Benchmark vs View vs RMV)
-- ✅ Scripts 目錄整理完成 (18 個正式工具 + 14 個歸檔)
+- ✅ Scripts 目錄整理完成
+- ✅ **Bronze 增量同步實作完成**
 
 ### 暫緩
 - ⏸️ 逾期在途業務事件數 (缺 HealthSettings 表)
+
+---
+
+## 日常操作流程
+
+```
+Step 1: 同步 Bronze（增量）
+python sync/sync_incremental.py all
+        │
+        ▼
+Step 2: 檢查 RMV 刷新狀態（可選）
+python scripts/check_rmv_status.py
+        │
+        ▼
+Step 3: 查詢指標
+python scripts/query_metrics_rmv.py
+```
+
+---
+
+## 增量同步架構
+
+```
+MSSQL ──► Bronze (ClickHouse) ──► Silver (RMV 自動刷新) ──► Metric 查詢
+   │           │
+   │     ReplacingMergeTree
+   │     + _sync_time 欄位
+   │           │
+   └── Watermark 表記錄上次同步時間
+```
+
+### 增量同步表 (5 張大表)
+
+| 表名 | 追蹤欄位 | 資料量 |
+|------|----------|--------|
+| ACT_HI_PROCINST | START_TIME_ | 17K |
+| ACT_HI_TASKINST | LAST_UPDATED_TIME_ | 50K |
+| ACT_HI_IDENTITYLINK | CREATE_TIME_ | 598K |
+| ACT_HI_VARINST | LAST_UPDATED_TIME_ | 660K |
+| FlowableTaskStats | LastUpdatedTime | 1.3M |
+
+### 效能比較
+
+| 方式 | 腳本 | 耗時 |
+|------|------|------|
+| 全量同步 | `sync/sync_to_clickhouse.py` | ~68 秒 |
+| 增量同步 | `sync/sync_incremental.py` | ~10 秒 |
 
 ---
 
@@ -24,7 +72,6 @@ DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 Cli
 ### 🔴 資料層面
 1. **Benchmark 資料過時** - 最後同步 2025-12-10，無法做即時比對
 2. **缺少 HealthSettings 表** - 無法實作逾期判斷邏輯
-3. **Bronze 層無增量同步** - 每次全量同步，大表效能問題
 
 ### 🟡 驗證層面
 1. **欄位名稱不一致** - Benchmark 用 snake_case，我的用 UPPER_CASE
@@ -50,7 +97,6 @@ DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 Cli
 - [ ] 跨流程關聯分析 (SUPER_ID / DEPTH)
 
 ### 長期 (生產環境)
-- [ ] 大表增量同步方案
 - [ ] 資料品質監控告警
 - [ ] 效能基準線建立
 
@@ -111,24 +157,27 @@ bpm_act_re_procdef  ──┘
 | `memory/project_context.md` | 專案進度 |
 | `memory/decisions_log.md` | 決策紀錄 |
 
-### Scripts 工具 (整理後 12 個)
+### Scripts 工具
 
-| 類別 | 腳本 | 用途 |
-|------|------|------|
-| 環境檢查 | `check_my_env.py` | 環境診斷 |
-| | `check_benchmark_tables.py` | Benchmark 資料範圍 |
-| | `check_rmv_status.py` | RMV 刷新狀態 |
-| | `check_silver_tables.py` | Silver 表格列表 |
-| | `check_view_rmv_consistency.py` | View vs RMV 一致性 |
-| 比對驗證 | `compare_data_accuracy.py` | View vs RMV 正確性 |
-| | `compare_view_rmv.py` | View vs RMV 效能 |
-| | `compare_with_benchmark.py` | Benchmark 比對 |
-| 建置/查詢 | `create_rmv.py` | RMV 建置 |
-| | `query_metrics.py` | 指標查詢 (View) |
-| | `query_metrics_rmv.py` | 指標查詢 (RMV) |
-| | `update_silver_views.py` | View 更新 |
+| 階段 | 腳本 | 用途 | 使用頻率 |
+|------|------|------|----------|
+| **Bronze 同步** | `sync/sync_incremental.py` | 增量+全量混合同步 | 日常 |
+| | `sync/sync_to_clickhouse.py` | 全量同步（舊版） | 首次/重建 |
+| **Silver 管理** | `scripts/check_rmv_status.py` | 檢查 RMV 刷新狀態 | 日常 |
+| | `scripts/create_rmv.py` | 建立 RMV | 首次 |
+| | `scripts/update_silver_views.py` | 更新 View 定義 | 維護 |
+| **指標查詢** | `scripts/query_metrics_rmv.py` | 查詢 17 指標（RMV） | 日常 |
+| | `scripts/query_metrics.py` | 查詢 17 指標（View） | 備用 |
+| **驗證比對** | `scripts/compare_with_benchmark.py` | 與 Benchmark 比對 | 驗證 |
+| | `scripts/compare_view_rmv.py` | View vs RMV 比對 | 驗證 |
+| | `scripts/compare_data_accuracy.py` | 資料準確性比對 | 驗證 |
+| **環境檢查** | `scripts/check_my_env.py` | 檢查連線環境 | 除錯 |
+| | `scripts/check_benchmark_tables.py` | 檢查 Benchmark 表 | 除錯 |
+| | `scripts/check_silver_tables.py` | 檢查 Silver 表 | 除錯 |
+| **分析工具** | `scripts/check_mssql_columns.py` | 查詢 MSSQL 欄位結構 | 分析 |
+| | `scripts/check_tracking_behavior.py` | 驗證追蹤欄位行為 | 分析 |
 
-> 歸檔腳本 (20 個) 位於 `scripts/archive/`
+> 歸檔腳本位於 `scripts/archive/`
 
 ---
 

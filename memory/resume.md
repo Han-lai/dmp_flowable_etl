@@ -1,6 +1,6 @@
 # 專案回顧 (下次對話請先讀這個)
 
-**最後更新**: 2024-12-24
+**最後更新**: 2026-01-02
 
 ---
 
@@ -20,6 +20,8 @@
 | 17 指標驗證 | ✅ 完成 | 2024-12-24 |
 | 邏輯等價性驗證 | ✅ 完成 | 2024-12-24 |
 | Scripts 整理 | ✅ 完成 | 2024-12-24 |
+| **Bronze 增量同步** | ✅ 完成 | 2026-01-02 |
+| **指標業務定義文件** | ✅ 完成 | 2026-01-02 |
 
 ---
 
@@ -27,14 +29,19 @@
 
 ```
 MSSQL → Bronze (16 張表) → Silver (5 View + 5 RMV) → Metric 查詢
+         ↑
+    增量同步 (5 張大表)
+    全量同步 (11 張小表)
 ```
 
-**Silver View/RMV:**
-- V_PROC_VARIABLES_PIVOTED - 流程變數樞紐化
-- V_TASK_VARIABLES_PIVOTED - 任務變數樞紐化
-- V_HI_PROC_TASK_NODE - 任務節點層
-- V_HI_PROCINST_NODE - 流程實例層
-- V_HI_BIZ_EVENT_INFO - 業務事件層
+**增量同步表 (5 張):**
+| 表名 | 追蹤欄位 | 資料量 |
+|------|----------|--------|
+| ACT_HI_PROCINST | START_TIME_ | 17K |
+| ACT_HI_TASKINST | LAST_UPDATED_TIME_ | 50K |
+| ACT_HI_IDENTITYLINK | CREATE_TIME_ | 598K |
+| ACT_HI_VARINST | LAST_UPDATED_TIME_ | 660K |
+| FlowableTaskStats | LastUpdatedTime | 1.3M |
 
 ---
 
@@ -43,26 +50,24 @@ MSSQL → Bronze (16 張表) → Silver (5 View + 5 RMV) → Metric 查詢
 | 項目 | 原因 |
 |------|------|
 | 逾期在途業務事件數 | 缺少 HealthSettings 表 |
-| Bronze 增量同步 | 目前資料量可接受全量 |
 | 自動化比對 | 目前手動執行腳本 |
 
 ---
 
-## 下次可能的 Task
+## 日常操作流程
 
-1. **確認 RMV 刷新狀態** - 休息 10 天後檢查 RMV 是否正常刷新
-   ```bash
-   python scripts/check_rmv_status.py
-   ```
-
-2. **重新同步 Bronze** - 如果需要最新資料
-   ```bash
-   python sync/sync_to_clickhouse.py
-   ```
-
-3. **逾期判斷功能** - 如果取得 HealthSettings 表
-
-4. **增量同步** - 如果資料量成長需要優化
+```
+Step 1: 同步 Bronze（增量）
+python sync/sync_incremental.py all
+        │
+        ▼
+Step 2: 檢查 RMV 刷新狀態（可選）
+python scripts/check_rmv_status.py
+        │
+        ▼
+Step 3: 查詢指標
+python scripts/query_metrics_rmv.py
+```
 
 ---
 
@@ -72,6 +77,7 @@ MSSQL → Bronze (16 張表) → Silver (5 View + 5 RMV) → Metric 查詢
 |------|------|
 | `CLAUDE.md` | 專案快速上手指南 |
 | `docs/data_flow_guide.md` | 資料流程 (Bronze→Silver→Metric) |
+| `docs/metric_definitions.md` | 17 個指標業務定義文件 |
 | `docs/metric_query_summary.md` | 17 個指標查詢 SQL |
 | `memory/project_context.md` | 完整專案進度 |
 | `memory/decisions_log.md` | 技術決策紀錄 |
@@ -90,8 +96,8 @@ MSSQL → Bronze (16 張表) → Silver (5 View + 5 RMV) → Metric 查詢
 ## 常用指令
 
 ```bash
-# 查詢指標 (View)
-python scripts/query_metrics.py
+# 日常同步（增量 + 全量混合）
+python sync/sync_incremental.py all
 
 # 查詢指標 (RMV，效能較好)
 python scripts/query_metrics_rmv.py

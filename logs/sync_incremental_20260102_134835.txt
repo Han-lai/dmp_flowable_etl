@@ -1,0 +1,25 @@
+====================================================================================================
+同步結果 Summary - 2026-01-02 13:48:25
+====================================================================================================
+步驟                                            類型           耗時(秒)      筆數           狀態
+----------------------------------------------------------------------------------------------------
+bronze.bpm_act_hi_procinst                    incremental  0.38       0            success
+bronze.bpm_act_hi_taskinst                    incremental  0.41       0            success
+bronze.bpm_act_hi_identitylink                incremental  0.54       43           success
+bronze.bpm_act_hi_varinst                     incremental  1.11       0            success
+bronze.common_flowable_task_stats             incremental  0.17       0            success
+bronze.bpm_act_re_procdef                     full         0.14       7393         success
+bronze.common_hr_employee                     full         5.55       134754       success
+bronze.common_process_role_user_mapping       full         0.39       31433        success
+bronze.common_process_role_group              full         0.06       19           success
+bronze.common_process_role_group_mapping      full         0.10       862          success
+bronze.common_emp_node_role_mapping           full         0.05       2786         success
+bronze.common_emp_org_info_mapping            full         0.06       1161         success
+bronze.common_emp_user_group_mapping          full         0.09       1293         success
+bronze.common_user_group                      full         0.11       9            success
+bronze.common_dmp_function_config             full         0.11       294          success
+bronze.common_dmp_function_client_mapping     full         0.07       58           success
+----------------------------------------------------------------------------------------------------
+總耗時: 9.53 秒
+總筆數: 180,105
+====================================================================================================
