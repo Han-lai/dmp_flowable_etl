@@ -237,6 +237,58 @@ Exploration / MVP
 
 **差異原因**: 資料同步時間點不同，非邏輯問題
 
+## 第四階段：Bronze 增量同步
+
+### 完成日期：2026-01-02
+
+### 增量同步架構
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                    增量同步流程                              │
+├─────────────────────────────────────────────────────────────┤
+│  1. 讀取 Watermark (上次同步時間)                            │
+│  2. 從 MSSQL 拉取增量資料 (WHERE tracking_col > watermark)   │
+│  3. INSERT INTO ClickHouse (ReplacingMergeTree 處理重複)     │
+│  4. 更新 Watermark                                          │
+│  5. RMV 自動刷新 Silver 層                                   │
+└─────────────────────────────────────────────────────────────┘
+```
+
+### 增量同步表 (5 張大表)
+
+| 表名 | 資料量 | 追蹤欄位 | 主鍵 |
+|------|--------|----------|------|
+| ACT_HI_PROCINST | 17K | START_TIME_ | ID_ |
+| ACT_HI_TASKINST | 50K | LAST_UPDATED_TIME_ | ID_ |
+| ACT_HI_IDENTITYLINK | 598K | CREATE_TIME_ | ID_ |
+| ACT_HI_VARINST | 660K | LAST_UPDATED_TIME_ | ID_ |
+| FlowableTaskStats | 1.3M | LastUpdatedTime | tuple() |
+
+### 全量同步表 (11 張小表)
+
+- ACT_RE_PROCDEF, HR_Employee, ProcessRoleUserMapping
+- ProcessRoleGroup, ProcessRoleGroupMapping, EmpNodeRoleMapping
+- EmpOrgInfoMapping, EmpUserGroupMapping, UserGroup
+- DMPFunctionConfig, DMPFunctionClientMapping
+
+### 效能比較
+
+| 方式 | 腳本 | 耗時 |
+|------|------|------|
+| 全量同步 | `sync/sync_to_clickhouse.py` | ~68 秒 |
+| 增量同步 | `sync/sync_incremental.py` | ~10 秒 |
+
+### Watermark 表
+
+```sql
+bronze._sync_watermark
+├── table_name (String)
+├── last_sync_time (DateTime64)
+├── sync_time (DateTime64)
+└── row_count (UInt64)
+```
+
 ---
 
 ## 目前痛點
@@ -244,7 +296,6 @@ Exploration / MVP
 ### 🔴 資料層面
 1. **Benchmark 資料過時** - 最後同步 2025-12-10，無法做即時比對
 2. **缺少 HealthSettings 表** - 無法實作逾期判斷邏輯
-3. **Bronze 層無增量同步** - 每次全量同步，大表效能問題
 
 ### 🟡 驗證層面
 1. **欄位名稱不一致** - Benchmark 用 snake_case，我的用 UPPER_CASE
@@ -270,6 +321,83 @@ Exploration / MVP
 - [ ] 跨流程關聯分析 (SUPER_ID / DEPTH)
 
 ### 長期 (生產環境)
-- [ ] 大表增量同步方案
 - [ ] 資料品質監控告警
 - [ ] 效能基準線建立
+
+---
+
+## 第五階段：指標業務定義文件
+
+### 完成日期：2026-01-02
+
+### 文件內容
+
+建立完整的指標業務定義文件（`docs/metric_definitions.md`），包含：
+
+**維度階層關係：**
+```
+FACTORY (工廠)
+  └── PLANT (產品線)
+        └── LINE_NAME (線別)
+```
+
+**已定義的 11 個指標：**
+
+| 分類 | 指標 | 聚合方式 |
+|------|------|----------|
+| 存量指標 | 在途業務事件總數、在途任務總數 | 可 SUM |
+| 比率指標 | 事件自動完成率 | 需重新計算 |
+| 分布指標 | TASK_STATUS 分布 | 可 SUM |
+| 維度分析 | 在途任務數（依廠區/部門/人員）、在途流程健康度快照 | 可 SUM |
+| 時長指標 | 平均業務事件總歷時、平均任務處理時長 | 需重新計算 |
+| 健康度指標 | 依流程的自動完成率 | 需重新計算 |
+
+**關鍵設計原則：**
+- 快照指標：不可跨時間加總，需每日快照
+- 比率指標：不可直接平均，需用分子分母重新計算
+- 維度聚合：明確標示可 SUM 或需重新計算
+- 去重邏輯：按 BUSINESS_KEY 或 TASK_ID 去重
+
+**Gold 層建議：**
+- 建立每日快照表
+- 分子分母分開存
+- 支援任意維度重新計算
+
+---
+
+## Scripts 使用指南
+
+### 日常操作流程
+
+```
+Step 1: 同步 Bronze（增量）
+python sync/sync_incremental.py all
+        │
+        ▼
+Step 2: 檢查 RMV 刷新狀態（可選）
+python scripts/check_rmv_status.py
+        │
+        ▼
+Step 3: 查詢指標
+python scripts/query_metrics_rmv.py
+```
+
+### 完整 Scripts 清單
+
+| 階段 | Script | 用途 | 使用頻率 |
+|------|--------|------|----------|
+| **Bronze 同步** | `sync/sync_incremental.py` | 增量+全量混合同步 | 日常 |
+| | `sync/sync_to_clickhouse.py` | 全量同步（舊版） | 首次/重建 |
+| **Silver 管理** | `scripts/check_rmv_status.py` | 檢查 RMV 刷新狀態 | 日常 |
+| | `scripts/create_rmv.py` | 建立 RMV | 首次 |
+| | `scripts/update_silver_views.py` | 更新 View 定義 | 維護 |
+| **指標查詢** | `scripts/query_metrics_rmv.py` | 查詢 17 指標（RMV） | 日常 |
+| | `scripts/query_metrics.py` | 查詢 17 指標（View） | 備用 |
+| **驗證比對** | `scripts/compare_with_benchmark.py` | 與 Benchmark 比對 | 驗證 |
+| | `scripts/compare_view_rmv.py` | View vs RMV 比對 | 驗證 |
+| | `scripts/compare_data_accuracy.py` | 資料準確性比對 | 驗證 |
+| **環境檢查** | `scripts/check_my_env.py` | 檢查連線環境 | 除錯 |
+| | `scripts/check_benchmark_tables.py` | 檢查 Benchmark 表 | 除錯 |
+| | `scripts/check_silver_tables.py` | 檢查 Silver 表 | 除錯 |
+| **分析工具** | `scripts/check_mssql_columns.py` | 查詢 MSSQL 欄位結構 | 分析 |
+| | `scripts/check_tracking_behavior.py` | 驗證追蹤欄位行為 | 分析 |
