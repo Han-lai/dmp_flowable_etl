@@ -14,12 +14,9 @@ DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 Cli
 - ✅ 邏輯等價性驗證完成 (Benchmark vs View vs RMV)
 - ✅ Scripts 目錄整理完成
 - ✅ Bronze 增量同步實作完成
-- ✅ **Cube.js 語意層建立完成**
-- ✅ **Gold 指標治理文件建立完成**
-- ✅ **Physical Gold 快照層設計完成**
-
-### 進行中
-- 🔄 Physical Gold 快照層實作
+- ✅ Cube.js 語意層建立完成
+- ✅ Gold 指標治理文件建立完成
+- ✅ **Physical Gold 快照層實作完成**
 
 ### 暫緩
 - ⏸️ 逾期在途業務事件數 (缺 HealthSettings 表)
@@ -65,7 +62,7 @@ MSSQL ──► Bronze (16 表) ──► Silver (5 RMV) ──► Cube.js ─�
 
 ---
 
-## Physical Gold 快照層（規劃中）
+## Physical Gold 快照層
 
 ### 設計規格
 
@@ -76,12 +73,43 @@ MSSQL ──► Bronze (16 表) ──► Silver (5 RMV) ──► Cube.js ─�
 | 維度組合 | FACTORY, PLANT, PROC_DEF_NAME |
 | 表引擎 | ReplacingMergeTree(_version) |
 
-### 預計檔案
+### Gold 表
+
+| 表 | 用途 | 首次快照 |
+|-----|------|---------|
+| `gold.DAILY_METRICS_SNAPSHOT` | 任務+流程指標 | 1,190 筆 |
+| `gold.DAILY_BIZ_EVENT_SNAPSHOT` | 業務事件指標 | 38 筆 |
+
+### 快照指標摘要 (2026-01-12)
+
+| 指標 | 數值 |
+|------|------|
+| 在途任務數 | 11,040 |
+| 自動完成率 | 61.36% |
+| 在途流程數 | 7,601 |
+| 已完成流程數 | 6,762 |
+| 在途業務事件數 | 2,465 |
+| 平均業務事件歷時 | 54.83 小時 |
+
+### 相關檔案
 
 | 檔案 | 用途 |
 |------|------|
 | `sql/07_create_gold_snapshot.sql` | Gold 表 DDL |
 | `scripts/create_gold_snapshot.py` | 快照執行腳本 |
+
+### 使用方式
+
+```bash
+# 初始化表結構
+python scripts/create_gold_snapshot.py --init
+
+# 執行今日快照
+python scripts/create_gold_snapshot.py
+
+# 指定日期快照
+python scripts/create_gold_snapshot.py --date 2026-01-12
+```
 
 ---
 
@@ -246,6 +274,7 @@ bpm_act_re_procdef  ──┘
 | | `scripts/update_silver_views.py` | 更新 View 定義 | 維護 |
 | **指標查詢** | `scripts/query_metrics_rmv.py` | 查詢 17 指標（RMV） | 日常 |
 | | `scripts/query_metrics.py` | 查詢 17 指標（View） | 備用 |
+| **Gold 快照** | `scripts/create_gold_snapshot.py` | 建立每日快照 | 日常 |
 | **驗證比對** | `scripts/compare_with_benchmark.py` | 與 Benchmark 比對 | 驗證 |
 | | `scripts/compare_view_rmv.py` | View vs RMV 比對 | 驗證 |
 | | `scripts/compare_data_accuracy.py` | 資料準確性比對 | 驗證 |
@@ -267,7 +296,7 @@ bpm_act_re_procdef  ──┘
 4. `sql/04_create_silver_database.sql`
 5. `sql/05_create_silver_views.sql`
 6. `sql/06_create_silver_rmv.sql`
-7. `sql/07_create_gold_snapshot.sql` (待建立)
+7. `sql/07_create_gold_snapshot.sql`
 
 ---
 
