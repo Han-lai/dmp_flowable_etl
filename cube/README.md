@@ -21,9 +21,11 @@ ClickHouse (Silver RMV)
 cube/
 ├── model/                    # 數據模型（官方標準）
 │   ├── cubes/               # Cube 定義
-│   │   ├── cube_proc_task_node.js    # 任務節點
-│   │   ├── cube_biz_event_info.js    # 業務事件
-│   │   └── cube_proc_inst_node.js    # 流程實例
+│   │   ├── cube_proc_task_node.js         # 任務節點 (Silver)
+│   │   ├── cube_biz_event_info.js         # 業務事件 (Silver)
+│   │   ├── cube_proc_inst_node.js         # 流程實例 (Silver)
+│   │   ├── cube_daily_metrics_snapshot.js # 每日指標快照 (Gold)
+│   │   └── cube_daily_biz_event_snapshot.js # 每日業務事件快照 (Gold)
 │   └── views/               # View 定義（對外 API 層）
 │       └── .gitkeep
 ├── docker-compose.yml
@@ -34,6 +36,10 @@ cube/
 - Cube 定義：`cube_` 前綴
 - 複合指標：`metric_` 前綴
 - 基礎定義用 `.yml`，複雜邏輯用 `.js`
+
+**資料層級：**
+- Silver Cube：即時資料，來自 `silver.RMV_*`
+- Gold Cube：歷史快照，來自 `gold.DAILY_*`
 
 ## 快速開始
 
@@ -155,6 +161,87 @@ curl http://localhost:4002/cubejs-api/v1/load \
   "timeDimensions": [
     {
       "dimension": "ProcTaskNode.startTime",
+      "granularity": "day",
+      "dateRange": "last 30 days"
+    }
+  ]
+}
+```
+
+---
+
+## Gold 層 Cube（歷史趨勢）
+
+### DailyMetricsSnapshot (每日指標快照)
+
+**來源：** `gold.DAILY_METRICS_SNAPSHOT`
+
+**用途：** 查詢歷史趨勢、指標回溯
+
+**維度：**
+- snapshotDate - 快照日期
+- factory, plant, procDefName
+
+**指標：**
+- inProgressTaskCount - 在途任務數
+- autoCompleteRate - 自動完成率 (%)
+- avgWorkDurationSec - 平均處理時長 (秒)
+- inProgressProcCount - 在途流程數
+- completedProcCount - 已完成流程數
+
+**查詢範例 - 本週趨勢：**
+```json
+{
+  "measures": ["DailyMetricsSnapshot.inProgressTaskCount"],
+  "timeDimensions": [
+    {
+      "dimension": "DailyMetricsSnapshot.snapshotDate",
+      "granularity": "day",
+      "dateRange": "last 7 days"
+    }
+  ]
+}
+```
+
+**查詢範例 - 依工廠的歷史趨勢：**
+```json
+{
+  "measures": ["DailyMetricsSnapshot.inProgressTaskCount"],
+  "dimensions": ["DailyMetricsSnapshot.factory"],
+  "timeDimensions": [
+    {
+      "dimension": "DailyMetricsSnapshot.snapshotDate",
+      "granularity": "day",
+      "dateRange": "last 30 days"
+    }
+  ]
+}
+```
+
+### DailyBizEventSnapshot (每日業務事件快照)
+
+**來源：** `gold.DAILY_BIZ_EVENT_SNAPSHOT`
+
+**用途：** 查詢業務事件歷史趨勢
+
+**維度：**
+- snapshotDate - 快照日期
+- firstProcDefName - 首個流程類型
+
+**指標：**
+- inProgressEventCount - 在途業務事件數
+- completedEventCount - 已完成業務事件數
+- avgEventDurationHour - 平均業務事件歷時 (小時)
+
+**⚠️ 注意：** 此 Cube 沒有 factory/plant 維度
+
+**查詢範例：**
+```json
+{
+  "measures": ["DailyBizEventSnapshot.inProgressEventCount"],
+  "timeDimensions": [
+    {
+      "dimension": "DailyBizEventSnapshot.snapshotDate",
       "granularity": "day",
       "dateRange": "last 30 days"
     }
