@@ -1,0 +1,41 @@
+version: '3.8'
+
+services:
+  cube:
+    image: cubejs/cube:latest
+    container_name: cubejs
+    ports:
+      - "4002:4000"      # Cube.js REST API
+      - "4003:4001"      # Cube.js Playground (開發 UI)
+    environment:
+      # ClickHouse 連線設定
+      - CUBEJS_DB_TYPE=clickhouse
+      - CUBEJS_DB_HOST=10.136.218.207
+      - CUBEJS_DB_PORT=8121
+      - CUBEJS_DB_USER=default
+      - CUBEJS_DB_PASS=default
+      - CUBEJS_DB_NAME=silver
+      
+      # Cube.js 設定
+      - CUBEJS_DEV_MODE=true
+      - CUBEJS_API_SECRET=dmp_flowable_cube_secret_key_2026
+      - CUBEJS_SCHEDULED_REFRESH_DEFAULT=true
+      - CUBEJS_WEB_SOCKETS=true
+      
+      # 預聚合設定
+      - CUBEJS_PRE_AGGREGATIONS_SCHEMA=pre_agg
+      - CUBEJS_EXTERNAL_DEFAULT=false
+      
+      # 日誌設定
+      - CUBEJS_LOG_LEVEL=info
+      
+    volumes:
+      # 官方標準：model 目錄掛載到 /cube/conf/model
+      - ./model:/cube/conf/model:ro
+    restart: unless-stopped
+    networks:
+      - cube-network
+
+networks:
+  cube-network:
+    driver: bridge

@@ -267,3 +267,76 @@
 - ClickHouse 24.3+
 - 需啟用 `allow_experimental_refreshable_materialized_view = 1`
 - 需設定 `allow_nullable_key = 1`
+
+---
+
+### 2026-01-12: Cube.js 語意層建立
+
+**決策**：使用 Cube.js 作為 Semantic Layer
+
+**架構**：
+```
+Silver RMV ──► Cube.js ──► REST API (4002) / Playground (4003)
+```
+
+**Cube Model**：
+- `ProcTaskNode` - 任務層指標
+- `ProcInstNode` - 流程層指標
+- `BizEventInfo` - 業務事件層指標
+
+**原因**：
+- 提供統一的指標 API
+- 支援維度約束和使用規範
+- 前端可透過 Playground 驗證查詢
+
+---
+
+### 2026-01-12: Cube.js Model Gold 層審查
+
+**決策**：將 Cube.js Model 從 Silver 包裝層升級為 Semantic Gold
+
+**修正內容**：
+1. 移除 `SELECT *`，改為明確欄位選取
+2. 為 Gold 指標加上維度約束說明（合法/禁止維度）
+3. 移除重複指標，確保 Single Source of Truth
+4. 為 avg/rate 指標加上聚合警告，提供分子分母
+
+**結果**：
+- 🥇 Gold 指標：7 個 (37%)
+- 🥈 Silver 包裝：12 個 (63%)
+
+**相關文件**：
+- `docs/semantic_gold_governance.md` - 指標治理文件
+- `docs/cube_gold_layer_audit.md` - Gold 層審查報告
+
+---
+
+### 2026-01-12: Physical Gold 快照層設計
+
+**決策**：採用 ClickHouse 直接計算方案（方案 C）
+
+**需求**：
+- 每日快照 10:00 Asia/Taipei
+- 保留 365 天
+- 維度：factory / plant / proc_def_name
+- 支援歷史趨勢和指標回溯
+
+**方案比較**：
+
+| 面向 | 方案 B (Cube.js API) | 方案 C (ClickHouse 直接) |
+|------|---------------------|------------------------|
+| 維運成本 | 中等 | 低 |
+| 效能 | 中等 | 高 |
+| 新增元件 | Python 腳本 + 排程器 | 只需 cron |
+
+**選擇方案 C 原因**：
+- 最小新增元件
+- 維運最簡單
+- 效能最好
+- Cube.js 繼續作為 Semantic Layer 讀取 Gold 表
+
+**技術設計**：
+- 表引擎：ReplacingMergeTree(_version)
+- 分區：按月 (toYYYYMM)
+- TTL：365 天自動刪除
+- 排程：cron 每天 02:00 UTC (= 10:00 Asia/Taipei)

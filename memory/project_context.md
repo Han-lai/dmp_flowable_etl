@@ -365,6 +365,107 @@ FACTORY (工廠)
 
 ---
 
+## 第六階段：Cube.js 語意層
+
+### 完成日期：2026-01-12
+
+### Cube.js 架構
+
+```
+Silver RMV ──► Cube.js (Semantic Layer) ──► REST API / Playground
+                    │
+                    ├── ProcTaskNode (任務層)
+                    ├── ProcInstNode (流程層)
+                    └── BizEventInfo (業務事件層)
+```
+
+### 連線資訊
+
+| 服務 | Port | 用途 |
+|------|------|------|
+| Cube.js API | 4002 | REST API |
+| Cube.js Playground | 4003 | 查詢介面 |
+
+### Cube Model 檔案
+
+| 檔案 | Cube | 來源 |
+|------|------|------|
+| `cube/model/cubes/cube_proc_task_node.js` | ProcTaskNode | RMV_HI_PROC_TASK_NODE |
+| `cube/model/cubes/cube_proc_inst_node.js` | ProcInstNode | RMV_HI_PROCINST_NODE |
+| `cube/model/cubes/cube_biz_event_info.js` | BizEventInfo | RMV_HI_BIZ_EVENT_INFO |
+
+### Gold 指標清單 (7 個)
+
+| 指標 | Cube | 定義 |
+|------|------|------|
+| `inProgressTaskCount` | ProcTaskNode | 在途任務數 (TODO + DOING) |
+| `autoCompleteRate` | ProcTaskNode | 自動完成率 |
+| `avgWorkDuration` | ProcTaskNode | 平均任務處理時長 |
+| `inProgressCount` | ProcInstNode | 在途流程數 |
+| `completedCount` | ProcInstNode | 已完成流程數 |
+| `inProgressEventCount` | BizEventInfo | 在途業務事件數 |
+| `avgTotalDuration` | BizEventInfo | 平均業務事件總歷時 |
+
+### 指標治理
+
+- 已建立 `docs/semantic_gold_governance.md` - 指標治理文件
+- 已建立 `docs/cube_gold_layer_audit.md` - Gold 層審查報告
+- 已建立 `docs/metrics_in_cubejs.md` - 指標應用手冊
+
+### Gold 層判定結果
+
+| 分類 | 數量 | 比例 |
+|------|------|------|
+| 🥇 Gold 指標 | 7 個 | 37% |
+| 🥈 Silver 包裝 | 12 個 | 63% |
+
+---
+
+## 第七階段：Physical Gold 設計（規劃中）
+
+### 需求確認
+
+| 項目 | 規格 |
+|------|------|
+| 快照頻率 | 每日 10:00 (Asia/Taipei) |
+| 保留期限 | 365 天 |
+| 維度組合 | FACTORY, PLANT, PROC_DEF_NAME |
+| 月報 | 從日快照聚合產生 |
+| 時區 | Asia/Taipei (UTC+8) |
+
+### 設計決策
+
+**方案選擇**：ClickHouse 直接計算（方案 C）
+
+**理由**：
+- 最小新增元件（只需 cron）
+- 維運最簡單
+- 效能最好
+- Cube.js 繼續作為 Semantic Layer 讀取 Gold 表
+
+### 預計產出
+
+| 檔案 | 用途 |
+|------|------|
+| `sql/07_create_gold_snapshot.sql` | Gold 表 DDL |
+| `scripts/create_gold_snapshot.py` | 快照執行腳本 |
+
+### 表結構設計
+
+```sql
+gold.DAILY_METRICS_SNAPSHOT
+├── snapshot_date (Date)
+├── snapshot_time (DateTime64)
+├── factory, plant, proc_def_name (維度)
+├── in_progress_task_count, todo_count, doing_count (任務指標)
+├── done_auto_count, done_total_count (自動完成率分子分母)
+├── total_work_duration_sec, done_count (平均時長分子分母)
+├── in_progress_proc_count, completed_proc_count (流程指標)
+└── _version (重跑去重)
+```
+
+---
+
 ## Scripts 使用指南
 
 ### 日常操作流程
