@@ -27,19 +27,21 @@ cube/
 │   │   ├── cube_daily_metrics_snapshot.js # 每日指標快照 (Gold)
 │   │   └── cube_daily_biz_event_snapshot.js # 每日業務事件快照 (Gold)
 │   └── views/               # View 定義（對外 API 層）
-│       └── .gitkeep
+│       └── view_historical_trends.js      # 歷史趨勢查詢介面
 ├── docker-compose.yml
 └── README.md
 ```
 
 **命名規範：**
 - Cube 定義：`cube_` 前綴
+- View 定義：`view_` 前綴
 - 複合指標：`metric_` 前綴
 - 基礎定義用 `.yml`，複雜邏輯用 `.js`
 
 **資料層級：**
 - Silver Cube：即時資料，來自 `silver.RMV_*`
 - Gold Cube：歷史快照，來自 `gold.DAILY_*`
+- View：對外 API 介面，組合多個 Cube
 
 ## 快速開始
 
@@ -242,6 +244,69 @@ curl http://localhost:4002/cubejs-api/v1/load \
   "timeDimensions": [
     {
       "dimension": "DailyBizEventSnapshot.snapshotDate",
+      "granularity": "day",
+      "dateRange": "last 30 days"
+    }
+  ]
+}
+```
+
+---
+
+## Views（對外 API 介面）
+
+### HistoricalTrends (歷史趨勢)
+
+**用途：** 簡化的歷史趨勢查詢介面
+
+**來源 Cube：** DailyMetricsSnapshot
+
+**維度：**
+- snapshotDate, factory, plant, procDefName
+
+**指標：**
+- inProgressTaskCount, todoCount, doingCount
+- autoCompleteRate, doneAutoCount, doneTotalCount
+- avgWorkDurationSec, avgWorkDurationMin
+- inProgressProcCount, completedProcCount
+
+**查詢範例：**
+```json
+{
+  "measures": ["HistoricalTrends.inProgressTaskCount"],
+  "dimensions": ["HistoricalTrends.factory"],
+  "timeDimensions": [
+    {
+      "dimension": "HistoricalTrends.snapshotDate",
+      "granularity": "day",
+      "dateRange": "last 30 days"
+    }
+  ]
+}
+```
+
+### HistoricalBizEvents (歷史業務事件趨勢)
+
+**用途：** 業務事件歷史趨勢查詢介面
+
+**來源 Cube：** DailyBizEventSnapshot
+
+**維度：**
+- snapshotDate, firstProcDefName
+
+**指標：**
+- inProgressEventCount, completedEventCount
+- avgEventDurationSec, avgEventDurationHour
+
+**⚠️ 注意：** 此 View 沒有 factory/plant 維度
+
+**查詢範例：**
+```json
+{
+  "measures": ["HistoricalBizEvents.inProgressEventCount"],
+  "timeDimensions": [
+    {
+      "dimension": "HistoricalBizEvents.snapshotDate",
       "granularity": "day",
       "dateRange": "last 30 days"
     }
