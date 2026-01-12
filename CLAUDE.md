@@ -1,9 +1,9 @@
 # CLAUDE.md - 專案快速上手指南
 
 ## 專案概述
-DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 ClickHouse，建立 Bronze/Silver 層資料倉儲。
+DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 ClickHouse，建立 Bronze/Silver/Gold 層資料倉儲，並透過 Cube.js 提供 API。
 
-## 目前狀態 (2026-01-02)
+## 目前狀態 (2026-01-12)
 
 ### 已完成
 - ✅ Bronze 層：16 張表同步完成
@@ -13,10 +13,75 @@ DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 Cli
 - ✅ View vs RMV 資料正確性驗證完成
 - ✅ 邏輯等價性驗證完成 (Benchmark vs View vs RMV)
 - ✅ Scripts 目錄整理完成
-- ✅ **Bronze 增量同步實作完成**
+- ✅ Bronze 增量同步實作完成
+- ✅ **Cube.js 語意層建立完成**
+- ✅ **Gold 指標治理文件建立完成**
+- ✅ **Physical Gold 快照層設計完成**
+
+### 進行中
+- 🔄 Physical Gold 快照層實作
 
 ### 暫緩
 - ⏸️ 逾期在途業務事件數 (缺 HealthSettings 表)
+
+---
+
+## 整體架構
+
+```
+MSSQL ──► Bronze (16 表) ──► Silver (5 RMV) ──► Cube.js ──► 前端
+                                    │
+                                    └──► Gold (每日快照) ──► Cube.js
+```
+
+---
+
+## Cube.js 語意層
+
+### 連線資訊
+
+| 服務 | Port | 用途 |
+|------|------|------|
+| Cube.js API | 4002 | REST API |
+| Cube.js Playground | 4003 | 查詢介面 |
+| ClickHouse | 8121 | 資料來源 |
+
+### Gold 指標清單 (7 個)
+
+| 指標 | Cube | 定義 |
+|------|------|------|
+| `inProgressTaskCount` | ProcTaskNode | 在途任務數 |
+| `autoCompleteRate` | ProcTaskNode | 自動完成率 |
+| `avgWorkDuration` | ProcTaskNode | 平均任務處理時長 |
+| `inProgressCount` | ProcInstNode | 在途流程數 |
+| `completedCount` | ProcInstNode | 已完成流程數 |
+| `inProgressEventCount` | BizEventInfo | 在途業務事件數 |
+| `avgTotalDuration` | BizEventInfo | 平均業務事件總歷時 |
+
+### 指標使用注意事項
+
+- **avg/rate 指標不可直接平均**：需用分子分母重新計算
+- **維度約束**：每個 Gold 指標有合法/禁止維度，詳見 `docs/semantic_gold_governance.md`
+
+---
+
+## Physical Gold 快照層（規劃中）
+
+### 設計規格
+
+| 項目 | 規格 |
+|------|------|
+| 快照頻率 | 每日 10:00 (Asia/Taipei) |
+| 保留期限 | 365 天 |
+| 維度組合 | FACTORY, PLANT, PROC_DEF_NAME |
+| 表引擎 | ReplacingMergeTree(_version) |
+
+### 預計檔案
+
+| 檔案 | 用途 |
+|------|------|
+| `sql/07_create_gold_snapshot.sql` | Gold 表 DDL |
+| `scripts/create_gold_snapshot.py` | 快照執行腳本 |
 
 ---
 
@@ -154,8 +219,21 @@ bpm_act_re_procdef  ──┘
 | `docs/data_flow_guide.md` | 資料流程指南 (Bronze→Silver→Metric) |
 | `docs/metric_query_summary.md` | 指標查詢統整 |
 | `docs/logic_equivalence_audit_report.md` | 邏輯等價性審核報告 |
+| `docs/semantic_gold_governance.md` | 指標治理文件 |
+| `docs/cube_gold_layer_audit.md` | Gold 層審查報告 |
+| `docs/metrics_in_cubejs.md` | Cube.js 指標應用手冊 |
 | `memory/project_context.md` | 專案進度 |
 | `memory/decisions_log.md` | 決策紀錄 |
+
+### Cube.js 檔案
+
+| 檔案 | 用途 |
+|------|------|
+| `cube/docker-compose.yml` | Cube.js Docker 設定 |
+| `cube/.env.example` | 環境變數範例 |
+| `cube/model/cubes/cube_proc_task_node.js` | 任務層 Cube |
+| `cube/model/cubes/cube_proc_inst_node.js` | 流程層 Cube |
+| `cube/model/cubes/cube_biz_event_info.js` | 業務事件層 Cube |
 
 ### Scripts 工具
 
@@ -189,6 +267,7 @@ bpm_act_re_procdef  ──┘
 4. `sql/04_create_silver_database.sql`
 5. `sql/05_create_silver_views.sql`
 6. `sql/06_create_silver_rmv.sql`
+7. `sql/07_create_gold_snapshot.sql` (待建立)
 
 ---
 
