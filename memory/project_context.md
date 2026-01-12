@@ -421,48 +421,61 @@ Silver RMV ──► Cube.js (Semantic Layer) ──► REST API / Playground
 
 ---
 
-## 第七階段：Physical Gold 設計（規劃中）
+## 第七階段：Physical Gold 快照層
 
-### 需求確認
+### 完成日期：2026-01-12
+
+### Gold 表結構
+
+| 表 | 用途 | 首次快照筆數 |
+|-----|------|-------------|
+| `gold.DAILY_METRICS_SNAPSHOT` | 任務+流程指標 | 1,190 筆 |
+| `gold.DAILY_BIZ_EVENT_SNAPSHOT` | 業務事件指標 | 38 筆 |
+
+### 設計規格
 
 | 項目 | 規格 |
 |------|------|
 | 快照頻率 | 每日 10:00 (Asia/Taipei) |
-| 保留期限 | 365 天 |
+| 保留期限 | 365 天 (TTL 自動刪除) |
 | 維度組合 | FACTORY, PLANT, PROC_DEF_NAME |
-| 月報 | 從日快照聚合產生 |
+| 表引擎 | ReplacingMergeTree(_version) |
 | 時區 | Asia/Taipei (UTC+8) |
 
-### 設計決策
+### 首次快照摘要 (2026-01-12)
 
-**方案選擇**：ClickHouse 直接計算（方案 C）
+| 指標 | 數值 |
+|------|------|
+| 在途任務數 | 11,040 |
+| 自動完成率 | 61.36% |
+| 在途流程數 | 7,601 |
+| 已完成流程數 | 6,762 |
+| 在途業務事件數 | 2,465 |
+| 平均業務事件歷時 | 54.83 小時 |
 
-**理由**：
-- 最小新增元件（只需 cron）
-- 維運最簡單
-- 效能最好
-- Cube.js 繼續作為 Semantic Layer 讀取 Gold 表
+### Cube.js Gold 層 Model
 
-### 預計產出
+| Cube | 來源表 | 用途 |
+|------|--------|------|
+| DailyMetricsSnapshot | gold.DAILY_METRICS_SNAPSHOT | 歷史趨勢（任務+流程） |
+| DailyBizEventSnapshot | gold.DAILY_BIZ_EVENT_SNAPSHOT | 歷史趨勢（業務事件） |
+
+### Cube.js Views（對外 API）
+
+| View | 來源 Cube | 用途 |
+|------|-----------|------|
+| HistoricalTrends | DailyMetricsSnapshot | 歷史趨勢查詢介面 |
+| HistoricalBizEvents | DailyBizEventSnapshot | 業務事件歷史趨勢介面 |
+
+### 相關檔案
 
 | 檔案 | 用途 |
 |------|------|
 | `sql/07_create_gold_snapshot.sql` | Gold 表 DDL |
 | `scripts/create_gold_snapshot.py` | 快照執行腳本 |
-
-### 表結構設計
-
-```sql
-gold.DAILY_METRICS_SNAPSHOT
-├── snapshot_date (Date)
-├── snapshot_time (DateTime64)
-├── factory, plant, proc_def_name (維度)
-├── in_progress_task_count, todo_count, doing_count (任務指標)
-├── done_auto_count, done_total_count (自動完成率分子分母)
-├── total_work_duration_sec, done_count (平均時長分子分母)
-├── in_progress_proc_count, completed_proc_count (流程指標)
-└── _version (重跑去重)
-```
+| `cube/model/cubes/cube_daily_metrics_snapshot.js` | Gold Cube |
+| `cube/model/cubes/cube_daily_biz_event_snapshot.js` | Gold Cube |
+| `cube/model/views/view_historical_trends.js` | 歷史趨勢 View |
 
 ---
 

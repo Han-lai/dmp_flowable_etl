@@ -259,9 +259,22 @@ bpm_act_re_procdef  ──┘
 |------|------|
 | `cube/docker-compose.yml` | Cube.js Docker 設定 |
 | `cube/.env.example` | 環境變數範例 |
-| `cube/model/cubes/cube_proc_task_node.js` | 任務層 Cube |
-| `cube/model/cubes/cube_proc_inst_node.js` | 流程層 Cube |
-| `cube/model/cubes/cube_biz_event_info.js` | 業務事件層 Cube |
+| `cube/model/cubes/cube_proc_task_node.js` | 任務層 Cube (Silver) |
+| `cube/model/cubes/cube_proc_inst_node.js` | 流程層 Cube (Silver) |
+| `cube/model/cubes/cube_biz_event_info.js` | 業務事件層 Cube (Silver) |
+| `cube/model/cubes/cube_daily_metrics_snapshot.js` | 每日指標快照 Cube (Gold) |
+| `cube/model/cubes/cube_daily_biz_event_snapshot.js` | 每日業務事件快照 Cube (Gold) |
+| `cube/model/views/view_historical_trends.js` | 歷史趨勢 View |
+
+### Cube.js 查詢方式
+
+1. **Playground**: http://localhost:4003
+2. **REST API**: 
+```bash
+curl "http://localhost:4002/cubejs-api/v1/load" \
+  -H "Authorization: dmp_flowable_cube_secret_key_2026" \
+  -G --data-urlencode 'query={"measures":["HistoricalTrends.inProgressTaskCount"]}'
+```
 
 ### Scripts 工具
 
