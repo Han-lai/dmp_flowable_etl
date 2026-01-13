@@ -3,33 +3,51 @@
 ## 專案概述
 DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 ClickHouse，建立 Bronze/Silver/Gold 層資料倉儲，並透過 Cube.js 提供 API。
 
-## 目前狀態 (2026-01-12)
+## 目前狀態 (2026-01-13)
 
-### 已完成
-- ✅ Bronze 層：16 張表同步完成
-- ✅ Silver 層：5 張 View + 5 張 RMV 建立完成
-- ✅ 17 個指標驗證完成
-- ✅ View vs RMV 效能比較完成 (RMV 快 4-10 倍)
-- ✅ View vs RMV 資料正確性驗證完成
-- ✅ 邏輯等價性驗證完成 (Benchmark vs View vs RMV)
-- ✅ Scripts 目錄整理完成
-- ✅ Bronze 增量同步實作完成
-- ✅ Cube.js 語意層建立完成
-- ✅ Gold 指標治理文件建立完成
-- ✅ **Physical Gold 快照層實作完成**
+### 🎉 專案已完成
+
+| 階段 | 內容 | 狀態 |
+|------|------|------|
+| Bronze 層 | 16 張表同步（5 大表增量 + 11 小表全量） | ✅ 完成 |
+| Silver 層 | 4 張 View + 4 張 RMV（每日自動刷新） | ✅ 完成 |
+| Gold 層 | 2 張每日快照表（保留 365 天） | ✅ 完成 |
+| Cube.js | 語意層 API（7 個 Gold 指標） | ✅ 完成 |
+| 指標驗證 | 11 個指標與 Benchmark 邏輯等價 | ✅ 完成 |
+| 技術驗證 | ClickHouse 原生增量 MView JOIN 行為測試 | ✅ 完成 |
+| 專案報告 | 主管報告文件 | ✅ 完成 |
 
 ### 暫緩
 - ⏸️ 逾期在途業務事件數 (缺 HealthSettings 表)
+- ⏸️ 自動化排程 (目前手動執行)
 
 ---
 
 ## 整體架構
 
 ```
-MSSQL ──► Bronze (16 表) ──► Silver (5 RMV) ──► Cube.js ──► 前端
+MSSQL ──► Bronze (16 表) ──► Silver (4 RMV) ──► Cube.js ──► 前端
                                     │
                                     └──► Gold (每日快照) ──► Cube.js
 ```
+
+---
+
+## 技術決策：為什麼用全量刷新而不是原生增量？
+
+### ClickHouse 原生增量 MView 限制
+
+透過測試腳本 (`scripts/test_imv_join_behavior.py`) 驗證：
+
+| 測試場景 | 結果 |
+|---------|------|
+| 主表 INSERT 時 | ✅ MView 觸發，JOIN 成功 |
+| JOIN 表 INSERT 後 | ❌ 已寫入的資料不會更新 |
+| JOIN 表 UPDATE 後 | ❌ 已寫入的資料不會更新 |
+
+### 結論
+
+因為 11 個指標都需要 JOIN 維度表（部門、廠區、流程名稱），而維度表可能變更，所以選擇「每日全量刷新」確保資料一致性。即使未來維度表不再變更，因為表與表 JOIN 關係複雜，仍建議使用全量刷新。
 
 ---
 
@@ -115,6 +133,26 @@ python scripts/create_gold_snapshot.py --date 2026-01-12
 
 ## 日常操作流程
 
+### 資料流執行順序
+
+| 順序 | 層級 | 執行時間 | 觸發方式 | 執行指令 |
+|------|------|----------|----------|----------|
+| 1 | **Bronze 同步** | 依需求（建議每日 09:00 前） | 手動 | `python sync/sync_incremental.py all` |
+| 2 | **Silver RMV 刷新** | 每日 02:00 UTC (10:00 Asia/Taipei) | 自動 | ClickHouse 自動執行 |
+| 3 | **Gold 快照** | 每日 10:00 Asia/Taipei 後 | 手動 | `python scripts/create_gold_snapshot.py` |
+
+### 建議執行時間線
+
+```
+09:00  執行 Bronze 同步
+10:00  RMV 自動刷新完成（02:00 UTC）
+10:30  執行 Gold 快照
+       ↓
+       Cube.js API 可查詢最新資料
+```
+
+### 操作步驟
+
 ```
 Step 1: 同步 Bronze（增量）
 python sync/sync_incremental.py all
@@ -124,8 +162,24 @@ Step 2: 檢查 RMV 刷新狀態（可選）
 python scripts/check_rmv_status.py
         │
         ▼
-Step 3: 查詢指標
+Step 3: 執行 Gold 快照
+python scripts/create_gold_snapshot.py
+        │
+        ▼
+Step 4: 查詢指標
 python scripts/query_metrics_rmv.py
+```
+
+### 檢查 RMV 刷新狀態 (SQL)
+
+```sql
+SELECT 
+    view,
+    status,
+    last_refresh_time,
+    next_refresh_time
+FROM system.view_refreshes
+WHERE database = 'silver';
 ```
 
 ---

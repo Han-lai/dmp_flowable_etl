@@ -19,12 +19,16 @@
 DMP Flowable 資料同步
 
 ## 當前階段
-Exploration / MVP
+🎉 **已完成** (MVP Complete)
 
 ## 專案目標
-1. 探索真實 MSSQL 資料表結構
-2. 建立本機 MSSQL Docker Sandbox 測試環境
-3. 將 MSSQL 資料同步到 ClickHouse Bronze 層
+1. ~~探索真實 MSSQL 資料表結構~~ ✅
+2. ~~建立本機 MSSQL Docker Sandbox 測試環境~~ ✅
+3. ~~將 MSSQL 資料同步到 ClickHouse Bronze 層~~ ✅
+4. ~~建立 Silver 層 RMV（每日自動刷新）~~ ✅
+5. ~~建立 Gold 層快照表（歷史趨勢）~~ ✅
+6. ~~建立 Cube.js 語意層 API~~ ✅
+7. ~~驗證 11 個業務指標~~ ✅
 
 ## 資料來源
 
@@ -291,6 +295,54 @@ bronze._sync_watermark
 
 ---
 
+## 第八階段：技術驗證與專案總結
+
+### 完成日期：2026-01-13
+
+### ClickHouse 原生增量 MView JOIN 行為驗證
+
+**測試腳本**：`scripts/test_imv_join_behavior.py`
+
+**測試結果**：
+
+| 測試場景 | 結果 |
+|---------|------|
+| 主表 INSERT 時 | ✅ MView 觸發，JOIN 成功 |
+| JOIN 表 INSERT 後 | ❌ 已寫入的資料不會更新 |
+| JOIN 表 UPDATE 後 | ❌ 已寫入的資料不會更新 |
+
+**結論**：
+- ClickHouse 原生增量 MView（TO table 語法）只監控主表
+- JOIN 表的變更不會觸發已寫入資料的更新
+- 因為 11 個指標都需要 JOIN 維度表，選擇全量刷新確保資料一致性
+
+### 專案總結報告
+
+**報告文件**：`docs/project_summary_report.md`
+
+**專案成果**：
+
+| 階段 | 內容 | 狀態 |
+|------|------|------|
+| Bronze 層 | 16 張表同步（5 大表增量 + 11 小表全量） | ✅ 完成 |
+| Silver 層 | 4 張 View + 4 張 RMV（每日自動刷新） | ✅ 完成 |
+| Gold 層 | 2 張每日快照表（保留 365 天） | ✅ 完成 |
+| Cube.js | 語意層 API（7 個 Gold 指標） | ✅ 完成 |
+| 指標驗證 | 11 個指標與 Benchmark 邏輯等價 | ✅ 完成 |
+
+**關鍵數據**：
+
+| 指標 | 數值 |
+|------|------|
+| 同步資料量 | 2,134,433 筆 |
+| 全量同步耗時 | ~68 秒 |
+| 增量同步耗時 | ~10 秒 |
+| RMV 查詢加速 | 4-10 倍 |
+| 資料延遲 | 最多 24 小時 |
+| Gold 快照保留 | 365 天 |
+
+---
+
 ## 目前痛點
 
 ### 🔴 資料層面
@@ -481,6 +533,36 @@ Silver RMV ──► Cube.js (Semantic Layer) ──► REST API / Playground
 
 ## Scripts 使用指南
 
+### 資料流執行順序
+
+| 順序 | 層級 | 執行時間 | 觸發方式 | 執行指令 |
+|------|------|----------|----------|----------|
+| 1 | **Bronze 同步** | 依需求（建議每日 09:00 前） | 手動 | `python sync/sync_incremental.py all` |
+| 2 | **Silver RMV 刷新** | 每日 02:00 UTC (10:00 Asia/Taipei) | 自動 | ClickHouse 自動執行 |
+| 3 | **Gold 快照** | 每日 10:00 Asia/Taipei 後 | 手動 | `python scripts/create_gold_snapshot.py` |
+
+### 建議執行時間線
+
+```
+09:00  執行 Bronze 同步
+10:00  RMV 自動刷新完成（02:00 UTC）
+10:30  執行 Gold 快照
+       ↓
+       Cube.js API 可查詢最新資料
+```
+
+### 檢查 RMV 刷新狀態 (SQL)
+
+```sql
+SELECT 
+    view,
+    status,
+    last_refresh_time,
+    next_refresh_time
+FROM system.view_refreshes
+WHERE database = 'silver';
+```
+
 ### 日常操作流程
 
 ```
@@ -492,7 +574,11 @@ Step 2: 檢查 RMV 刷新狀態（可選）
 python scripts/check_rmv_status.py
         │
         ▼
-Step 3: 查詢指標
+Step 3: 執行 Gold 快照
+python scripts/create_gold_snapshot.py
+        │
+        ▼
+Step 4: 查詢指標
 python scripts/query_metrics_rmv.py
 ```
 
@@ -505,6 +591,7 @@ python scripts/query_metrics_rmv.py
 | **Silver 管理** | `scripts/check_rmv_status.py` | 檢查 RMV 刷新狀態 | 日常 |
 | | `scripts/create_rmv.py` | 建立 RMV | 首次 |
 | | `scripts/update_silver_views.py` | 更新 View 定義 | 維護 |
+| **Gold 快照** | `scripts/create_gold_snapshot.py` | 建立每日快照 | 日常 |
 | **指標查詢** | `scripts/query_metrics_rmv.py` | 查詢 17 指標（RMV） | 日常 |
 | | `scripts/query_metrics.py` | 查詢 17 指標（View） | 備用 |
 | **驗證比對** | `scripts/compare_with_benchmark.py` | 與 Benchmark 比對 | 驗證 |
