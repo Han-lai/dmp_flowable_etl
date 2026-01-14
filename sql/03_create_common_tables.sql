@@ -298,3 +298,50 @@ CREATE TABLE IF NOT EXISTS bronze.common_dmp_function_client_mapping
 ENGINE = ReplacingMergeTree(_sync_time)
 ORDER BY (ID)
 SETTINGS index_granularity = 8192;
+
+
+-- 12. MDM_FACTORY_AREA_MASTER - 廠區主檔（維度表）
+CREATE TABLE IF NOT EXISTS bronze.common_mdm_factory_area_master
+(
+    FACTORY_AREA Nullable(String),
+    FACTORY Nullable(String),
+    SCHEMA Nullable(String),
+    VALID Nullable(String),
+    MAINTAIN_TIME Nullable(DateTime),
+    MAINTAIN_EMP Nullable(String),
+    WEB_HOST Nullable(String),
+    JIT_SCHEMA Nullable(String),
+    REWORK_FLAG Nullable(String),
+    COUNTRY Nullable(String),
+    REGION Nullable(String),
+    MFG_SITE Nullable(String),
+    FACTORY_FLAG Nullable(String),
+    OTHER_SYSTEM_SCHEMA Nullable(String),
+    SYNC_DATE Nullable(DateTime),
+    PLANT_NODE Nullable(String),
+    PLANT_NODE_DESC Nullable(String),
+    FACTORY_DESC Nullable(String)
+)
+ENGINE = MergeTree()
+ORDER BY tuple()
+SETTINGS index_granularity = 8192;
+
+
+-- 13. MDM_MFG_PLANT_MASTER - 製造廠區主檔（維度表）
+CREATE TABLE IF NOT EXISTS bronze.common_mdm_mfg_plant_master
+(
+    MFG_PLANT_ID Nullable(String),
+    MFG_PLANT_CODE Nullable(String),
+    MFG_PLANT_DESC Nullable(String),
+    FACTORY Nullable(String),
+    VALIDITY Nullable(String),
+    MAINTAIN_TIME Nullable(Date),
+    MAINTAIN_EMP Nullable(String),
+    SYNC_DATE Nullable(Date),
+    PUBLIC_FLAG Nullable(String),
+    MFG_PLANT_NODE Nullable(String),
+    MFG_PLANT_NODE_DESC Nullable(String)
+)
+ENGINE = MergeTree()
+ORDER BY tuple()
+SETTINGS index_granularity = 8192;

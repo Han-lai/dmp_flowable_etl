@@ -3,16 +3,16 @@
 ## 專案概述
 DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 ClickHouse，建立 Bronze/Silver/Gold 層資料倉儲，並透過 Cube.js 提供 API。
 
-## 目前狀態 (2026-01-13)
+## 目前狀態 (2026-01-14)
 
 ### 🎉 專案已完成
 
 | 階段 | 內容 | 狀態 |
 |------|------|------|
-| Bronze 層 | 16 張表同步（5 大表增量 + 11 小表全量） | ✅ 完成 |
+| Bronze 層 | 18 張表同步（5 大表增量 + 13 小表全量） | ✅ 完成 |
 | Silver 層 | 4 張 View + 4 張 RMV（每日自動刷新） | ✅ 完成 |
 | Gold 層 | 2 張每日快照表（保留 365 天） | ✅ 完成 |
-| Cube.js | 語意層 API（7 個 Gold 指標） | ✅ 完成 |
+| Cube.js | 語意層 API（7 個 Gold 指標 + VTeam 維度樹） | ✅ 完成 |
 | 指標驗證 | 11 個指標與 Benchmark 邏輯等價 | ✅ 完成 |
 | 技術驗證 | ClickHouse 原生增量 MView JOIN 行為測試 | ✅ 完成 |
 | 專案報告 | 主管報告文件 | ✅ 完成 |
@@ -26,7 +26,7 @@ DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 Cli
 ## 整體架構
 
 ```
-MSSQL ──► Bronze (16 表) ──► Silver (4 RMV) ──► Cube.js ──► 前端
+MSSQL ──► Bronze (18 表) ──► Silver (4 RMV) ──► Cube.js ──► 前端
                                     │
                                     └──► Gold (每日快照) ──► Cube.js
 ```
@@ -319,6 +319,7 @@ bpm_act_re_procdef  ──┘
 | `cube/model/cubes/cube_daily_metrics_snapshot.js` | 每日指標快照 Cube (Gold) |
 | `cube/model/cubes/cube_daily_biz_event_snapshot.js` | 每日業務事件快照 Cube (Gold) |
 | `cube/model/views/view_historical_trends.js` | 歷史趨勢 View |
+| `cube/model/cubes/cube_vteam_region_plant_factory_line_tree.js` | VTeam 維度階層樹 |
 
 ### Cube.js 查詢方式
 

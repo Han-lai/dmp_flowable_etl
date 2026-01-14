@@ -72,6 +72,8 @@ FULL_SYNC_TABLES = [
     {"source": "APP_SRV_COMMON.dbo.UserGroup", "target": "bronze.common_user_group"},
     {"source": "APP_SRV_COMMON.dbo.DMPFunctionConfig", "target": "bronze.common_dmp_function_config"},
     {"source": "APP_SRV_COMMON.dbo.DMPFunctionClientMapping", "target": "bronze.common_dmp_function_client_mapping"},
+    {"source": "APP_SRV_COMMON.dbo.MDM_FACTORY_AREA_MASTER", "target": "bronze.common_mdm_factory_area_master"},
+    {"source": "APP_SRV_COMMON.dbo.MDM_MFG_PLANT_MASTER", "target": "bronze.common_mdm_mfg_plant_master"},
 ]
 
 # ============================================
