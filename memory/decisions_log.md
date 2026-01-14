@@ -394,3 +394,38 @@ Silver RMV ──► Cube.js ──► REST API (4002) / Playground (4003)
 |------|------|
 | 逾期在途業務事件數 | 缺少 HealthSettings 表 |
 | 自動化排程 | 目前手動執行，可考慮加入 cron |
+
+
+---
+
+### 2026-01-14: 新增維度表同步
+
+**決策**：新增 2 張維度表到 Bronze 層
+
+**新增表**：
+- `bronze.common_mdm_factory_area_master` - 廠區主檔（103 筆）
+- `bronze.common_mdm_mfg_plant_master` - 製造廠區主檔（384 筆）
+
+**同步方式**：全量同步（小表）
+
+**用途**：支援 VTeam 維度階層樹查詢
+
+---
+
+### 2026-01-14: 新增 VTeam 維度階層樹 Cube
+
+**決策**：建立 `VTeam_Region_Plant_Factory_Line_Tree` Cube
+
+**來源**：MSSQL 直接查詢（跨 BPM + COMMON 資料庫）
+
+**維度階層**：
+```
+VTeam
+  └── Region
+        └── Plant
+              └── Factory
+                    └── ProductionArea
+                          └── LineName
+```
+
+**檔案**：`cube/model/cubes/cube_vteam_region_plant_factory_line_tree.js`

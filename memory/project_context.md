@@ -35,7 +35,7 @@ DMP Flowable 資料同步
 | Database | 用途 | 表數量 |
 |----------|------|--------|
 | APP_SRV_BPM | Flowable 流程資料 | 5 |
-| APP_SRV_COMMON | DMP 人員/組織資料 | 11 |
+| APP_SRV_COMMON | DMP 人員/組織資料 | 13 |
 
 ## 技術棧
 - 來源：MSSQL Server（真實 + Mock Docker）
@@ -269,12 +269,13 @@ DMP Flowable 資料同步
 | ACT_HI_VARINST | 660K | LAST_UPDATED_TIME_ | ID_ |
 | FlowableTaskStats | 1.3M | LastUpdatedTime | tuple() |
 
-### 全量同步表 (11 張小表)
+### 全量同步表 (13 張小表)
 
 - ACT_RE_PROCDEF, HR_Employee, ProcessRoleUserMapping
 - ProcessRoleGroup, ProcessRoleGroupMapping, EmpNodeRoleMapping
 - EmpOrgInfoMapping, EmpUserGroupMapping, UserGroup
 - DMPFunctionConfig, DMPFunctionClientMapping
+- MDM_FACTORY_AREA_MASTER, MDM_MFG_PLANT_MASTER
 
 ### 效能比較
 
@@ -324,10 +325,10 @@ bronze._sync_watermark
 
 | 階段 | 內容 | 狀態 |
 |------|------|------|
-| Bronze 層 | 16 張表同步（5 大表增量 + 11 小表全量） | ✅ 完成 |
+| Bronze 層 | 18 張表同步（5 大表增量 + 13 小表全量） | ✅ 完成 |
 | Silver 層 | 4 張 View + 4 張 RMV（每日自動刷新） | ✅ 完成 |
 | Gold 層 | 2 張每日快照表（保留 365 天） | ✅ 完成 |
-| Cube.js | 語意層 API（7 個 Gold 指標） | ✅ 完成 |
+| Cube.js | 語意層 API（7 個 Gold 指標 + VTeam 維度樹） | ✅ 完成 |
 | 指標驗證 | 11 個指標與 Benchmark 邏輯等價 | ✅ 完成 |
 
 **關鍵數據**：
