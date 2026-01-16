@@ -1,247 +1,211 @@
-# 資料流程指南：Bronze → Silver → Metric
+# 資料流程指南：Task-based Flow 指標
 
-## 整體架構
+## 資料流說明
 
-```
-┌─────────────────────────────────────────────────────────────────────────┐
-│                              MSSQL                                      │
-│  APP_SRV_BPM (Flowable)  +  APP_SRV_COMMON (HR)                        │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                              JDBC Bridge
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Bronze Layer (原始)                             │
-│  bpm_act_hi_procinst | bpm_act_hi_taskinst | bpm_act_hi_varinst        │
-│  bpm_act_re_procdef  | common_hr_employee                              │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                           View / RMV 轉換
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         Silver Layer (轉換)                             │
-│                                                                         │
-│  V_PROC_VARIABLES_PIVOTED ──┬──► V_HI_PROC_TASK_NODE (任務層)          │
-│  V_TASK_VARIABLES_PIVOTED ──┘                                          │
-│                                                                         │
-│  V_PROC_VARIABLES_PIVOTED ──────► V_HI_PROCINST_NODE (流程層)          │
-│                                                                         │
-│  (直接聚合) ────────────────────► V_HI_BIZ_EVENT_INFO (業務事件層)     │
-└─────────────────────────────────────────────────────────────────────────┘
-                                    │
-                              直接查詢
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                           Metric (指標)                                 │
-│  在途任務數 | 自動完成率 | 任務時長 | 依廠區/部門/人員分組              │
-└─────────────────────────────────────────────────────────────────────────┘
-```
+### Bronze 層（原始資料）
 
----
+資料透過 JDBC Bridge 從 MSSQL 同步至 ClickHouse，保持原始結構不做轉換。
 
-## 第一層：Bronze (原始資料)
-
-### 資料來源
-
-```
-MSSQL (Flowable BPM) ──JDBC Bridge──► ClickHouse Bronze
-```
-
-### 使用的 5 張 Bronze 表
-
-| 表 | 內容 | 關鍵欄位 |
+**來源表**：
+| 表 | 來源 | 用途 |
 |---|---|---|
-| `bpm_act_hi_procinst` | 流程實例歷史 | PROC_INST_ID_, BUSINESS_KEY_, START_TIME_, END_TIME_, SUPER_PROCESS_INSTANCE_ID_ |
-| `bpm_act_hi_taskinst` | 任務實例歷史 | ID_, PROC_INST_ID_, ASSIGNEE_, CLAIM_TIME_, END_TIME_, DELETE_REASON_ |
-| `bpm_act_hi_varinst` | 流程變數 (EAV 格式) | PROC_INST_ID_, NAME_, TEXT_ |
-| `bpm_act_re_procdef` | 流程定義 | ID_, NAME_, KEY_ |
-| `common_hr_employee` | 員工資料 | EmpCode, DeptCodeLname |
+| `bronze.bpm_act_hi_taskinst` | APP_SRV_BPM | 任務實例歷史（主表） |
+| `bronze.bpm_act_hi_procinst` | APP_SRV_BPM | 流程實例歷史 |
+| `bronze.bpm_act_hi_varinst` | APP_SRV_BPM | 流程/任務變數（EAV 格式） |
+| `bronze.bpm_act_re_procdef` | APP_SRV_BPM | 流程定義 |
+| `bronze.common_hr_employee` | APP_SRV_COMMON | 員工資料 |
+
+**同步方式**：`sync/sync_to_clickhouse.py` 執行 Full Load
 
 ---
 
-## 第二層：Silver (轉換邏輯)
+### Silver 層（轉換邏輯）
 
-### 轉換順序與依賴
+Silver 層做三件事：
+1. **變數展開**：將 EAV 格式的 `varinst` 轉為寬表
+2. **JOIN 組裝**：將任務、流程、變數、員工資料組合成一張寬表
+3. **狀態判斷**：計算 `task_status` 和 `task_bypass`
 
+**轉換順序**：
 ```
-Bronze 表
+bronze.bpm_act_hi_varinst
     │
-    ├─► V_PROC_VARIABLES_PIVOTED (行轉列，無依賴)
-    │       varinst 的 EAV 格式 → 一列一個流程的所有變數
-    │       Grain: PROC_INST_ID
+    ├─► silver.varinst_process_pivot  (流程變數寬表，Grain: proc_inst_id)
+    │       展開: plant, factory, line_name, region...
     │
-    ├─► V_TASK_VARIABLES_PIVOTED (行轉列，無依賴)
-    │       任務層變數 (candidateUser, autoComplete)
-    │       Grain: TASK_ID
+    └─► silver.varinst_task_pivot     (任務變數寬表，Grain: task_id)
+            展開: auto_complete
+    
+bronze.bpm_act_hi_taskinst + procinst + procdef + employee + 上述兩表
     │
-    ├─► V_HI_PROC_TASK_NODE (依賴上面兩個)
-    │       JOIN: taskinst + procinst + proc_var + task_var + procdef + employee
-    │       派生: TASK_STATUS, IDLE_DURATION_SEC, WORK_DURATION_SEC
-    │       Grain: TASK_ID
-    │
-    ├─► V_HI_PROCINST_NODE (依賴 V_PROC_VARIABLES_PIVOTED)
-    │       JOIN: procinst + proc_var + procdef
-    │       派生: PROC_STATE, DEPTH, DURATION_SEC
-    │       Grain: PROC_INST_ID
-    │
-    └─► V_HI_BIZ_EVENT_INFO (無依賴，直接聚合 Bronze)
-            GROUP BY: BUSINESS_KEY
-            聚合: 任務統計、時長統計
-            Grain: BUSINESS_KEY
+    └─► silver.task_detail_wide       (任務明細寬表，Grain: task_id)
 ```
 
-### Silver View 清單
+**關鍵 JOIN 邏輯**：
+- `plant/factory/line` 來自 `varinst_process_pivot`，JOIN Key 是 `PROC_INST_ID_`
+- `task_bypass` 來自 `varinst_task_pivot`，JOIN Key 是 `TASK_ID_`（不是 `PROC_INST_ID_`）
 
-| View | Grain | 用途 |
-|------|-------|------|
-| `V_PROC_VARIABLES_PIVOTED` | PROC_INST_ID | 流程變數樞紐化 (plant/factory/region) |
-| `V_TASK_VARIABLES_PIVOTED` | TASK_ID | 任務變數樞紐化 (candidateUser/autoComplete) |
-| `V_HI_PROC_TASK_NODE` | TASK_ID | 任務節點層，含狀態/時長/部門/廠區 |
-| `V_HI_PROCINST_NODE` | PROC_INST_ID | 流程實例層，含階層/狀態 |
-| `V_HI_BIZ_EVENT_INFO` | BUSINESS_KEY | 業務事件層，聚合統計 |
+**轉換腳本**：`scripts/transform_silver_task_detail.py`
 
 ---
 
-## 關鍵轉換邏輯
+### Gold 層（查詢入口）
 
-### 1. 流程變數樞紐化 (EAV → 寬表)
+Gold 層是 Silver 層的快照，用於：
+- 固定時間點的指標查詢
+- 對帳驗證的基準
 
-**原始 (EAV 格式)**
+目前直接查詢 `silver.task_detail_wide` 即可，Gold 快照為選用。
+
+---
+
+## 流程圖
+
+```mermaid
+flowchart TB
+    subgraph MSSQL["MSSQL (APP_SRV_BPM)"]
+        taskinst[ACT_HI_TASKINST]
+        procinst[ACT_HI_PROCINST]
+        varinst[ACT_HI_VARINST]
+        procdef[ACT_RE_PROCDEF]
+    end
+    
+    subgraph MSSQL_COMMON["MSSQL (APP_SRV_COMMON)"]
+        employee[HR_Employee]
+    end
+    
+    subgraph Bronze["ClickHouse Bronze"]
+        b_taskinst[bpm_act_hi_taskinst]
+        b_procinst[bpm_act_hi_procinst]
+        b_varinst[bpm_act_hi_varinst]
+        b_procdef[bpm_act_re_procdef]
+        b_employee[common_hr_employee]
+    end
+    
+    subgraph Silver["ClickHouse Silver"]
+        proc_pivot[varinst_process_pivot<br/>plant/factory/line]
+        task_pivot[varinst_task_pivot<br/>auto_complete]
+        task_wide[task_detail_wide<br/>任務明細寬表]
+    end
+    
+    taskinst -->|JDBC Bridge| b_taskinst
+    procinst -->|JDBC Bridge| b_procinst
+    varinst -->|JDBC Bridge| b_varinst
+    procdef -->|JDBC Bridge| b_procdef
+    employee -->|JDBC Bridge| b_employee
+    
+    b_varinst -->|GROUP BY proc_inst_id| proc_pivot
+    b_varinst -->|GROUP BY task_id| task_pivot
+    
+    b_taskinst --> task_wide
+    b_procinst --> task_wide
+    b_procdef --> task_wide
+    b_employee --> task_wide
+    proc_pivot -->|JOIN on proc_inst_id| task_wide
+    task_pivot -->|JOIN on task_id| task_wide
 ```
-| PROC_INST_ID | NAME_   | TEXT_  |
-|--------------|---------|--------|
-| P001         | plant   | TPE    |
-| P001         | factory | F01    |
-| P001         | region  | TW     |
-```
 
-**轉換後 (寬表)**
-```
-| PROC_INST_ID | PLANT | FACTORY | REGION |
-|--------------|-------|---------|--------|
-| P001         | TPE   | F01     | TW     |
-```
+---
 
-**SQL 邏輯**
-```sql
-SELECT
-    PROC_INST_ID_ AS PROC_INST_ID,
-    anyIf(TEXT_, NAME_ = 'plant') AS PLANT,
-    anyIf(TEXT_, NAME_ = 'factory') AS FACTORY,
-    anyIf(TEXT_, NAME_ = 'region') AS REGION
-FROM bronze.bpm_act_hi_varinst
-WHERE NAME_ IN ('plant', 'factory', 'region')
-GROUP BY PROC_INST_ID_
-```
+## 欄位語意對照
 
-### 2. TASK_STATUS (任務狀態判斷)
+### 時間欄位
 
-```sql
-multiIf(
-    DELETE_REASON_ IS NOT NULL AND DELETE_REASON_ != '', 'CANCELLED',
-    ASSIGNEE_ IS NULL AND END_TIME_ IS NULL, 'TODO',
-    ASSIGNEE_ IS NOT NULL AND END_TIME_ IS NULL, 'DOING',
-    ASSIGNEE_ IS NOT NULL AND CLAIM_TIME_ IS NULL AND END_TIME_ IS NOT NULL, 'DONE_AUTO',
-    END_TIME_ IS NOT NULL, 'DONE',
-    'TODO'
-)
-```
-
-| 狀態 | 條件 | 說明 |
+| 欄位 | 來源 | 說明 |
 |------|------|------|
-| CANCELLED | DELETE_REASON 不為空 | 任務被取消/終止 |
-| TODO | 無 ASSIGNEE 且無 END_TIME | 待辦 (未指派) |
-| DOING | 有 ASSIGNEE 且無 END_TIME | 進行中 (已指派未完成) |
-| DONE_AUTO | 有 ASSIGNEE、無 CLAIM_TIME、有 END_TIME | 自動完成 (被指派但沒認領就完成) |
-| DONE | 有 END_TIME (其他情況) | 已完成 (有認領) |
+| `task_create_time` | `taskinst.START_TIME_` | 任務建立時間（DateTime） |
+| `task_create_date` | `toDate(task_create_time)` | 任務建立日期（Date，用於分區與篩選） |
+| `task_claim_time` | `taskinst.CLAIM_TIME_` | 任務認領時間 |
+| `task_end_time` | `taskinst.END_TIME_` | 任務完成時間 |
 
-### 3. 時長計算
+### 狀態欄位
 
-```sql
--- 閒置時長：任務建立 → 被認領
-IDLE_DURATION_SEC = dateDiff('second', START_TIME_, CLAIM_TIME_)
+| 欄位 | 值 | 判斷邏輯 |
+|------|-----|----------|
+| `task_status` | `TODO` | `ASSIGNEE_ IS NULL AND END_TIME_ IS NULL` |
+| | `DOING` | `ASSIGNEE_ IS NOT NULL AND END_TIME_ IS NULL` |
+| | `DONE` | `END_TIME_ IS NOT NULL` |
+| `task_bypass` | `Y` | `varinst.LONG_ = 1`（變數名稱 `autoComplete`，JOIN Key 是 `TASK_ID_`） |
+| | `N` | 其他情況 |
 
--- 處理時長：被認領 → 完成
-WORK_DURATION_SEC = dateDiff('second', CLAIM_TIME_, END_TIME_)
+### 維度欄位
 
--- 總時長：任務建立 → 完成
-TOTAL_DURATION_SEC = dateDiff('second', START_TIME_, END_TIME_)
-```
+| 欄位 | 來源 | JOIN Key | 說明 |
+|------|------|----------|------|
+| `plant` | `varinst.TEXT_` (NAME_='plant') | `PROC_INST_ID_` | 廠區代碼 |
+| `line` | `varinst.TEXT_` (NAME_='lineName') | `PROC_INST_ID_` | 產線代碼 |
+| `factory` | `varinst.TEXT_` (NAME_='factory') | `PROC_INST_ID_` | 工廠代碼 |
+| `region` | `varinst.TEXT_` (NAME_='region') | `PROC_INST_ID_` | 區域代碼 |
 
-### 4. PROC_STATE (流程狀態判斷)
-
-```sql
-multiIf(
-    DELETE_REASON_ IS NOT NULL AND DELETE_REASON_ != '', 'TERMINATED',
-    END_TIME_ IS NOT NULL, 'DONE',
-    'DOING'
-)
-```
-
-### 5. DEPTH (流程階層深度)
-
-```sql
-if(SUPER_PROCESS_INSTANCE_ID_ IS NULL OR SUPER_PROCESS_INSTANCE_ID_ = '', 1, 2)
-```
-
-- DEPTH = 1：主流程
-- DEPTH = 2：子流程
+**注意**：`plant/factory/line/region` 都是流程層級變數，作用範圍是整個流程實例（同一 `proc_inst_id` 下所有任務共用）。
 
 ---
 
-## 第三層：Metric (指標查詢)
+## 驗證流程說明
 
-### 指標與來源對照
+### Reference Case
 
-| 指標 | 來源 View | 查詢邏輯 |
-|------|-----------|----------|
-| 在途任務總數 | V_HI_PROC_TASK_NODE | `WHERE TASK_STATUS IN ('TODO','DOING')` |
-| 在途業務事件數 | V_HI_BIZ_EVENT_INFO | `WHERE FINAL_END_TIME IS NULL` |
-| 自動完成率 | V_HI_PROC_TASK_NODE | `DONE_AUTO / (DONE + DONE_AUTO)` |
-| 任務閒置時長 | V_HI_PROC_TASK_NODE | `IDLE_DURATION_SEC` |
-| 任務處理時長 | V_HI_PROC_TASK_NODE | `WORK_DURATION_SEC` |
-| 依廠區分組 | V_HI_PROC_TASK_NODE | `GROUP BY PLANT` |
-| 依部門分組 | V_HI_PROC_TASK_NODE | `GROUP BY DEPT_NAME` |
-| 依人員分組 | V_HI_PROC_TASK_NODE | `GROUP BY ASSIGNEE` |
-| 流程總歷時 | V_HI_PROCINST_NODE | `DURATION_SEC` |
-| 業務事件總歷時 | V_HI_BIZ_EVENT_INFO | `TOTAL_DURATION_SEC` |
-
-### 查詢範例
-
-**在途任務總數**
-```sql
-SELECT count(*) FROM silver.V_HI_PROC_TASK_NODE 
-WHERE TASK_STATUS IN ('TODO', 'DOING')
+驗證條件：
+```
+task_create_date = '2025-12-31'
+task_bypass = 'N'
+plant = 'WJ2'
+line = 'E5'
 ```
 
-**自動完成率**
+預期結果：
+- 總筆數：12 筆
+- 狀態分布：TODO=8, DOING=2, DONE=2
+
+### 驗證方式
+
+1. **執行 MSSQL Reference SQL**：直接在 MSSQL 執行等價查詢
+2. **執行 ClickHouse 查詢**：查詢 `silver.task_detail_wide`
+3. **比對結果**：
+   - 筆數是否一致
+   - TaskId 集合是否一致
+   - 狀態分布是否一致
+
+**驗證腳本**：`scripts/verify_clickhouse_vs_mssql.py`
+
+### 驗證其他條件
+
+同一套邏輯可用於驗證其他日期/廠別/線別，只需修改 WHERE 條件：
+
 ```sql
-SELECT round(
-    countIf(TASK_STATUS = 'DONE_AUTO') * 100.0 / 
-    countIf(TASK_STATUS IN ('DONE', 'DONE_AUTO')), 2
-) AS auto_rate
-FROM silver.V_HI_PROC_TASK_NODE
+-- ClickHouse
+SELECT task_id, task_status, task_bypass, plant, line
+FROM silver.task_detail_wide FINAL
+WHERE task_create_date = '{日期}'
+  AND task_bypass = '{Y/N}'
+  AND plant = '{廠區}'
+  AND line = '{產線}'
+ORDER BY task_id
 ```
 
-**依廠區分組的在途任務數**
 ```sql
-SELECT PLANT, count(*) AS TASK_CNT
-FROM silver.V_HI_PROC_TASK_NODE
-WHERE TASK_STATUS IN ('TODO', 'DOING')
-GROUP BY PLANT
-ORDER BY TASK_CNT DESC
+-- MSSQL（對照用）
+SELECT * FROM (
+  SELECT
+    hti.ID_ AS taskId,
+    CASE WHEN hti.END_TIME_ IS NOT NULL THEN 'DONE'
+         WHEN hti.ASSIGNEE_ IS NOT NULL THEN 'DOING'
+         ELSE 'TODO' END AS taskStatus,
+    CASE WHEN var_bypass.LONG_ = 1 THEN 'Y' ELSE 'N' END AS taskBypass,
+    var_plant.TEXT_ AS plant,
+    var_lineName.TEXT_ AS line,
+    CONVERT(VARCHAR, hti.START_TIME_, 120) AS taskCreateTime
+  FROM ACT_HI_PROCINST hi
+  INNER JOIN ACT_HI_TASKINST hti ON hi.PROC_INST_ID_ = hti.PROC_INST_ID_
+  LEFT JOIN ACT_HI_VARINST var_plant ON hi.PROC_INST_ID_ = var_plant.PROC_INST_ID_ AND var_plant.NAME_ = 'plant'
+  LEFT JOIN ACT_HI_VARINST var_lineName ON hi.PROC_INST_ID_ = var_lineName.PROC_INST_ID_ AND var_lineName.NAME_ = 'lineName'
+  LEFT JOIN ACT_HI_VARINST var_bypass ON hti.ID_ = var_bypass.TASK_ID_ AND var_bypass.NAME_ = 'autoComplete'
+) AS t
+WHERE t.taskCreateTime BETWEEN '{日期} 00:00:00' AND '{日期} 23:59:59'
+  AND taskBypass = '{Y/N}'
+  AND plant = '{廠區}'
+  AND line = '{產線}'
 ```
-
----
-
-## View vs RMV 選擇
-
-| 場景 | 建議 | 原因 |
-|------|------|------|
-| 即時查詢、資料需最新 | View (V_*) | 每次查詢即時計算 |
-| 報表查詢、效能優先 | RMV (RMV_*) | 預先計算，查詢快 4-10 倍 |
-
-RMV 每天 02:00 自動刷新，資料最多延遲 24 小時。
 
 ---
 
@@ -249,8 +213,7 @@ RMV 每天 02:00 自動刷新，資料最多延遲 24 小時。
 
 | 檔案 | 用途 |
 |------|------|
-| `sql/05_create_silver_views.sql` | Silver View DDL |
-| `sql/06_create_silver_rmv.sql` | Silver RMV DDL |
-| `scripts/query_metrics.py` | 指標查詢 (View) |
-| `scripts/query_metrics_rmv.py` | 指標查詢 (RMV) |
-| `docs/metric_query_summary.md` | 指標查詢統整 |
+| `sql/10_create_silver_task_detail.sql` | Silver 層 DDL |
+| `scripts/transform_silver_task_detail.py` | Silver 層 ETL |
+| `scripts/verify_clickhouse_vs_mssql.py` | 對帳驗證 |
+| `scripts/verify_reference_sql.py` | Reference SQL 驗證 |

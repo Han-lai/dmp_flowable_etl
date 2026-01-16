@@ -1,6 +1,13 @@
 """
 MSSQL → ClickHouse 資料同步程式
 使用 Python 主動控制 DDL/DML，並記錄執行時間
+
+注意：2026-01-06 MSSQL 來源表名變更
+- ACT_HI_PROCINST → ACT_HI_PROCINST_0106
+- ACT_HI_TASKINST → ACT_HI_TASKINST_0106
+- ACT_HI_IDENTITYLINK → ACT_HI_IDENTITYLINK_0106
+- ACT_HI_VARINST → ACT_HI_VARINST_0106
+- ACT_RE_PROCDEF → ACT_RE_PROCDEF_0106
 """
 
 import time
@@ -27,13 +34,14 @@ CLICKHOUSE_CONFIG = {
 
 # 要同步的表（MSSQL 來源 → ClickHouse 目標）
 # 全部使用 tuple() 避免 Nullable 欄位問題
+# 注意：2026-01-06 MSSQL 來源表名變更為 _0106 後綴
 TABLES_TO_SYNC = [
-    # APP_SRV_BPM
-    {"source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST", "target": "bronze.bpm_act_hi_procinst", "order_by": "tuple()"},
-    {"source": "APP_SRV_BPM.dbo.ACT_HI_TASKINST", "target": "bronze.bpm_act_hi_taskinst", "order_by": "tuple()"},
-    {"source": "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK", "target": "bronze.bpm_act_hi_identitylink", "order_by": "tuple()"},
-    {"source": "APP_SRV_BPM.dbo.ACT_HI_VARINST", "target": "bronze.bpm_act_hi_varinst", "order_by": "tuple()"},
-    {"source": "APP_SRV_BPM.dbo.ACT_RE_PROCDEF", "target": "bronze.bpm_act_re_procdef", "order_by": "tuple()"},
+    # APP_SRV_BPM (2026-01-06 表名變更)
+    {"source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST_0106", "target": "bronze.bpm_act_hi_procinst", "order_by": "tuple()"},
+    {"source": "APP_SRV_BPM.dbo.ACT_HI_TASKINST_0106", "target": "bronze.bpm_act_hi_taskinst", "order_by": "tuple()"},
+    {"source": "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK_0106", "target": "bronze.bpm_act_hi_identitylink", "order_by": "tuple()"},
+    {"source": "APP_SRV_BPM.dbo.ACT_HI_VARINST_0106", "target": "bronze.bpm_act_hi_varinst", "order_by": "tuple()"},
+    {"source": "APP_SRV_BPM.dbo.ACT_RE_PROCDEF_0106", "target": "bronze.bpm_act_re_procdef", "order_by": "tuple()"},
     # APP_SRV_COMMON
     {"source": "APP_SRV_COMMON.dbo.FlowableTaskStats", "target": "bronze.common_flowable_task_stats", "order_by": "tuple()"},
     {"source": "APP_SRV_COMMON.dbo.HR_Employee", "target": "bronze.common_hr_employee", "order_by": "tuple()"},

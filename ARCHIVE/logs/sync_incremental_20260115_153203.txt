@@ -1,0 +1,27 @@
+====================================================================================================
+同步結果 Summary - 2026-01-15 15:30:58
+====================================================================================================
+步驟                                            類型           耗時(秒)      筆數           狀態
+----------------------------------------------------------------------------------------------------
+bronze.bpm_act_hi_procinst                    incremental  0.18       -            failed
+bronze.bpm_act_hi_taskinst                    incremental  0.11       -            failed
+bronze.bpm_act_hi_identitylink                incremental  0.05       -            failed
+bronze.bpm_act_hi_varinst                     incremental  0.04       -            failed
+bronze.common_flowable_task_stats             rebuild      51.32      2            success
+bronze.bpm_act_re_procdef                     full         0.05       0            success
+bronze.common_hr_employee                     full         11.07      262513       success
+bronze.common_process_role_user_mapping       full         0.86       31475        success
+bronze.common_process_role_group              full         0.06       19           success
+bronze.common_process_role_group_mapping      full         0.05       862          success
+bronze.common_emp_node_role_mapping           full         0.05       2736         success
+bronze.common_emp_org_info_mapping            full         0.08       1137         success
+bronze.common_emp_user_group_mapping          full         0.05       1278         success
+bronze.common_user_group                      full         0.05       9            success
+bronze.common_dmp_function_config             full         0.04       294          success
+bronze.common_dmp_function_client_mapping     full         0.03       58           success
+bronze.common_mdm_factory_area_master         full         0.04       103          success
+bronze.common_mdm_mfg_plant_master            full         0.05       384          success
+----------------------------------------------------------------------------------------------------
+總耗時: 64.42 秒
+總筆數: 300,870
+====================================================================================================

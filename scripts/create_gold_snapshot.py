@@ -5,7 +5,9 @@ Gold Layer Daily Snapshot Script
 
 用途：
 - 從 Silver RMV 計算 7 個 Gold 指標
-- 寫入 gold.DAILY_METRICS_SNAPSHOT 和 gold.DAILY_BIZ_EVENT_SNAPSHOT
+- 從 Silver 通用指標表計算 L5 任務執行完成率、人員使用率
+- 寫入 gold.DAILY_METRICS_SNAPSHOT、gold.DAILY_BIZ_EVENT_SNAPSHOT
+- 寫入 gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT、gold.DAILY_USER_UTILIZATION_SNAPSHOT
 - 支援重跑（ReplacingMergeTree 自動去重）
 
 排程：
@@ -202,6 +204,138 @@ def create_biz_event_snapshot(client, snapshot_date: str = None):
     return count
 
 
+def create_l5_task_completion_snapshot(client, snapshot_date: str = None):
+    """
+    建立 L5 任務執行完成率每日快照
+    
+    使用 FlowableTaskStats 的 TaskStatus 欄位計算狀態
+    
+    Args:
+        client: ClickHouse client
+        snapshot_date: 快照日期 (YYYY-MM-DD)，預設為今天 (Asia/Taipei)
+    """
+    if snapshot_date is None:
+        snapshot_date = datetime.now().strftime("%Y-%m-%d")
+    
+    sql = f"""
+    INSERT INTO gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT
+    SELECT
+        toDate('{snapshot_date}') AS snapshot_date,
+        vx_type,
+        COALESCE(vx_subtype, '') AS vx_subtype,
+        COALESCE(plant, '') AS plant,
+        COALESCE(factory, '') AS factory,
+        COALESCE(line, '') AS line,
+        'day' AS time_period_type,
+        '{snapshot_date}' AS time_period_value,
+        
+        count() AS total_task_qty,
+        countIf(task_status = 'TODO') AS todo_qty,
+        countIf(task_status = 'DOING') AS doing_qty,
+        countIf(task_status = 'DONE') AS done_qty,
+        countIf(task_status IN ('DOING', 'DONE')) AS doing_done_qty,
+        countIf(task_status IN ('TODO', 'DOING')) AS todo_doing_acc_qty,
+        
+        if(count() > 0, round(countIf(task_status = 'TODO') * 100.0 / count(), 2), 0) AS todo_pct,
+        if(count() > 0, round(countIf(task_status = 'DOING') * 100.0 / count(), 2), 0) AS doing_pct,
+        if(count() > 0, round(countIf(task_status = 'DONE') * 100.0 / count(), 2), 0) AS done_pct,
+        if(count() > 0, round(countIf(task_status IN ('DOING', 'DONE')) * 100.0 / count(), 2), 0) AS doing_done_pct,
+        
+        toUnixTimestamp64Milli(now64(3)) AS _version,
+        now64(3) AS _snapshot_time
+        
+    FROM silver.FACT_TASK_VX_ATTRIBUTION
+    WHERE is_excluded = 0
+      AND task_create_date = toDate('{snapshot_date}')
+    GROUP BY vx_type, vx_subtype, plant, factory, line
+    HAVING total_task_qty > 0
+    """
+    
+    client.command(sql)
+    
+    count = client.command(f"""
+        SELECT count() FROM gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT FINAL
+        WHERE snapshot_date = toDate('{snapshot_date}')
+    """)
+    
+    print(f"✅ DAILY_L5_TASK_COMPLETION_SNAPSHOT: {count} 筆 (日期: {snapshot_date})")
+    return count
+
+
+def create_user_utilization_snapshot(client, snapshot_date: str = None):
+    """
+    建立人員使用率每日快照
+    
+    Args:
+        client: ClickHouse client
+        snapshot_date: 快照日期 (YYYY-MM-DD)，預設為今天 (Asia/Taipei)
+    """
+    if snapshot_date is None:
+        snapshot_date = datetime.now().strftime("%Y-%m-%d")
+    
+    sql = f"""
+    INSERT INTO gold.DAILY_USER_UTILIZATION_SNAPSHOT
+    WITH 
+    config_users AS (
+        SELECT 
+            vx_type,
+            plant,
+            factory,
+            count(DISTINCT emp_code) AS config_user_count
+        FROM silver.DIM_CONFIG_USER
+        WHERE is_config_user = 1
+        GROUP BY vx_type, plant, factory
+    ),
+    active_users AS (
+        SELECT 
+            t.vx_type,
+            t.plant,
+            t.factory,
+            count(DISTINCT t.task_assignee_name) AS active_user_count
+        FROM silver.FACT_TASK_VX_ATTRIBUTION t
+        INNER JOIN silver.DIM_CONFIG_USER cu
+            ON cu.emp_name = t.task_assignee_name
+           AND cu.vx_type = t.vx_type
+           AND cu.is_config_user = 1
+        WHERE t.is_excluded = 0
+          AND t.task_status IN ('DONE', 'DOING')
+          AND t.task_create_date = toDate('{snapshot_date}')
+        GROUP BY t.vx_type, t.plant, t.factory
+    )
+    SELECT
+        toDate('{snapshot_date}') AS snapshot_date,
+        c.vx_type,
+        c.plant,
+        c.factory,
+        '' AS line,
+        'day' AS time_period_type,
+        '{snapshot_date}' AS time_period_value,
+        COALESCE(a.active_user_count, 0) AS active_users,
+        c.config_user_count AS config_users,
+        if(c.config_user_count > 0, 
+           round(COALESCE(a.active_user_count, 0) * 100.0 / c.config_user_count, 2), 
+           0) AS utilization_rate,
+        toUnixTimestamp64Milli(now64(3)) AS _version,
+        now64(3) AS _snapshot_time
+    FROM config_users c
+    LEFT JOIN active_users a 
+        ON c.vx_type = a.vx_type 
+       AND c.plant = a.plant 
+       AND c.factory = a.factory
+    WHERE c.config_user_count > 0
+    """
+    
+    client.command(sql)
+    
+    count = client.command(f"""
+        SELECT count() FROM gold.DAILY_USER_UTILIZATION_SNAPSHOT FINAL
+        WHERE snapshot_date = toDate('{snapshot_date}')
+    """)
+    
+    print(f"✅ DAILY_USER_UTILIZATION_SNAPSHOT: {count} 筆 (日期: {snapshot_date})")
+    return count
+
+
 def show_snapshot_summary(client, snapshot_date: str = None):
     """顯示快照摘要"""
     if snapshot_date is None:
@@ -249,6 +383,42 @@ def show_snapshot_summary(client, snapshot_date: str = None):
         if row[1] > 0:
             avg_duration = row[2] / row[1]
             print(f"平均業務事件歷時: {avg_duration / 3600:.2f} 小時")
+    
+    # L5 任務執行完成率摘要
+    result = client.query(f"""
+        SELECT
+            vx_type,
+            sum(total_task_qty) AS total,
+            sum(done_qty) AS done,
+            round(sum(done_qty) * 100.0 / sum(total_task_qty), 2) AS done_pct
+        FROM gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT FINAL
+        WHERE snapshot_date = toDate('{snapshot_date}')
+        GROUP BY vx_type
+        ORDER BY vx_type
+    """)
+    
+    if result.result_rows:
+        print(f"\nL5 任務執行完成率:")
+        for row in result.result_rows:
+            print(f"  {row[0]}: {row[2]:,}/{row[1]:,} ({row[3]}%)")
+    
+    # 人員使用率摘要
+    result = client.query(f"""
+        SELECT
+            vx_type,
+            sum(active_users) AS active,
+            sum(config_users) AS config,
+            round(sum(active_users) * 100.0 / sum(config_users), 2) AS rate
+        FROM gold.DAILY_USER_UTILIZATION_SNAPSHOT FINAL
+        WHERE snapshot_date = toDate('{snapshot_date}')
+        GROUP BY vx_type
+        ORDER BY vx_type
+    """)
+    
+    if result.result_rows:
+        print(f"\n人員使用率:")
+        for row in result.result_rows:
+            print(f"  {row[0]}: {row[1]:,}/{row[2]:,} ({row[3]}%)")
 
 
 def main():
@@ -276,6 +446,12 @@ def main():
         
         # 建立業務事件層快照
         create_biz_event_snapshot(client, snapshot_date)
+        
+        # 建立 L5 任務執行完成率快照
+        create_l5_task_completion_snapshot(client, snapshot_date)
+        
+        # 建立人員使用率快照
+        create_user_utilization_snapshot(client, snapshot_date)
         
         # 顯示摘要
         show_snapshot_summary(client, snapshot_date)
