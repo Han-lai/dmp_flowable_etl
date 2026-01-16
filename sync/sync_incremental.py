@@ -1,6 +1,10 @@
 """
 Bronze 增量同步程式
 支援增量同步（大表）和全量同步（小表）混合策略
+
+注意：2026-01-15 確認 MSSQL 來源表名
+- 原始表（ACT_HI_PROCINST 等）仍有大量資料
+- _0106 後綴表幾乎無資料，應使用原始表名
 """
 
 import time
@@ -30,7 +34,7 @@ INCREMENTAL_TABLES = [
         "source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST",
         "target": "bronze.bpm_act_hi_procinst",
         "primary_key": "ID_",
-        "tracking_col": "START_TIME_",  # 用 START_TIME_ 追蹤新建
+        "tracking_col": "START_TIME_",
     },
     {
         "source": "APP_SRV_BPM.dbo.ACT_HI_TASKINST",
@@ -53,7 +57,7 @@ INCREMENTAL_TABLES = [
     {
         "source": "APP_SRV_COMMON.dbo.FlowableTaskStats",
         "target": "bronze.common_flowable_task_stats",
-        "primary_key": "tuple()",  # 無主鍵，用 tuple()
+        "primary_key": "Id",
         "tracking_col": "LastUpdatedTime",
         "allow_nullable_key": True,
     },

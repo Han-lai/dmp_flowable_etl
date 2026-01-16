@@ -1,5 +1,15 @@
 # MSSQL → ClickHouse 資料匯入方案比較報告（最終版）
 
+## 資料來源
+
+| 項目 | 說明 |
+|------|------|
+| 比較腳本 | `scripts/archive/compare_databases.py` |
+| 執行結果 | `logs/compare_result_20251218_154611.txt` |
+| 執行日期 | 2025-12-18 |
+
+---
+
 ## 一、比較背景說明
 
 本次評估針對 **同一批 MSSQL 原始資料**，比較兩種不同匯入 ClickHouse 的方案：

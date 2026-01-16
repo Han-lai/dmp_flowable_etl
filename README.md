@@ -1,197 +1,101 @@
-# dmp_flowable_etl — MSSQL-to-ClickHouse ETL Pipeline via JDBC Bridge
+# DMP Flowable ETL — MSSQL-to-ClickHouse Pipeline
 
-## 專案範圍（Project Scope）
+## 專案狀態（Current Status）
 
-此為**獨立的資料同步專案**，將 Flowable BPM 與 DMP 相關資料從 MSSQL 同步至 ClickHouse 進行分析。
+**已完成**：第一個通用指標（Task-based Flow 指標）的完整 Pipeline
+- Bronze 層：18 張表從 MSSQL 同步至 ClickHouse
+- Silver 層：`task_detail_wide` 任務明細寬表（等價於 MSSQL Reference SQL）
+- 對帳驗證通過：條件 `date=2025-12-31, plant='WJ2', line='E5', taskBypass='N'` → 12 筆
 
-- **業務領域**：BPM 流程分析 / 人員組織資料倉儲
-- **解決問題**：將分散於 MSSQL 的 Flowable 流程歷史資料與 DMP 人員組織資料，同步至 ClickHouse 建立分析用 bronze 層，支援流程效率分析與人員績效查詢
-- **獨立聲明**：此 repository 為自包含專案，不依賴任何其他 repository
+**尚未做**：其他指標擴充（架構已可複用）
 
-## 工程背景（Engineering Context）
-
-### 為什麼需要這個 Pipeline
-Flowable BPM 系統的歷史資料儲存於 MSSQL，直接在 OLTP 資料庫上執行分析查詢會影響線上服務效能。此專案將資料同步至 ClickHouse OLAP 引擎，分離線上服務與分析負載。
-
-### 資料特性
-- **來源資料庫**：MSSQL Server（APP_SRV_BPM、APP_SRV_COMMON）
-- **目標資料庫**：ClickHouse（bronze 層）
-- **資料量**：16 張表，約 212 萬筆資料
-- **同步效能**：17.89 秒（約 118,700 筆/秒）
-
-### 設計前提與限制
-- 使用 JDBC Bridge 作為 MSSQL 與 ClickHouse 之間的中介層
-- 目前實作 Full Load，Incremental Load 為後續階段
-- 需處理 Nullable 欄位與 ORDER BY 相容性問題
-
-## 架構設計（Architecture）
+## 架構概覽
 
 ```
-┌─────────────┐     JDBC      ┌──────────────┐     HTTP      ┌─────────────┐
-│   MSSQL     │◄─────────────►│ JDBC Bridge  │◄─────────────►│ ClickHouse  │
-│  (來源)     │               │  (中介層)     │               │  (目標)     │
-└─────────────┘               └──────────────┘               └─────────────┘
-     │                              │                              │
-     │ APP_SRV_BPM                  │ Port 9019                    │ Port 8121
-     │ APP_SRV_COMMON               │                              │ bronze.*
-     │                              │                              │
+MSSQL (APP_SRV_BPM/COMMON)
+    │
+    ▼ JDBC Bridge
+ClickHouse bronze.*        ← 18 張原始表
+    │
+    ▼ Python ETL
+ClickHouse silver.*        ← task_detail_wide 寬表
+    │
+    ▼ Snapshot
+ClickHouse gold.*          ← 可查詢的指標快照
 ```
-
-### 架構說明
-
-**元件職責：**
-- **MSSQL**：來源資料庫，儲存 Flowable BPM 流程歷史與 DMP 人員組織資料
-- **JDBC Bridge**：ClickHouse 官方元件，提供 JDBC 連線能力，讓 ClickHouse 可透過 `jdbc()` 函數查詢外部資料庫
-- **ClickHouse**：目標 OLAP 資料庫，bronze 層儲存原始同步資料
-
-**同步流程：**
-1. Python 程式連線 ClickHouse
-2. 執行 `CREATE TABLE ... AS SELECT * FROM jdbc('mssql_master', 'SELECT * FROM ...')`
-3. ClickHouse 透過 JDBC Bridge 從 MSSQL 拉取資料
-4. 資料寫入 ClickHouse bronze 層
-
-## 同步的資料表
-
-### APP_SRV_BPM（Flowable 流程資料）
-
-| 表名 | 說明 | 資料量 |
-|------|------|--------|
-| ACT_HI_PROCINST | 流程實例歷史 | 15,928 |
-| ACT_HI_TASKINST | 任務實例歷史 | 47,088 |
-| ACT_HI_IDENTITYLINK | 任務參與者歷史 | 518,771 |
-| ACT_HI_VARINST | 流程變數歷史 | 612,916 |
-| ACT_RE_PROCDEF | 流程定義 | 7,249 |
-
-### APP_SRV_COMMON（DMP 人員/組織資料）
-
-| 表名 | 說明 | 資料量 |
-|------|------|--------|
-| FlowableTaskStats | 任務統計彙總 | 732,973 |
-| HR_Employee | 員工主檔 | 169,907 |
-| ProcessRoleUserMapping | 角色-員工對應 | 12,714 |
-| ProcessRoleGroup | 角色群組定義 | 19 |
-| ProcessRoleGroupMapping | 角色群組對應 | 690 |
-| EmpNodeRoleMapping | 員工-節點角色 | 2,778 |
-| EmpOrgInfoMapping | 員工-組織對應 | 1,129 |
-| EmpUserGroupMapping | 員工-群組對應 | 1,248 |
-| UserGroup | 使用者群組定義 | 9 |
-| DMPFunctionConfig | 功能設定 | 185 |
-| DMPFunctionClientMapping | 客戶端對應 | 57 |
-
-## 關鍵設計決策（Key Design Decisions）
-
-### 1. 選用 JDBC Bridge 而非直接連線
-**決策**：透過 ClickHouse JDBC Bridge 存取 MSSQL  
-**理由**：ClickHouse 原生不支援 MSSQL 連線，JDBC Bridge 是官方推薦方案。取捨：增加一層網路跳轉，但獲得標準化的 JDBC 連線能力。
-
-### 2. CREATE TABLE AS SELECT 同步策略
-**決策**：使用 `CREATE TABLE ... AS SELECT * FROM jdbc(...)` 進行 Full Load  
-**理由**：簡化同步邏輯，單一 SQL 完成 DDL + 資料載入。適合初期建置與資料量中等的場景。
-
-### 3. ORDER BY tuple() 處理 Nullable 欄位
-**決策**：ClickHouse 表使用 `ORDER BY tuple()` 而非指定排序欄位  
-**理由**：來源表多數欄位為 Nullable，ClickHouse 的 ORDER BY 不支援 Nullable 欄位。使用 `tuple()` 避免此限制。
-
-### 4. JDBC Driver 版本選擇
-**決策**：使用 MSSQL JDBC Driver 7.4.1.jre8  
-**理由**：較新版本（如 12.x）在 JDBC Bridge 環境下有相容性問題。經測試 7.4.1.jre8 穩定運作。
 
 ## 專案結構
 
 ```
-dmp_flowable_etl/
-├── docker/                     # Docker 設定
-│   ├── docker-compose.yml      # ClickHouse + JDBC Bridge
-│   ├── clickhouse/             # ClickHouse 設定檔
-│   └── jdbc-bridge/            # JDBC Bridge 設定
-├── scripts/                    # Python 腳本
-│   └── ...                     # 同步、檢查、驗證工具
-├── sql/                        # DDL 腳本
+├── sync/                   # Bronze 同步
+│   ├── sync_to_clickhouse.py
+│   └── sync_incremental.py
+│
+├── sql/                    # DDL（按順序執行）
 │   ├── 01_create_database.sql
 │   ├── 02_create_bpm_tables.sql
-│   └── 03_create_common_tables.sql
-├── sync/                       # 同步腳本
-│   └── sync_to_clickhouse.py   # 主同步程式
-├── transform/                  # 轉換腳本
-│   └── ...                     # Silver 層轉換
-├── validation/                 # 驗證腳本
-│   ├── row_count_check.sql
-│   └── data_quality_check.sql
-└── docs/                       # 文件
-    └── operation_guide.md
+│   ├── ...
+│   └── 10_create_silver_task_detail.sql
+│
+├── scripts/                # ETL & 驗證
+│   ├── transform_silver_task_detail.py    # Silver ETL
+│   ├── create_gold_snapshot.py            # Gold 快照
+│   ├── verify_clickhouse_vs_mssql.py      # 對帳驗證
+│   └── verify_reference_sql.py            # Reference SQL 驗證
+│
+├── docs/                   # 核心文件
+│   ├── clickhouse_data_model_design.md    # 完整設計文件
+│   ├── metric_definitions.md              # L5 指標業務定義
+│   └── data_flow_guide.md                 # 資料流說明
+│
+├── docker/                 # 基礎設施
+│   ├── docker-compose.yml
+│   ├── clickhouse/
+│   └── jdbc-bridge/
+│
+├── cube/                   # Cube.js 語意層（選用）
+│
+└── ARCHIVE/                # 歷史檔案（開發過程產物）
 ```
 
-## 執行方式（How to Run）
+## 快速開始
 
-### 環境需求
-- Python 3.8+
-- Docker & Docker Compose
-- 網路可連線到 MSSQL 和 ClickHouse
-
-### 安裝依賴
-```powershell
-pip install clickhouse-connect pyodbc
-```
-
-### 啟動 ClickHouse + JDBC Bridge
+### 1. 啟動 ClickHouse + JDBC Bridge
 ```powershell
 cd docker
 docker-compose up -d
 ```
 
-### 執行同步
+### 2. 同步 Bronze 層
 ```powershell
 python sync/sync_to_clickhouse.py
 ```
 
-### 驗證同步結果
+### 3. 建立 Silver 層
 ```powershell
-python scripts/check_clickhouse.py
-python validation/validate_sync.py
+python scripts/transform_silver_task_detail.py
 ```
 
-## 維運與觀測（Operations & Observability）
+### 4. 驗證結果
+```powershell
+python scripts/verify_clickhouse_vs_mssql.py
+```
 
-### Logging 策略
-- 同步結果記錄於 `logs/sync_result_*.txt`
-- 驗證報告記錄於 `logs/validation_report_*.txt`
-- Python 腳本使用標準 logging 模組
+## 關鍵設計決策
 
-### 錯誤處理
-- **JDBC Bridge 連線失敗**：檢查 container 狀態與 port 9019 連通性
-- **MSSQL 連線失敗**：驗證 datasource 設定中的 IP（使用 IP 而非 hostname）
-- **Nullable 欄位問題**：確認 ORDER BY 使用 `tuple()`
+| 決策 | 說明 |
+|------|------|
+| `taskBypass` 來源 | Task 層級變數 `autoComplete`，JOIN Key 是 `TASK_ID_` |
+| 流程變數 JOIN | `plant/factory/line` 來自 `ACT_HI_VARINST`，JOIN Key 是 `PROC_INST_ID_` |
+| 工單編號判斷 | 使用 `LIKE '196%'`（開頭），不是 `LIKE '%196%'`（包含） |
 
-### 重跑機制
-- Full Load 模式下，重跑會 DROP 並重建目標表
-- 資料一致性由 row count 比對驗證
+## 連線資訊
 
-## 經驗總結（Lessons Learned）
-
-### 1. JDBC Driver 版本相容性
-MSSQL JDBC Driver 版本選擇影響重大，較新版本可能與 JDBC Bridge 不相容。建議固定使用經驗證的版本（7.4.1.jre8）。
-
-### 2. Container 內 DNS 解析
-JDBC Bridge container 內可能無法解析 hostname，建議 datasource 設定使用 IP 位址。
-
-### 3. ClickHouse Nullable 限制
-ClickHouse 的 ORDER BY 與 PRIMARY KEY 不支援 Nullable 欄位，需在 DDL 設計時考慮此限制。
-
-### 4. 同步效能觀察
-212 萬筆資料在 17.89 秒內完成同步（約 118,700 筆/秒），JDBC Bridge 的效能足以應付中等規模資料同步。
+| 環境 | Host | Port | 帳號 |
+|------|------|------|------|
+| MSSQL | twtpesqldv2.delta.corp | 1433 | DMP_APP_SRV |
+| ClickHouse | 10.136.218.207 | 8121 | default |
 
 ---
 
-## Tech Stack
-
-| 類別 | 技術 |
-|----------|------------|
-| 來源資料庫 | MSSQL Server |
-| 目標資料庫 | ClickHouse |
-| 連線中介 | ClickHouse JDBC Bridge |
-| 同步工具 | Python (clickhouse-connect) |
-| 基礎設施 | Docker Compose |
-
----
-
-**Last Updated**: 2025-01-05
+**Last Updated**: 2026-01-16
