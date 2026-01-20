@@ -435,7 +435,7 @@ def main():
     
     snapshot_date = args.date
     
-    print(f"🚀 開始建立 Gold 快照...")
+    print(f"開始建立 Gold 快照...")
     print(f"   日期: {snapshot_date or '今天'}")
     print(f"   時區: Asia/Taipei")
     print()
@@ -456,10 +456,10 @@ def main():
         # 顯示摘要
         show_snapshot_summary(client, snapshot_date)
         
-        print("\n✅ Gold 快照建立完成")
+        print("\n完成 Gold 快照建立完成")
         
     except Exception as e:
-        print(f"\n❌ 快照建立失敗: {e}")
+        print(f"\n錯誤 快照建立失敗: {e}")
         sys.exit(1)
 
 

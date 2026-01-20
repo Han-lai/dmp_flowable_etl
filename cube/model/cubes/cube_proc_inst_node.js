@@ -1,10 +1,10 @@
 // ============================================
-// Cube: ProcInstNode (流程實例)
-// 來源: silver.RMV_HI_PROCINST_NODE
-// Grain: 一個 PROC_INST_ID = 一列
-// 層級: Semantic Gold (核心指標) + Silver 包裝 (輔助指標)
+// Cube: ProcInstNode (流程實例) - 已停用
+// 原因: L5 指標不需要流程實例層級分析
+// 狀態: 暫時停用，如需要可重新啟用
 // ============================================
 
+/*
 cube(`ProcInstNode`, {
   sql: `
     SELECT 
@@ -189,3 +189,7 @@ cube(`ProcInstNode`, {
     },
   },
 });
+
+// 停用原因: L5 指標專注於任務層級分析，不需要流程實例聚合
+// 如需重新啟用，請移除註解並確認資料來源 silver.RMV_HI_PROCINST_NODE 存在
+*/
