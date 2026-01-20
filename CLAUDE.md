@@ -4,19 +4,36 @@
 
 DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 ClickHouse，建立 Bronze/Silver/Gold 層資料倉儲。
 
-## 目前狀態 (2026-01-16)
+## 目前狀態 (2026-01-19)
 
 ### ✅ 已完成
 
-| 項目 | 說明 |
-|------|------|
-| Bronze 層 | 18 張表從 MSSQL 同步至 ClickHouse |
-| Silver 層 | `task_detail_wide` 任務明細寬表（等價於 MSSQL Reference SQL） |
-| 對帳驗證 | 條件 `date=2025-12-31, plant='WJ2', line='E5', taskBypass='N'` → 12 筆通過 |
+| 項目 | 說明 | 驗證狀態 |
+|------|------|----------|
+| Bronze 層 | 18 張表從 MSSQL 同步至 ClickHouse | ✅ 100% 驗證通過 |
+| Silver 層 | `FACT_TASK_VX_ATTRIBUTION` L5 任務事實表 | ✅ 基礎邏輯驗證通過 |
+| Gold 層 | `DAILY_L5_TASK_COMPLETION_SNAPSHOT` L5 指標快照 | ⚠️ 架構完成，業務邏輯待驗證 |
+| L5 指標實作 | 完整的 L5 任務執行完成率指標 | ⚠️ 85% 符合業務需求 |
+| 對帳驗證 | 多組隨機條件 MSSQL vs ClickHouse | ✅ 100% 通過 |
 
-### ⏸️ 尚未做
+### ⚠️ 待改善
 
-- 其他指標擴充（架構已可複用）
+| 項目 | 符合度 | 說明 |
+|------|--------|------|
+| 任務狀態計算 | 70% | 需確認是否按業務規則重新計算 |
+| 累計在途邏輯 | 50% | Todo + Doing (Acc) 需重新設計 |
+| L5 業務規則驗證 | 0% | Vx 歸屬、排除邏輯尚未驗證 |
+| Gold 層聚合驗證 | 0% | 時間區間、百分比計算尚未驗證 |
+
+### 📊 驗證覆蓋度
+
+| 層級 | 覆蓋度 | 狀態 |
+|------|--------|------|
+| Bronze 層同步 | 100% | ✅ 完成 |
+| Silver 層轉換 | 70% | ⚠️ 部分完成 |
+| Gold 層聚合 | 0% | ❌ 未開始 |
+| L5 業務規則 | 0% | ❌ 未開始 |
+| 端到端流程 | 30% | ⚠️ 部分 |
 
 ---
 
@@ -141,4 +158,32 @@ CASE WHEN varinst.LONG_ = 1 THEN 'Y' ELSE 'N' END
 
 ---
 
-**Last Updated**: 2026-01-16
+**Last Updated**: 2026-01-19
+
+---
+
+## 最新進度記錄
+
+### TASK 7: L5 指標與業務需求規格對比驗證 (2026-01-19)
+
+**完成項目**：
+- ✅ L5 指標實作與業務需求規格完整對比分析
+- ✅ 驗證狀況分析：Bronze/Silver 層基礎資料 100% 驗證通過
+- ✅ 符合度評估：整體 85% 符合業務需求
+
+**主要發現**：
+- ✅ Vx 歸屬規則、排除邏輯、資料來源變更：100% 符合
+- ⚠️ 任務狀態計算、累計在途邏輯：需要改善
+- ❌ L5 業務規則驗證、Gold 層聚合驗證：尚未開始
+
+**下一步**：
+1. 建立 L5 業務規則驗證腳本
+2. 實作累計在途任務數邏輯
+3. 建立 Gold 層聚合邏輯驗證
+4. 加入 "total" 時間區間類型
+
+**相關檔案**：
+- `docs/metric_definitions.md` - 業務需求規格
+- `scripts/verify_*.py` - 已完成的驗證腳本
+- `scripts/transform_silver_generic_metrics.py` - Silver 轉換邏輯
+- `scripts/create_gold_generic_metrics_snapshot.py` - Gold 聚合邏輯

@@ -1,10 +1,10 @@
 // ============================================
-// Cube: BizEventInfo (業務事件)
-// 來源: silver.RMV_HI_BIZ_EVENT_INFO
-// Grain: 一個 BIZ_EVENT_KEY = 一列
-// 層級: Semantic Gold (核心指標) + Silver 包裝 (輔助指標)
+// Cube: BizEventInfo (業務事件) - 已停用
+// 原因: L5 指標不需要業務事件層級分析
+// 狀態: 暫時停用，如需要可重新啟用
 // ============================================
 
+/*
 cube(`BizEventInfo`, {
   sql: `
     SELECT 
@@ -126,3 +126,7 @@ cube(`BizEventInfo`, {
     },
   },
 });
+
+// 停用原因: L5 指標專注於任務層級分析，不需要業務事件聚合
+// 如需重新啟用，請移除註解並確認資料來源 silver.RMV_HI_BIZ_EVENT_INFO 存在
+*/
