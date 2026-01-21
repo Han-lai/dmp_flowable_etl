@@ -1,0 +1,26 @@
+====================================================================================================
+同步結果 Summary - 2026-01-21 14:21:14
+====================================================================================================
+步驟                                            類型           耗時(秒)      筆數           狀態
+----------------------------------------------------------------------------------------------------
+bronze.bpm_act_re_procdef                     full         2.46       7516         success
+bronze.common_hr_employee                     full         20.01      262513       success
+bronze.common_process_role_user_mapping       full         0.74       31476        success
+bronze.common_process_role_group              full         0.07       19           success
+bronze.common_process_role_group_mapping      full         0.09       862          success
+bronze.common_emp_node_role_mapping           full         0.08       2747         success
+bronze.common_emp_org_info_mapping            full         0.11       1139         success
+bronze.common_emp_user_group_mapping          full         0.10       1287         success
+bronze.common_user_group                      full         0.06       9            success
+bronze.common_dmp_function_config             full         0.08       300          success
+bronze.common_dmp_function_client_mapping     full         0.10       58           success
+bronze.common_mdm_bu_org_type_master          full         0.15       409          success
+bronze.common_mdm_mfg_site_master             full         0.08       10           success
+bronze.common_mdm_mfg_plant_master            full         0.18       384          success
+bronze.common_mdm_factory_area_master         full         0.10       103          success
+bronze.common_mdm_prod_area_master            full         0.15       840          success
+bronze.common_mdm_line_desc_master            full         0.80       16940        success
+----------------------------------------------------------------------------------------------------
+總耗時: 25.55 秒
+總筆數: 326,612
+====================================================================================================

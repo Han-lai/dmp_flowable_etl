@@ -26,6 +26,8 @@ SELECT
     MAX(CASE WHEN NAME_ = 'factory' THEN TEXT_ END) AS varinst_factory,
     MAX(CASE WHEN NAME_ = 'lineName' THEN TEXT_ END) AS varinst_lineName,
     MAX(CASE WHEN NAME_ = 'region' THEN TEXT_ END) AS varinst_region,
+    -- 添加 NAME_ 欄位用於 NPE 判別（取所有 NAME_ 值的連接字符串）
+    arrayStringConcat(arrayDistinct(groupArray(NAME_)), ',') AS varinst_name,
     now64(3) AS _mview_update_time
 FROM bronze.bpm_act_hi_varinst
 WHERE NAME_ IN ('moNumber', 'plant', 'factory', 'lineName', 'region')

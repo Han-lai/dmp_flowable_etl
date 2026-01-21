@@ -76,8 +76,13 @@ FULL_SYNC_TABLES = [
     {"source": "APP_SRV_COMMON.dbo.UserGroup", "target": "bronze.common_user_group"},
     {"source": "APP_SRV_COMMON.dbo.DMPFunctionConfig", "target": "bronze.common_dmp_function_config"},
     {"source": "APP_SRV_COMMON.dbo.DMPFunctionClientMapping", "target": "bronze.common_dmp_function_client_mapping"},
-    {"source": "APP_SRV_COMMON.dbo.MDM_FACTORY_AREA_MASTER", "target": "bronze.common_mdm_factory_area_master"},
+    # MDM 主檔表 - 製造五階維度串接（依據 metric_definitions.md v1.2 要求）
+    {"source": "APP_SRV_COMMON.dbo.MDM_BU_ORG_TYPE_MASTER", "target": "bronze.common_mdm_bu_org_type_master"},
+    {"source": "APP_SRV_COMMON.dbo.MDM_MFG_SITE_MASTER", "target": "bronze.common_mdm_mfg_site_master"},
     {"source": "APP_SRV_COMMON.dbo.MDM_MFG_PLANT_MASTER", "target": "bronze.common_mdm_mfg_plant_master"},
+    {"source": "APP_SRV_COMMON.dbo.MDM_FACTORY_AREA_MASTER", "target": "bronze.common_mdm_factory_area_master"},
+    {"source": "APP_SRV_COMMON.dbo.MDM_PROD_AREA_MASTER", "target": "bronze.common_mdm_prod_area_master"},
+    {"source": "APP_SRV_COMMON.dbo.MDM_LINE_DESC_MASTER", "target": "bronze.common_mdm_line_desc_master"},
 ]
 
 # ============================================

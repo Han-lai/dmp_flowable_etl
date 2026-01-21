@@ -40,50 +40,72 @@ SELECT
     t.TaskAssigneeName AS task_assignee_name,
     t.TaskAssigneeAccount AS task_assignee_account,
     
-    -- 預計算：Vx 歸屬（使用第一層 MVIEW 的 varinst_moNumber）
+    -- 預計算：Vx 歸屬（修正後的邏輯：工單號規則優先級最高）
     CASE 
+        -- 優先級 1：工單號規則（最高，覆蓋所有 TaskDefinitionKey）
+        WHEN COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037') THEN 'V1'
         WHEN COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-             OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%'
         THEN 'V1'
+        
+        -- 優先級 2：TaskDefinitionKey 前綴（當工單號規則不符合時）
+        WHEN t.TaskDefinitionKey LIKE 'V1%' THEN 'V1'
+        WHEN t.TaskDefinitionKey LIKE 'V2%' THEN 'V2'
+        WHEN t.TaskDefinitionKey LIKE 'V3%' THEN 'V3'
+        
+        -- 預設值
         ELSE COALESCE(substring(t.TaskDefinitionKey, 1, 2), 'Unknown')
     END AS vx_type,
     
-    -- 預計算：V1 子類型（使用 factory 欄位判斷 NPE）
+    -- 預計算：V1 子類型（修正後的邏輯：工單號規則優先，NPE 判別改用 bpm_act_hi_varinst.NAME_ 欄位）
     CASE 
-        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
+        -- 工單號規則的 V1 任務（無論原始 TaskDefinitionKey 是什麼）
+        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037')
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%')
-             AND t.Factory LIKE '%NPE%'
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%')
+             AND v.varinst_name LIKE '%NPE%'
         THEN 'V1_NPE'
-        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
+        
+        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037')
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%')
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%')
         THEN 'V1_MFG'
+        
+        -- TaskDefinitionKey 的 V1 任務（工單號規則不符合時）
+        WHEN t.TaskDefinitionKey LIKE 'V1%' AND v.varinst_name LIKE '%NPE%'
+        THEN 'V1_NPE'
+        
+        WHEN t.TaskDefinitionKey LIKE 'V1%'
+        THEN 'V1_MFG'
+        
+        -- 其他情況（V2/V3 等）
         ELSE NULL
     END AS vx_subtype,
     
-    -- 是否套用特殊 V1 規則
+    -- 是否套用特殊 V1 規則（修正後的邏輯：工單號規則優先）
     CASE 
+        WHEN t.TaskDefinitionKey LIKE 'V1%' THEN 1
+        -- 特定 315% 工單號
+        WHEN COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037') THEN 1
+        -- 其他工單號規則
         WHEN COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-             OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%'
         THEN 1
         ELSE 0
     END AS is_special_v1_rule,
