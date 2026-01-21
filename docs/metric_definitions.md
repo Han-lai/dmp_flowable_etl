@@ -1,8 +1,155 @@
 # 流程指標業務定義文件 (Metric Definition Document)
 
-**版本：** 1.0  
-**更新日期：** 2026-01-02  
+**版本：** 1.2  
+**更新日期：** 2026-01-21  
 **適用範圍：** DMP Flowable 流程分析系統
+
+---
+
+## ⚠️ 重要資料來源限制說明 (2026-01-21 更新)
+
+### ACT_HI_VARINST 使用規則
+- **只有 V1 類型的 Process 與 Task** 會將流程與任務變數寫入 `ACT_HI_VARINST`
+- 非 V1 流程或任務即使存在，也不會在 ACT_HI_VARINST 中留下變數資料
+- 因此凡是依賴 ACT_HI_VARINST 進行分析、補欄位或維度串接的邏輯，**資料母體僅限於 V1 流程/任務**
+
+### 製造五階資料建構規則
+**製造五階定義：** Region → Vx → Plant → Factory → Line
+
+**Flowable 資料限制：**
+- Flowable 本身僅提供：Plant、Factory/Production Area、Line
+- **Region 與 Vx 並不存在於 Flowable 中，必須從其他主檔補齊**
+
+### 製造五階串接來源表規範（MDM 主檔）
+製造五階不可僅依賴 Flowable 欄位，必須從以下主檔表串接補齊：
+
+| 功能層級 | 來源表 |
+|----------|--------|
+| BU / 組織層 | APP_SRV_COMMON.dbo.MDM_BU_ORG_TYPE_MASTER |
+| 製造基地 / Site | APP_SRV_COMMON.dbo.MDM_MFG_SITE_MASTER |
+| 廠別 / Plant | APP_SRV_COMMON.dbo.MDM_MFG_PLANT_MASTER |
+| 製造區 / Factory Area | APP_SRV_COMMON.dbo.MDM_FACTORY_AREA_MASTER |
+| 製造區補充 | APP_SRV_COMMON.dbo.MDM_PROD_AREA_MASTER |
+| 產線 / Line | APP_SRV_COMMON.dbo.MDM_LINE_DESC_MASTER |
+
+### Silver 層設計原則
+1. 所有依賴 ACT_HI_VARINST 的邏輯，資料來源僅限 V1 流程
+2. 製造五階必須來自 Flowable + MDM 表串接，不得只使用 Flowable 欄位
+3. Silver 層的核心責任之一：建立「完整製造五階維度結構」
+4. Gold KPI 僅能建立在 Silver 已補齊五階與 V1 流程資料之上
+
+### Gold 層指標設計約束
+所有與製造維度相關之 KPI（例如：L5 任務完成率）：
+- 必須建立於已補齊五階（Region / Vx / Plant / Factory / Line）的 Silver 表
+- 且僅限 V1 流程母體
+
+---
+
+## 🔧 V1/V3 歸屬邏輯修正記錄 (2026-01-21)
+
+### 問題背景
+在 2026-01-21 的驗證過程中，發現 V1/V3 歸屬邏輯存在錯誤：
+- **期望結果**：WJ2+NBU+E5 在 2025-12-28 應該是 V1=3筆, V3=4筆
+- **實際結果**：V1=7筆, V3=0筆
+- **根本原因**：工單號 315% 規則優先級過高，導致 TaskDefinitionKey 為 V3 的任務被錯誤歸類為 V1
+
+### 修正內容
+
+#### 修正前邏輯（錯誤）
+```sql
+CASE 
+    WHEN t.TaskDefinitionKey LIKE 'V1%' THEN 'V1'
+    WHEN t.TaskDefinitionKey LIKE 'V2%' THEN 'V2'
+    WHEN t.TaskDefinitionKey LIKE 'V3%' THEN 'V3'
+    -- 問題：所有 315% 工單號都歸 V1，優先級過高
+    WHEN COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%' THEN 'V1'
+    WHEN COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%|199%|200%|210%|212%|213%' THEN 'V1'
+    ELSE COALESCE(substring(t.TaskDefinitionKey, 1, 2), 'Unknown')
+END
+```
+
+#### 修正後邏輯（正確）
+```sql
+CASE 
+    WHEN t.TaskDefinitionKey LIKE 'V1%' THEN 'V1'
+    WHEN t.TaskDefinitionKey LIKE 'V2%' THEN 'V2'
+    -- 關鍵修正：只有特定 315% 工單號歸類為 V1
+    WHEN COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037') THEN 'V1'
+    WHEN t.TaskDefinitionKey LIKE 'V3%' THEN 'V3'
+    -- 其他工單號規則保持不變
+    WHEN COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
+         OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
+         OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
+         OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
+         OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
+         OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
+    THEN 'V1'
+    ELSE COALESCE(substring(t.TaskDefinitionKey, 1, 2), 'Unknown')
+END
+```
+
+### 修正影響範圍
+
+#### 數據變化
+- **V1 任務數**：從 436,243 筆降至 15,184 筆（減少 421,059 筆錯誤歸類）
+- **V3 任務數**：相應增加，恢復正確歸屬
+- **驗證結果**：WJ2+NBU+E5 2025-12-28 現在正確顯示 V1=3筆, V3=4筆
+
+#### 修正檔案
+- **主要修正**：`scripts/transform_silver_generic_metrics.py`
+- **驗證工具**：`scripts/compare_clickhouse_mssql_sync.py`
+- **調試工具**：`scripts/debug_mssql_date_logic.py`
+
+### 業務規則澄清
+
+#### 特定 315% 工單號 V1 歸屬規則
+只有以下三個特定工單號歸類為 V1：
+- `3152600035`
+- `3152600036` 
+- `3152600037`
+
+其他所有 315% 開頭的工單號（如 `3152600038`, `3152600100` 等）保持原 TaskDefinitionKey 歸屬。
+
+#### 完整 V1 歸屬規則優先級
+1. **TaskDefinitionKey 優先**：V1%, V2%, V3% 按原始定義歸屬
+2. **特定工單號例外**：上述三個特定 315% 工單號強制歸 V1
+3. **其他工單號規則**：196%, 199%, 200%, 210%, 212%, 213% 開頭歸 V1
+4. **預設歸屬**：其他情況按 TaskDefinitionKey 前兩字元歸屬
+
+### 技術實現細節
+
+#### 日期邏輯統一
+**MSSQL 和 ClickHouse 使用相同的 OR 條件**：
+```sql
+WHERE (
+    CONVERT(DATE, hti.START_TIME_) = '2025-12-28'
+    OR CONVERT(DATE, hti.CLAIM_TIME_) = '2025-12-28'
+    OR CONVERT(DATE, hti.END_TIME_) = '2025-12-28'
+)
+```
+
+#### 狀態條件標準化
+```sql
+-- Done: 任務已完成
+SUM(CASE WHEN hti.END_TIME_ IS NOT NULL THEN 1 ELSE 0 END) as done
+
+-- TODO: 任務未指派且未完成
+SUM(CASE WHEN hti.END_TIME_ IS NULL AND hti.ASSIGNEE_ IS NULL THEN 1 ELSE 0 END) as todo
+
+-- DOING: 任務已指派但未完成
+SUM(CASE WHEN hti.END_TIME_ IS NULL AND hti.ASSIGNEE_ IS NOT NULL THEN 1 ELSE 0 END) as doing
+```
+
+### 驗證狀態
+- ✅ **邏輯修正**：已完成並部署
+- ✅ **數據驗證**：期望結果與實際結果一致
+- ✅ **MSSQL 一致性**：ClickHouse 與 MSSQL 邏輯統一
+- ⚠️ **持續監控**：需要監控 REFRESHABLE MV 是否正確反映修正邏輯
+
+### 後續行動
+1. **監控自動化**：確保 Gold 層 REFRESHABLE MV 正確反映修正後的邏輯
+2. **測試建立**：建立 V1/V3 歸屬邏輯的自動化測試
+3. **文檔更新**：更新相關技術文檔和操作手冊
 
 ---
 

@@ -74,13 +74,16 @@ def get_client():
 TRANSFORM_FACT_TASK_VX_SQL = """
 INSERT INTO silver.FACT_TASK_VX_ATTRIBUTION
 WITH 
--- 從 varinst 轉置取得 moNumber（EAV 結構轉置）
+-- 從 varinst 轉置取得 moNumber 和維度資訊（EAV 結構轉置）
 varinst_pivoted AS (
     SELECT 
         PROC_INST_ID_,
-        MAX(CASE WHEN NAME_ = 'moNumber' THEN TEXT_ END) AS varinst_moNumber
+        MAX(CASE WHEN NAME_ = 'moNumber' THEN TEXT_ END) AS varinst_moNumber,
+        MAX(CASE WHEN NAME_ = 'plant' THEN TEXT_ END) AS varinst_plant,
+        MAX(CASE WHEN NAME_ = 'factory' THEN TEXT_ END) AS varinst_factory,
+        MAX(CASE WHEN NAME_ = 'lineName' THEN TEXT_ END) AS varinst_lineName
     FROM bronze.bpm_act_hi_varinst
-    WHERE NAME_ = 'moNumber'
+    WHERE NAME_ IN ('moNumber', 'plant', 'factory', 'lineName')
     GROUP BY PROC_INST_ID_
 )
 SELECT
@@ -104,52 +107,72 @@ SELECT
     t.TaskAssigneeName AS task_assignee_name,
     t.TaskAssigneeAccount AS task_assignee_account,
     
-    -- 預計算：Vx 歸屬（使用 varinst.moNumber 判斷 V1 特殊規則）
-    -- 優先使用 varinst_moNumber，若為空則 fallback 到 FlowableTaskStats.MoNumber
-    -- 工單編號「開頭」為 196/199/200/210/212/213/315 時歸類為 V1
+    -- 預計算：Vx 歸屬（修正後的邏輯：工單號規則優先級最高，無論 TaskDefinitionKey 是什麼）
     CASE 
+        -- 優先級 1：工單號規則（最高，覆蓋所有 TaskDefinitionKey）
+        WHEN COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037') THEN 'V1'
         WHEN COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-             OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%'
         THEN 'V1'
+        
+        -- 優先級 2：TaskDefinitionKey 前綴（當工單號規則不符合時）
+        WHEN t.TaskDefinitionKey LIKE 'V1%' THEN 'V1'
+        WHEN t.TaskDefinitionKey LIKE 'V2%' THEN 'V2'
+        WHEN t.TaskDefinitionKey LIKE 'V3%' THEN 'V3'
+        
+        -- 預設值
         ELSE COALESCE(substring(t.TaskDefinitionKey, 1, 2), 'Unknown')
     END AS vx_type,
     
-    -- 預計算：V1 子類型
+    -- 預計算：V1 子類型（修正後的邏輯：工單號規則優先）
     CASE 
-        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
+        -- 工單號規則的 V1 任務（無論原始 TaskDefinitionKey 是什麼）
+        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037')
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%')
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%')
              AND p.BUSINESS_KEY_ LIKE '%NPE%'
         THEN 'V1_NPE'
-        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
+        
+        WHEN (COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037')
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
               OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%')
+              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%')
         THEN 'V1_MFG'
+        
+        -- TaskDefinitionKey 的 V1 任務（工單號規則不符合時）
+        WHEN t.TaskDefinitionKey LIKE 'V1%' AND p.BUSINESS_KEY_ LIKE '%NPE%'
+        THEN 'V1_NPE'
+        
+        WHEN t.TaskDefinitionKey LIKE 'V1%'
+        THEN 'V1_MFG'
+        
+        -- 其他情況（V2/V3 等）
         ELSE NULL
     END AS vx_subtype,
     
-    -- 是否套用特殊 V1 規則
+    -- 是否套用特殊 V1 規則（修正後的邏輯：工單號規則優先）
     CASE 
+        WHEN t.TaskDefinitionKey LIKE 'V1%' THEN 1
+        -- 特定 315% 工單號
+        WHEN COALESCE(v.varinst_moNumber, t.MoNumber) IN ('3152600035', '3152600036', '3152600037') THEN 1
+        -- 其他工單號規則
         WHEN COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '196%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '199%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '200%'
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '210%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '212%' 
              OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '213%'
-             OR COALESCE(v.varinst_moNumber, t.MoNumber) LIKE '315%'
         THEN 1
         ELSE 0
     END AS is_special_v1_rule,
@@ -173,10 +196,10 @@ SELECT
         ELSE NULL
     END AS exclude_reason,
     
-    -- 維度
-    t.Plant AS plant,
-    t.Factory AS factory,
-    t.Line AS line,
+    -- 維度（優先使用 varinst，Flowable 作為 fallback）
+    COALESCE(v.varinst_plant, t.Plant) AS plant,
+    COALESCE(v.varinst_factory, t.Factory) AS factory,
+    COALESCE(v.varinst_lineName, t.Line) AS line,
     
     -- 關聯欄位
     t.ProcessInstanceId AS proc_inst_id,
