@@ -26,11 +26,11 @@ SELECT
     MAX(CASE WHEN NAME_ = 'factory' THEN TEXT_ END) AS varinst_factory,
     MAX(CASE WHEN NAME_ = 'lineName' THEN TEXT_ END) AS varinst_lineName,
     MAX(CASE WHEN NAME_ = 'region' THEN TEXT_ END) AS varinst_region,
-    -- 添加 NAME_ 欄位用於 NPE 判別（取所有 NAME_ 值的連接字符串）
+    -- 添加 NAME_ 欄位用於 NPE 判別（取所有 NAME_ 值的連接字符串，包含 NPE 變數）
     arrayStringConcat(arrayDistinct(groupArray(NAME_)), ',') AS varinst_name,
     now64(3) AS _mview_update_time
 FROM bronze.bpm_act_hi_varinst
-WHERE NAME_ IN ('moNumber', 'plant', 'factory', 'lineName', 'region')
+-- 注意：不過濾 NAME_，保留所有變數名稱以便 NPE 判別
 GROUP BY PROC_INST_ID_;
 
 -- ========================================
@@ -129,42 +129,74 @@ FROM bronze.common_emp_org_info_mapping eoi
 LEFT JOIN bronze.common_mdm_mfg_plant_master mpm ON eoi.MFGFactoryId = mpm.MFG_PLANT_ID;
 
 -- ========================================
--- 5. 任務狀態轉換聚合 MVIEW（可選）
+-- 5. 任務狀態轉換聚合 MVIEW（原生表版本）
 -- ========================================
 -- 預計算任務狀態相關的統計，用於效能優化
 
-DROP TABLE IF EXISTS silver.mv_task_status_summary;
+DROP TABLE IF EXISTS silver.mv_task_status_summary_native;
 
-CREATE MATERIALIZED VIEW silver.mv_task_status_summary
+CREATE MATERIALIZED VIEW silver.mv_task_status_summary_native
 ENGINE = SummingMergeTree()
 ORDER BY (task_create_date, plant, factory, line, task_status, task_bypass)
 SETTINGS allow_nullable_key = 1
 POPULATE
 AS
 SELECT 
-    toDate(TaskCreateTime) AS task_create_date,
-    Plant AS plant,
-    Factory AS factory,
-    Line AS line,
-    TaskStatus AS task_status,
-    TaskBypass AS task_bypass,
-    substring(TaskDefinitionKey, 1, 2) AS task_def_prefix,
+    toDate(t.START_TIME_) AS task_create_date,
+    COALESCE(v.varinst_plant, '') AS plant,
+    COALESCE(v.varinst_factory, '') AS factory,
+    COALESCE(v.varinst_lineName, '') AS line,
+    COALESCE(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END, 
+        'Unknown'
+    ) AS task_status,
+    COALESCE(
+        CASE WHEN tb.LONG_ = 1 THEN 'Y' ELSE 'N' END, 
+        'N'
+    ) AS task_bypass,
+    substring(t.TASK_DEF_KEY_, 1, 2) AS task_def_prefix,
     
     -- 統計指標
     count() AS task_count,
-    countIf(TaskStatus = 'TODO') AS todo_count,
-    countIf(TaskStatus = 'DOING') AS doing_count,
-    countIf(TaskStatus = 'DONE') AS done_count,
+    countIf(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END = 'TODO'
+    ) AS todo_count,
+    countIf(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END = 'DOING'
+    ) AS doing_count,
+    countIf(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END = 'DONE'
+    ) AS done_count,
     
     -- 排除條件統計
-    countIf(TaskBypass != 'N') AS bypass_count,
-    countIf(TaskDefinitionKey LIKE 'E%') AS e_prefix_count,
-    countIf(TaskDefinitionKey LIKE 'C%') AS c_prefix_count,
+    countIf(COALESCE(CASE WHEN tb.LONG_ = 1 THEN 'Y' ELSE 'N' END, 'N') != 'N') AS bypass_count,
+    countIf(t.TASK_DEF_KEY_ LIKE 'E%') AS e_prefix_count,
+    countIf(t.TASK_DEF_KEY_ LIKE 'C%') AS c_prefix_count,
     
     now64(3) AS _mview_update_time
     
-FROM bronze.common_flowable_task_stats
-WHERE TaskId IS NOT NULL AND TaskId != ''
+FROM bronze.bpm_act_hi_taskinst t
+LEFT JOIN silver.mv_varinst_pivoted v
+    ON t.PROC_INST_ID_ = v.PROC_INST_ID_
+LEFT JOIN bronze.bpm_act_hi_varinst tb
+    ON t.ID_ = tb.TASK_ID_ AND tb.NAME_ = 'autoComplete'
+WHERE t.ID_ IS NOT NULL AND t.ID_ != ''
 GROUP BY 
     task_create_date,
     plant,
