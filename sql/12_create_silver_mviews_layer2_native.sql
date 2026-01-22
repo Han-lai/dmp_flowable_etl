@@ -13,9 +13,9 @@
 -- 基於現有的 FACT_TASK_VX_ATTRIBUTION 邏輯建立 MVIEW 版本
 -- 與現有表並行存在，不影響現有流程
 
-DROP TABLE IF EXISTS silver.mv_fact_task_vx_attribution;
+DROP TABLE IF EXISTS silver.mv_fact_task_vx_attribution_native;
 
-CREATE MATERIALIZED VIEW silver.mv_fact_task_vx_attribution
+CREATE MATERIALIZED VIEW silver.mv_fact_task_vx_attribution_native
 ENGINE = ReplacingMergeTree(_mview_update_time)
 ORDER BY (task_id)
 SETTINGS allow_nullable_key = 1
@@ -171,126 +171,13 @@ WHERE t.ID_ IS NOT NULL
   AND t.ID_ != '';
 
 -- ========================================
--- 2. 用戶配置維度表 MVIEW
--- ========================================
--- 基於現有的 DIM_CONFIG_USER 邏輯建立 MVIEW 版本
-
-DROP TABLE IF EXISTS silver.mv_dim_config_user;
-
-CREATE MATERIALIZED VIEW silver.mv_dim_config_user
-ENGINE = ReplacingMergeTree(_mview_update_time)
-ORDER BY (emp_code, vx_type)
-POPULATE
-AS
-WITH 
--- 組合所有員工資料
-combined AS (
-    SELECT 
-        eo.EmpCode AS emp_code,
-        ei.EmpName AS emp_name,
-        eo.Plant AS plant,
-        eo.factory_code AS factory,
-        COALESCE(eg.user_group_names, []) AS user_group_names,
-        COALESCE(en.node_codes, []) AS node_codes,
-        COALESCE(eg.has_whitelist_group, 0) AS has_whitelist_group,
-        COALESCE(eg.has_exclude_group, 0) AS has_exclude_group,
-        COALESCE(en.has_v1_node, 0) AS has_v1_node,
-        COALESCE(en.has_v2_node, 0) AS has_v2_node,
-        COALESCE(en.has_v3_node, 0) AS has_v3_node,
-        COALESCE(eo.is_npe_factory, 0) AS is_npe_factory,
-        COALESCE(eg.user_group_count, 0) AS user_group_count
-    FROM silver.mv_emp_org_info eo
-    LEFT JOIN silver.mv_emp_user_groups eg ON eo.EmpCode = eg.EmpCode
-    LEFT JOIN silver.mv_emp_node_codes en ON eo.EmpCode = en.EmpCode
-    LEFT JOIN bronze.common_hr_employee ei ON eo.EmpCode = ei.EmpCode
-),
-
--- 展開 Vx 類型（包含 V3 → V1 特殊規則）
-vx_expanded AS (
-    SELECT 
-        emp_code,
-        emp_name,
-        plant,
-        factory,
-        user_group_names,
-        node_codes,
-        has_whitelist_group,
-        has_exclude_group,
-        user_group_count,
-        
-        -- Vx 類型展開（包含 V3 NPE → V1 特殊規則）
-        arrayJoin(
-            arrayFilter(x -> x != '', 
-                arrayDistinct(
-                    arrayFlatten([
-                        -- V1 規則
-                        if(has_v1_node = 1, ['V1'], []),
-                        -- V2 規則
-                        if(has_v2_node = 1, ['V2'], []),
-                        -- V3 規則（NPE 歸 V1，非 NPE 歸 V3）
-                        if(has_v3_node = 1 AND is_npe_factory = 1, ['V1'], []),
-                        if(has_v3_node = 1 AND is_npe_factory = 0, ['V3'], [])
-                    ])
-                )
-            )
-        ) AS vx_type
-        
-    FROM combined
-    WHERE emp_code IS NOT NULL AND emp_code != ''
-)
-
-SELECT 
-    emp_code,
-    vx_type,
-    COALESCE(plant, '') AS plant,
-    COALESCE(factory, '') AS factory,
-    emp_name,
-    
-    -- 預計算：成員資格
-    CASE 
-        -- 排除優先
-        WHEN has_exclude_group = 1 THEN 0
-        -- V1 白名單 (User, PMUser, PowerUser)
-        WHEN vx_type = 'V1' AND has_whitelist_group = 1 THEN 1
-        -- V2/V3 只允許 User 且無其他身分
-        WHEN vx_type IN ('V2', 'V3') AND user_group_count = 1 AND has(user_group_names, 'User') THEN 1
-        ELSE 0
-    END AS is_config_user,
-    
-    -- 是否被排除
-    CASE 
-        WHEN has_exclude_group = 1 THEN 1
-        ELSE 0
-    END AS is_excluded,
-    
-    -- 排除原因
-    CASE 
-        WHEN has(user_group_names, 'ManagerUser') THEN 'ManagerUser'
-        WHEN has(user_group_names, 'LocalAdmin') THEN 'LocalAdmin'
-        WHEN has(user_group_names, 'GlobalAdmin') THEN 'GlobalAdmin'
-        WHEN has(user_group_names, 'SystemAdmin') THEN 'SystemAdmin'
-        WHEN has(user_group_names, 'InternalAudit') THEN 'InternalAudit'
-        WHEN has(user_group_names, 'SeniorOfficers&DTO') THEN 'SeniorOfficers&DTO'
-        ELSE NULL
-    END AS exclude_reason,
-    
-    user_group_names,
-    has_whitelist_group,
-    has_exclude_group,
-    node_codes,
-    
-    now64(3) AS _mview_update_time
-
-FROM vx_expanded;
-
--- ========================================
--- 3. L5 指標聚合 MVIEW（原生表版本）
+-- 2. L5 指標聚合 MVIEW（原生表版本）
 -- ========================================
 -- 預聚合 L5 指標，提供即時查詢能力
 
-DROP TABLE IF EXISTS silver.mv_l5_metrics_realtime;
+DROP TABLE IF EXISTS silver.mv_l5_metrics_realtime_native;
 
-CREATE MATERIALIZED VIEW silver.mv_l5_metrics_realtime
+CREATE MATERIALIZED VIEW silver.mv_l5_metrics_realtime_native
 ENGINE = SummingMergeTree()
 ORDER BY (snapshot_date, vx_type, vx_subtype, plant, factory, line)
 SETTINGS allow_nullable_key = 1
@@ -323,7 +210,7 @@ SELECT
     
     now64(3) AS _mview_update_time
     
-FROM silver.mv_fact_task_vx_attribution
+FROM silver.mv_fact_task_vx_attribution_native
 GROUP BY 
     snapshot_date,
     vx_type,
@@ -333,13 +220,13 @@ GROUP BY
     line;
 
 -- ========================================
--- 建立查詢視圖（與現有表格式相容）
+-- 3. 建立查詢視圖（與現有表格式相容）
 -- ========================================
 -- 提供與現有 FACT_TASK_VX_ATTRIBUTION 相同介面的查詢視圖
 
-DROP VIEW IF EXISTS silver.vw_fact_task_vx_attribution_realtime;
+DROP VIEW IF EXISTS silver.vw_fact_task_vx_attribution_native;
 
-CREATE VIEW silver.vw_fact_task_vx_attribution_realtime AS
+CREATE VIEW silver.vw_fact_task_vx_attribution_native AS
 SELECT 
     task_id,
     task_create_date,
@@ -366,11 +253,89 @@ SELECT
     mo_number,
     proc_name,
     _mview_update_time AS _transform_time
-FROM silver.mv_fact_task_vx_attribution FINAL;
+FROM silver.mv_fact_task_vx_attribution_native FINAL;
+
+-- ========================================
+-- 4. 任務狀態轉換聚合 MVIEW（原生表版本）
+-- ========================================
+-- 預計算任務狀態相關的統計，用於效能優化
+
+DROP TABLE IF EXISTS silver.mv_task_status_summary_native;
+
+CREATE MATERIALIZED VIEW silver.mv_task_status_summary_native
+ENGINE = SummingMergeTree()
+ORDER BY (task_create_date, plant, factory, line, task_status, task_bypass)
+SETTINGS allow_nullable_key = 1
+POPULATE
+AS
+SELECT 
+    toDateOrNull(t.START_TIME_) AS task_create_date,
+    COALESCE(v.varinst_plant, '') AS plant,
+    COALESCE(v.varinst_factory, '') AS factory,
+    COALESCE(v.varinst_lineName, '') AS line,
+    COALESCE(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END, 
+        'Unknown'
+    ) AS task_status,
+    COALESCE(
+        CASE WHEN tb.LONG_ = 1 THEN 'Y' ELSE 'N' END, 
+        'N'
+    ) AS task_bypass,
+    substring(t.TASK_DEF_KEY_, 1, 2) AS task_def_prefix,
+    
+    -- 統計指標
+    count() AS task_count,
+    countIf(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END = 'TODO'
+    ) AS todo_count,
+    countIf(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END = 'DOING'
+    ) AS doing_count,
+    countIf(
+        CASE 
+            WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
+            WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING' 
+            ELSE 'TODO'
+        END = 'DONE'
+    ) AS done_count,
+    
+    -- 排除條件統計
+    countIf(COALESCE(CASE WHEN tb.LONG_ = 1 THEN 'Y' ELSE 'N' END, 'N') != 'N') AS bypass_count,
+    countIf(t.TASK_DEF_KEY_ LIKE 'E%') AS e_prefix_count,
+    countIf(t.TASK_DEF_KEY_ LIKE 'C%') AS c_prefix_count,
+    
+    now64(3) AS _mview_update_time
+    
+FROM bronze.bpm_act_hi_taskinst t
+LEFT JOIN silver.mv_varinst_pivoted v
+    ON t.PROC_INST_ID_ = v.PROC_INST_ID_
+LEFT JOIN bronze.bpm_act_hi_varinst tb
+    ON t.ID_ = tb.TASK_ID_ AND tb.NAME_ = 'autoComplete'
+WHERE t.ID_ IS NOT NULL AND t.ID_ != ''
+GROUP BY 
+    task_create_date,
+    plant,
+    factory, 
+    line,
+    task_status,
+    task_bypass,
+    task_def_prefix;
 
 -- ========================================
 -- 建立完成提示
 -- ========================================
 SELECT 'Silver Layer 2 Native MViews Created Successfully' AS status,
-       'MVIEW tables: mv_fact_task_vx_attribution, mv_dim_config_user, mv_l5_metrics_realtime' AS created_tables,
-       'Query view: vw_fact_task_vx_attribution_realtime' AS created_views;
+       'MVIEW tables: mv_fact_task_vx_attribution_native, mv_l5_metrics_realtime_native, mv_task_status_summary_native' AS created_tables,
+       'Query view: vw_fact_task_vx_attribution_native' AS created_views;

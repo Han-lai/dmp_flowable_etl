@@ -2,6 +2,12 @@
 
 ## 專案狀態（Current Status）
 
+**最新進度 (2026-01-22)**：
+- ✅ **315% 工單規則一致性修正** - 修正 V1/V3 歸屬邏輯，確保 MSSQL 與 ClickHouse 對帳一致
+- ✅ **bronze.common_flowable_task_stats 欄位來源追溯** - 完成所有欄位到原生 Flowable 表的追溯
+- ✅ **原生表替換準備** - 建立原生版本 Silver MVIEW，測試驗證邏輯正確性
+- 🔄 **執行原生表替換** - 準備執行原生版本 MVIEW
+
 **已完成**：第一個通用指標（Task-based Flow 指標）的完整 Pipeline
 - Bronze 層：18 張表從 MSSQL 同步至 ClickHouse
 - Silver 層：`task_detail_wide` 任務明細寬表（等價於 MSSQL Reference SQL）

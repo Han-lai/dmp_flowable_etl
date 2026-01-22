@@ -103,8 +103,8 @@ def check_mssql_date_fields():
                 CASE 
                     WHEN hti.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
                     WHEN hti.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
-                    -- 特定 315% 工單號歸類為 V1 (關鍵修正)
-                    WHEN var_moNumber.TEXT_ IN ('3152600035', '3152600036', '3152600037') THEN 'V1'
+                    -- 315% 工單號歸類為 V1 (修正：使用 LIKE '315%' 涵蓋所有 315 開頭工單號)
+                    WHEN var_moNumber.TEXT_ LIKE '315%' THEN 'V1'
                     WHEN hti.TASK_DEF_KEY_ LIKE 'V3%' THEN 'V3'
                     -- 其他工單號規則
                     WHEN var_moNumber.TEXT_ LIKE '196%' 
@@ -140,7 +140,7 @@ def check_mssql_date_fields():
                 CASE 
                     WHEN hti.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
                     WHEN hti.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
-                    WHEN var_moNumber.TEXT_ IN ('3152600035', '3152600036', '3152600037') THEN 'V1'
+                    WHEN var_moNumber.TEXT_ LIKE '315%' THEN 'V1'
                     WHEN hti.TASK_DEF_KEY_ LIKE 'V3%' THEN 'V3'
                     WHEN var_moNumber.TEXT_ LIKE '196%' 
                          OR var_moNumber.TEXT_ LIKE '199%' 
