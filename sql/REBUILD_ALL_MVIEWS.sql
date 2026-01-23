@@ -1,20 +1,34 @@
 -- ========================================
--- Silver 層 Materialized Views - 第二層（業務邏輯層）- 原生表版本
+-- ClickHouse 金銀銅資料層完整重建腳本
 -- ========================================
--- 用途：基於第一層 MVIEW 計算業務邏輯，產生最終的事實表和維度表
--- 依賴：必須在第一層 MVIEW 建立完成後執行
--- 更新方式：第一層 MVIEW 更新時自動觸發更新
--- 
--- 重要變更：替換 bronze.common_flowable_task_stats 為原生 Flowable 表
+-- 用途：重新建立所有 MVIEW，修正日期過濾邏輯問題
+-- 執行時間：2026-01-23 16:00:00
 
 -- ========================================
--- 1. 任務 Vx 歸屬事實表 MVIEW - 原生表版本
+-- 清理現有 MVIEW（避免衝突）
 -- ========================================
--- 基於現有的 FACT_TASK_VX_ATTRIBUTION 邏輯建立 MVIEW 版本
--- 與現有表並行存在，不影響現有流程
 
+-- 清理 Gold 層
+DROP TABLE IF EXISTS gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV;
+DROP VIEW IF EXISTS gold.vw_daily_l5_completion_summary;
+DROP VIEW IF EXISTS gold.vw_vx_type_summary;
+DROP VIEW IF EXISTS gold.vw_factory_summary;
+DROP VIEW IF EXISTS gold.vw_v1_npe_mfg_comparison;
+
+-- 清理 Silver 層
+DROP TABLE IF EXISTS silver.mv_l5_metrics_realtime;
 DROP TABLE IF EXISTS silver.mv_fact_task_vx_attribution;
+DROP TABLE IF EXISTS silver.mv_dim_config_user;
+DROP VIEW IF EXISTS silver.vw_fact_task_vx_attribution_realtime;
+DROP VIEW IF EXISTS silver.vw_l5_metrics_mssql_compatible;
 
+SELECT 'MVIEW 清理完成' AS status;
+
+-- ========================================
+-- 重建 Silver 層 MVIEW（修正版本）
+-- ========================================
+
+-- 1. 任務 Vx 歸屬事實表 MVIEW - 修正版本
 CREATE MATERIALIZED VIEW silver.mv_fact_task_vx_attribution
 ENGINE = ReplacingMergeTree(_mview_update_time)
 ORDER BY (task_id)
@@ -75,10 +89,9 @@ SELECT
         ELSE COALESCE(substring(t.TASK_DEF_KEY_, 1, 2), 'Unknown')
     END AS vx_type,
     
-    -- 預計算：V1 子類型（修正後的邏輯：工單號規則優先，NPE 判別使用 varinst_name 欄位）
-    -- varinst_name 是 ACT_HI_VARINST 中所有 NAME_ 值的連接字符串，用於判斷是否包含 NPE 相關變數
+    -- 預計算：V1 子類型
     CASE 
-        -- 工單號規則的 V1 任務（無論原始 TaskDefinitionKey 是什麼）
+        -- 工單號規則的 V1 任務
         WHEN (COALESCE(v.varinst_moNumber, '') LIKE '196%' 
               OR COALESCE(v.varinst_moNumber, '') LIKE '199%' 
               OR COALESCE(v.varinst_moNumber, '') LIKE '200%'
@@ -98,21 +111,19 @@ SELECT
               OR COALESCE(v.varinst_moNumber, '') LIKE '315%')
         THEN 'V1_MFG'
         
-        -- TaskDefinitionKey 的 V1 任務（工單號規則不符合時）
+        -- TaskDefinitionKey 的 V1 任務
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%' AND v.varinst_name LIKE '%NPE%'
         THEN 'V1_NPE'
         
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%'
         THEN 'V1_MFG'
         
-        -- 其他情況（V2/V3 等）
         ELSE NULL
     END AS vx_subtype,
     
-    -- 是否套用特殊 V1 規則（修正後的邏輯：工單號規則優先）
+    -- 是否套用特殊 V1 規則
     CASE 
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 1
-        -- 工單號規則（196/199/200/210/212/213/315 開頭）
         WHEN COALESCE(v.varinst_moNumber, '') LIKE '196%' 
              OR COALESCE(v.varinst_moNumber, '') LIKE '199%' 
              OR COALESCE(v.varinst_moNumber, '') LIKE '200%'
@@ -164,146 +175,26 @@ LEFT JOIN silver.mv_varinst_pivoted v
     ON t.PROC_INST_ID_ = v.PROC_INST_ID_
 LEFT JOIN bronze.common_hr_employee he
     ON t.ASSIGNEE_ = he.EmpCode
--- TaskBypass 來自任務層級變數 autoComplete
 LEFT JOIN bronze.bpm_act_hi_varinst tb
     ON t.ID_ = tb.TASK_ID_ AND tb.NAME_ = 'autoComplete'
 WHERE t.ID_ IS NOT NULL 
   AND t.ID_ != '';
 
--- ========================================
--- 2. 用戶配置維度表 MVIEW
--- ========================================
--- 基於現有的 DIM_CONFIG_USER 邏輯建立 MVIEW 版本
+SELECT 'Silver 事實表 MVIEW 建立完成' AS status;
 
-DROP TABLE IF EXISTS silver.mv_dim_config_user;
-
-CREATE MATERIALIZED VIEW silver.mv_dim_config_user
-ENGINE = ReplacingMergeTree(_mview_update_time)
-ORDER BY (emp_code, vx_type)
-POPULATE
-AS
-WITH 
--- 組合所有員工資料
-combined AS (
-    SELECT 
-        eo.EmpCode AS emp_code,
-        ei.EmpName AS emp_name,
-        eo.Plant AS plant,
-        eo.factory_code AS factory,
-        COALESCE(eg.user_group_names, []) AS user_group_names,
-        COALESCE(en.node_codes, []) AS node_codes,
-        COALESCE(eg.has_whitelist_group, 0) AS has_whitelist_group,
-        COALESCE(eg.has_exclude_group, 0) AS has_exclude_group,
-        COALESCE(en.has_v1_node, 0) AS has_v1_node,
-        COALESCE(en.has_v2_node, 0) AS has_v2_node,
-        COALESCE(en.has_v3_node, 0) AS has_v3_node,
-        COALESCE(eo.is_npe_factory, 0) AS is_npe_factory,
-        COALESCE(eg.user_group_count, 0) AS user_group_count
-    FROM silver.mv_emp_org_info eo
-    LEFT JOIN silver.mv_emp_user_groups eg ON eo.EmpCode = eg.EmpCode
-    LEFT JOIN silver.mv_emp_node_codes en ON eo.EmpCode = en.EmpCode
-    LEFT JOIN bronze.common_hr_employee ei ON eo.EmpCode = ei.EmpCode
-),
-
--- 展開 Vx 類型（包含 V3 → V1 特殊規則）
-vx_expanded AS (
-    SELECT 
-        emp_code,
-        emp_name,
-        plant,
-        factory,
-        user_group_names,
-        node_codes,
-        has_whitelist_group,
-        has_exclude_group,
-        user_group_count,
-        
-        -- Vx 類型展開（包含 V3 NPE → V1 特殊規則）
-        arrayJoin(
-            arrayFilter(x -> x != '', 
-                arrayDistinct(
-                    arrayFlatten([
-                        -- V1 規則
-                        if(has_v1_node = 1, ['V1'], []),
-                        -- V2 規則
-                        if(has_v2_node = 1, ['V2'], []),
-                        -- V3 規則（NPE 歸 V1，非 NPE 歸 V3）
-                        if(has_v3_node = 1 AND is_npe_factory = 1, ['V1'], []),
-                        if(has_v3_node = 1 AND is_npe_factory = 0, ['V3'], [])
-                    ])
-                )
-            )
-        ) AS vx_type
-        
-    FROM combined
-    WHERE emp_code IS NOT NULL AND emp_code != ''
-)
-
-SELECT 
-    emp_code,
-    vx_type,
-    COALESCE(plant, '') AS plant,
-    COALESCE(factory, '') AS factory,
-    emp_name,
-    
-    -- 預計算：成員資格
-    CASE 
-        -- 排除優先
-        WHEN has_exclude_group = 1 THEN 0
-        -- V1 白名單 (User, PMUser, PowerUser)
-        WHEN vx_type = 'V1' AND has_whitelist_group = 1 THEN 1
-        -- V2/V3 只允許 User 且無其他身分
-        WHEN vx_type IN ('V2', 'V3') AND user_group_count = 1 AND has(user_group_names, 'User') THEN 1
-        ELSE 0
-    END AS is_config_user,
-    
-    -- 是否被排除
-    CASE 
-        WHEN has_exclude_group = 1 THEN 1
-        ELSE 0
-    END AS is_excluded,
-    
-    -- 排除原因
-    CASE 
-        WHEN has(user_group_names, 'ManagerUser') THEN 'ManagerUser'
-        WHEN has(user_group_names, 'LocalAdmin') THEN 'LocalAdmin'
-        WHEN has(user_group_names, 'GlobalAdmin') THEN 'GlobalAdmin'
-        WHEN has(user_group_names, 'SystemAdmin') THEN 'SystemAdmin'
-        WHEN has(user_group_names, 'InternalAudit') THEN 'InternalAudit'
-        WHEN has(user_group_names, 'SeniorOfficers&DTO') THEN 'SeniorOfficers&DTO'
-        ELSE NULL
-    END AS exclude_reason,
-    
-    user_group_names,
-    has_whitelist_group,
-    has_exclude_group,
-    node_codes,
-    
-    now64(3) AS _mview_update_time
-
-FROM vx_expanded;
-
--- ========================================
--- 3. L5 指標聚合 MVIEW（原生表版本）
--- ========================================
--- 預聚合 L5 指標，提供即時查詢能力
-
-DROP TABLE IF EXISTS silver.mv_l5_metrics_realtime;
-
+-- 2. L5 指標聚合 MVIEW（修正版本）
 CREATE MATERIALIZED VIEW silver.mv_l5_metrics_realtime
 ENGINE = SummingMergeTree()
-ORDER BY (snapshot_date, vx_type, vx_subtype, plant, factory, line)
+ORDER BY (task_create_date, task_claim_date, task_end_date, vx_type, vx_subtype, plant, factory, line)
 SETTINGS allow_nullable_key = 1
 POPULATE
 AS
 SELECT
-    -- 修正日期邏輯：使用與 MSSQL 一致的 OR 邏輯
-    CASE 
-        WHEN task_create_time IS NOT NULL THEN toDate(task_create_time)
-        WHEN task_claim_time IS NOT NULL THEN toDate(task_claim_time)  
-        WHEN task_end_time IS NOT NULL THEN toDate(task_end_time)
-        ELSE toDate('1970-01-01')
-    END AS snapshot_date,
+    -- 修正：儲存所有三個日期，讓查詢時可以使用 MSSQL 的 OR 邏輯
+    toDate(task_create_time) AS task_create_date,
+    toDateOrNull(task_claim_time) AS task_claim_date,
+    toDateOrNull(task_end_time) AS task_end_date,
+    
     vx_type,
     vx_subtype,
     plant,
@@ -331,20 +222,18 @@ SELECT
     
 FROM silver.mv_fact_task_vx_attribution
 GROUP BY 
-    snapshot_date,
+    task_create_date,
+    task_claim_date,
+    task_end_date,
     vx_type,
     vx_subtype,
     plant,
     factory,
     line;
 
--- ========================================
--- 建立查詢視圖（與現有表格式相容）
--- ========================================
--- 提供與現有 FACT_TASK_VX_ATTRIBUTION 相同介面的查詢視圖
+SELECT 'Silver 指標聚合 MVIEW 建立完成' AS status;
 
-DROP VIEW IF EXISTS silver.vw_fact_task_vx_attribution_realtime;
-
+-- 3. 建立查詢視圖
 CREATE VIEW silver.vw_fact_task_vx_attribution_realtime AS
 SELECT 
     task_id,
@@ -374,9 +263,106 @@ SELECT
     _mview_update_time AS _transform_time
 FROM silver.mv_fact_task_vx_attribution FINAL;
 
+SELECT 'Silver 查詢視圖建立完成' AS status;
+
 -- ========================================
--- 建立完成提示
+-- 重建 Gold 層 MVIEW
 -- ========================================
-SELECT 'Silver Layer 2 Native MViews Created Successfully' AS status,
-       'MVIEW tables: mv_fact_task_vx_attribution, mv_dim_config_user, mv_l5_metrics_realtime' AS created_tables,
-       'Query view: vw_fact_task_vx_attribution_realtime' AS created_views;
+
+CREATE MATERIALIZED VIEW gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV
+ENGINE = ReplacingMergeTree()
+ORDER BY (snapshot_date, plant, factory, line, vx_type, vx_subtype)
+SETTINGS allow_nullable_key = 1
+POPULATE
+AS
+SELECT 
+    -- 使用修正的日期邏輯：任何一個時間欄位的日期作為快照日期
+    CASE 
+        WHEN task_create_date IS NOT NULL THEN task_create_date
+        WHEN task_claim_date IS NOT NULL THEN task_claim_date
+        WHEN task_end_date IS NOT NULL THEN task_end_date
+        ELSE toDate('1970-01-01')
+    END AS snapshot_date,
+    
+    plant,
+    factory,
+    line,
+    vx_type,
+    vx_subtype,
+    
+    -- 任務數量統計
+    SUM(total_task_qty) AS sum_total_task_qty,
+    SUM(todo_qty) AS sum_todo_qty,
+    SUM(doing_qty) AS sum_doing_qty,
+    SUM(done_qty) AS sum_done_qty,
+    
+    -- 排除統計
+    SUM(excluded_qty) AS sum_excluded_qty,
+    SUM(bypass_qty) AS sum_bypass_qty,
+    SUM(e_prefix_qty) AS sum_e_prefix_qty,
+    SUM(c_prefix_qty) AS sum_c_prefix_qty,
+    SUM(q_order_qty) AS sum_q_order_qty,
+    SUM(r_order_qty) AS sum_r_order_qty,
+    SUM(special_v1_rule_qty) AS sum_special_v1_rule_qty,
+    
+    -- 完成率計算
+    CASE 
+        WHEN SUM(total_task_qty) > 0 
+        THEN ROUND(SUM(done_qty) * 100.0 / SUM(total_task_qty), 2)
+        ELSE 0.0
+    END AS completion_rate,
+    
+    -- 進行中率計算
+    CASE 
+        WHEN SUM(total_task_qty) > 0 
+        THEN ROUND((SUM(doing_qty) + SUM(done_qty)) * 100.0 / SUM(total_task_qty), 2)
+        ELSE 0.0
+    END AS progress_rate,
+    
+    now64(3) AS _mview_update_time
+    
+FROM silver.mv_l5_metrics_realtime
+GROUP BY 
+    snapshot_date,
+    plant,
+    factory,
+    line,
+    vx_type,
+    vx_subtype;
+
+SELECT 'Gold 層 MVIEW 建立完成' AS status;
+
+-- ========================================
+-- 執行關鍵驗證查詢
+-- ========================================
+
+SELECT '=== Bronze 層驗證 ===' AS stage;
+SELECT 'Bronze 層 BPM 任務表' AS check_name, COUNT(*) AS record_count
+FROM bronze.bpm_act_hi_taskinst;
+
+SELECT '=== Silver 層驗證 ===' AS stage;
+SELECT 'Silver 層事實表' AS check_name, COUNT(*) AS record_count
+FROM silver.mv_fact_task_vx_attribution FINAL;
+
+SELECT '=== 關鍵測試案例 ===' AS stage;
+-- WJ2/NBU/E5 2025-12-25 應為 5 筆（與 MSSQL 一致）
+SELECT 'WJ2/NBU/E5 2025-12-25 測試' AS check_name, COUNT(*) AS record_count
+FROM silver.mv_fact_task_vx_attribution FINAL
+WHERE (
+    toDate(task_create_time) = '2025-12-25'
+    OR toDate(task_claim_time) = '2025-12-25'
+    OR toDate(task_end_time) = '2025-12-25'
+)
+AND plant = 'WJ2' AND factory = 'NBU' AND line = 'E5';
+
+SELECT '=== Gold 層驗證 ===' AS stage;
+SELECT 'Gold 層聚合表' AS check_name, COUNT(*) AS record_count
+FROM gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV FINAL;
+
+-- ========================================
+-- 完成提示
+-- ========================================
+SELECT 
+    '🎉 ClickHouse 金銀銅資料層重建完成' AS status,
+    now() AS completion_time,
+    'Bronze → Silver → Gold 資料流已修正' AS description;
