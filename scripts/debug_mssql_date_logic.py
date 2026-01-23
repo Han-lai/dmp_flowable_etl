@@ -52,9 +52,9 @@ def check_mssql_date_fields():
           AND var_factory.TEXT_ = 'NBU' 
           AND var_lineName.TEXT_ = 'E5'
           AND (
-            CONVERT(DATE, hti.START_TIME_) BETWEEN '2025-12-27' AND '2025-12-29'
-            OR CONVERT(DATE, hti.CLAIM_TIME_) BETWEEN '2025-12-27' AND '2025-12-29'
-            OR CONVERT(DATE, hti.END_TIME_) BETWEEN '2025-12-27' AND '2025-12-29'
+            hti.START_TIME_ BETWEEN '2025-12-27 00:00:00' AND '2025-12-29 23:59:59'
+            OR hti.CLAIM_TIME_ BETWEEN '2025-12-27 00:00:00' AND '2025-12-29 23:59:59'
+            OR hti.END_TIME_ BETWEEN '2025-12-27 00:00:00' AND '2025-12-29 23:59:59'
           )
         GROUP BY CONVERT(DATE, hti.START_TIME_), CONVERT(DATE, hti.CLAIM_TIME_), CONVERT(DATE, hti.END_TIME_)
         ORDER BY start_date, claim_date, end_date

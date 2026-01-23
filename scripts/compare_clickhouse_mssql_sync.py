@@ -86,7 +86,11 @@ def compare_date_ranges():
         WHERE var_plant.TEXT_ = 'WJ2' 
           AND var_factory.TEXT_ = 'NBU' 
           AND var_lineName.TEXT_ = 'E5'
-          AND CONVERT(DATE, hti.START_TIME_) BETWEEN '2025-12-27' AND '2025-12-30'
+          AND (
+              hti.START_TIME_ BETWEEN '2025-12-27 00:00:00' AND '2025-12-30 23:59:59'
+              OR hti.CLAIM_TIME_ BETWEEN '2025-12-27 00:00:00' AND '2025-12-30 23:59:59'
+              OR hti.END_TIME_ BETWEEN '2025-12-27 00:00:00' AND '2025-12-30 23:59:59'
+          )
         GROUP BY CONVERT(DATE, hti.START_TIME_)
         ORDER BY date
         """
