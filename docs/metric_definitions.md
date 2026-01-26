@@ -1,12 +1,129 @@
 # 流程指標業務定義文件 (Metric Definition Document)
 
-**版本：** 1.3  
-**更新日期：** 2026-01-22  
+**版本：** 1.4  
+**更新日期：** 2026-01-26  
 **適用範圍：** DMP Flowable 流程分析系統
 
 ---
 
-## 🚨 重要系統架構變更 (2026-01-22 更新)
+## 🚨 最新架構更新 (2026-01-26)
+
+### 維度補齊邏輯實作完成
+
+**核心規則**：VARINST 優先，MDM 補齊，標記資料來源
+
+**實作狀態**：
+- ✅ **Silver 層維度補齊**：`silver.mv_fact_task_vx_attribution_mdm` 已實作完整維度補齊邏輯
+- ✅ **Gold 層彙總表**：`gold.l5_dashboard_summary` 使用補齊後維度進行彙總
+- ✅ **Cube.js 模型更新**：已更新使用新的 Gold 層表格和補齊後欄位
+- ✅ **資料來源追蹤**：所有維度欄位都有對應的 *_source 欄位標記來源
+
+**維度補齊邏輯**：
+```sql
+-- 最終值：VARINST 優先，缺失時用 MDM 補齊
+COALESCE(NULLIF(vd.varinst_region, ''), md.mdm_region) AS region,
+COALESCE(NULLIF(vd.varinst_plant, ''), md.mdm_plant) AS plant,
+COALESCE(NULLIF(vd.varinst_factory, ''), md.mdm_factory) AS factory,
+COALESCE(NULLIF(vd.varinst_line, ''), md.mdm_line) AS line,
+
+-- 資料來源標記
+CASE 
+    WHEN vd.varinst_region IS NOT NULL AND vd.varinst_region != '' THEN 'VARINST'
+    WHEN md.mdm_region IS NOT NULL AND md.mdm_region != '' THEN 'MDM'
+    ELSE 'MISSING'
+END AS region_source
+```
+
+**維度語意交換邏輯**：
+- `varinst.plant='WJ2'` → `mdm.factory_code='WJ2'`
+- `varinst.factory='NBU'` → `mdm.plant_code='NBU'`
+- `varinst.region='CNE'` → `mdm.region_code='CNE'` (不變)
+- `varinst.lineName='E5'` → `mdm.line_name='E5'` (不變)
+
+### ISO Week 時間合規性實作完成
+
+**實作狀態**：
+- ✅ **W-pattern 動態邏輯**：區分當前月份 vs 歷史月份的週次計算
+- ✅ **Dn-1 動態日期邏輯**：當月 today-1，歷史月 月底
+- ✅ **時間模式視圖**：`gold.vw_l5_dashboard_time_patterns` 提供完整時間模式支援
+- ✅ **ISO Week 驗證**：所有週次計算使用 `toISOWeek()` 函數
+
+**W-pattern 邏輯**：
+```sql
+-- 區分當前月份 vs 歷史月份
+CASE 
+    WHEN toYYYYMM(snapshot_date) = toYYYYMM(today()) 
+    THEN toISOWeek(today())  -- 當前月份：使用今日所屬 ISO 週次
+    ELSE toISOWeek(toLastDayOfMonth(...))  -- 歷史月份：使用該月最後一日所屬 ISO 週次
+END AS x_week
+```
+
+**Dn-1 邏輯**：
+```sql
+-- 區分當前月份 vs 歷史月份
+CASE 
+    WHEN toYYYYMM(snapshot_date) = toYYYYMM(today()) 
+    THEN today() - INTERVAL 1 DAY  -- 當前月份：today - 1
+    ELSE toLastDayOfMonth(...)  -- 歷史月份：該月最後一日
+END AS d0
+```
+
+### MSSQL vs ClickHouse 時間邏輯一致性驗證完成
+
+**驗證結果**：
+- ✅ **100% 一致性**：ClickHouse 和 MSSQL 時間邏輯完全一致
+- ✅ **OR 條件邏輯**：`(START_TIME_ OR CLAIM_TIME_ OR END_TIME_) BETWEEN dates` 正確實作
+- ✅ **Kafka 自動任務處理**：正確處理 CLAIM_TIME = NULL 的情況
+- ✅ **日期展開邏輯**：任務在任何時間點落在查詢範圍內都會被包含
+
+**時間邏輯統一規範**：
+```sql
+WHERE (
+    hti.START_TIME_ BETWEEN #{startDateTime} AND #{endDateTime}
+    OR hti.CLAIM_TIME_ BETWEEN #{startDateTime} AND #{endDateTime}
+    OR hti.END_TIME_ BETWEEN #{startDateTime} AND #{endDateTime}
+)
+```
+
+### 完整 DDL 套件建立完成
+
+**交付物**：
+- ✅ **Bronze 層**：`sql/ddl/10_bronze_sources.sql` - 原始資料表定義
+- ✅ **Silver 層**：`sql/ddl/20_silver_views_and_mviews.sql` - 維度補齊 MVIEW
+- ✅ **Gold 層**：`sql/ddl/30_gold_views_and_mviews.sql` - 業務彙總表
+- ✅ **驗證查詢**：`sql/ddl/40_validation_queries.sql` - 資料品質驗證
+- ✅ **驗收測試**：`sql/ddl/validation_acceptance_test.sql` - 端到端測試
+
+**架構設計**：
+```
+Bronze (原始資料)
+  ↓
+Silver (維度補齊 + 清理)
+  ├── mv_varinst_pivoted (VARINST 透視)
+  ├── dim_mfg_five_level (MDM 五階維度)
+  └── mv_fact_task_vx_attribution_mdm (核心事實表)
+  ↓
+Gold (業務彙總)
+  ├── l5_dashboard_summary (L5 任務彙總)
+  └── vw_superset_l5_summary (Superset 視圖)
+  ↓
+Cube.js (分析層)
+  ├── cube_gold_l5_task_completion
+  └── cube_l5_dashboard_summary
+```
+
+---
+
+## 🚨 重要系統架構變更 (2026-01-26 最新更新)
+
+### 完整架構實作狀態
+
+**所有核心任務已完成**：
+1. ✅ **L5 Metrics DDL Package 建立**：完整的 Bronze → Silver → Gold DDL 套件
+2. ✅ **維度補齊邏輯實作**：VARINST 優先，MDM 補齊，標記資料來源
+3. ✅ **Cube.js 資料模型更新**：使用新的 Gold layer 表格和補齊後欄位
+4. ✅ **ISO Week 合規性驗證與修正**：W-pattern 和 Dn-1 動態邏輯實作
+5. ✅ **MSSQL vs ClickHouse 時間邏輯一致性驗證**：100% 一致性確認
 
 ### bronze.common_flowable_task_stats 替換為原生 Flowable 表
 
@@ -20,6 +137,7 @@
 - ✅ **原生版本 MVIEW**: `sql/12_create_silver_mviews_layer2_native.sql` (已建立)
 - ✅ **MVIEW Pipeline 驗證**: MSSQL 原生資料與 ClickHouse MVIEW 100% 一致 (2026-01-22 驗證完成)
 - ✅ **生產環境部署**: `silver.mv_fact_task_vx_attribution` (1,300,963 筆) 已成功替換為原生表邏輯
+- ✅ **維度補齊整合**: 已整合 MDM 維度補齊邏輯到 `silver.mv_fact_task_vx_attribution_mdm`
 
 **關鍵欄位映射**：
 
@@ -32,6 +150,7 @@
 | TaskAssigneeName | bronze.common_hr_employee.EmpName | JOIN by ASSIGNEE_ = EmpCode | 98.8% |
 | Plant/Factory/Line | silver.mv_varinst_pivoted | EAV 轉置取得 | 99.9% |
 | MoNumber | silver.mv_varinst_pivoted.varinst_moNumber | EAV 轉置取得 | 99.9% |
+| **維度補齊** | **silver.dim_mfg_five_level** | **MDM 五階維度串接** | **100%** |
 
 **資料範圍差異**：
 - **原生表**: 52,497 筆任務記錄 (較新的資料，來自 ACT_HI_TASKINST)
@@ -42,15 +161,17 @@
 **驗證結果**：
 - **測試條件**: CNE WJ2 NBU E5 + 2025-12-31
 - **驗證結果**: V1/V2/V3 任務數 100% 一致
-- **MVIEW 狀態**: `silver.mv_fact_task_vx_attribution` (130萬筆) 已成功替換為原生表邏輯
+- **MVIEW 狀態**: `silver.mv_fact_task_vx_attribution_mdm` (130萬筆) 已成功替換為原生表邏輯並整合維度補齊
 - **資料同步**: 所有指標完全匹配，無任何差異
 - **完成率驗證**: V1 任務完成率 15.4%，執行率 38.5%，ClickHouse 與 MSSQL 完全一致
+- **維度補齊驗證**: CNE-WJ2-NBU-E5 → CNE-NBU-WJ2-E5 (維度交換成功)
 
 **技術實現**：
 - **原生表 JOIN**: 使用 `bronze.bpm_act_hi_taskinst` + `bronze.bpm_act_hi_varinst` + `bronze.common_hr_employee`
 - **變數轉置**: 透過 `silver.mv_varinst_pivoted` 取得 EAV 結構的流程變數
 - **TaskBypass 邏輯**: 從 `bronze.bpm_act_hi_varinst` (NAME_='autoComplete') 推導，覆蓋率 92.8%
 - **時間邏輯統一**: 使用 OR 條件 `(START_TIME_ OR CLAIM_TIME_ OR END_TIME_)` 確保一致性
+- **維度補齊整合**: 透過 `silver.dim_mfg_five_level` 實作 VARINST 優先，MDM 補齊的邏輯
 
 ---
 
