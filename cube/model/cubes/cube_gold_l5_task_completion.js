@@ -1,189 +1,167 @@
 /**
- * Gold Layer: L5 Task Completion Snapshot (基於 MDM 整合 MVIEW 架構)
- * L5 任務完成率快照 - 基於 gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV
+ * L5 任務執行完成度 Dashboard Cube - 使用維度補齊邏輯
  * 
- * 來源表: gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV (MDM 整合版本)
- * 資料來源: silver.mv_l5_metrics_realtime_mdm (MDM 整合邏輯)
- * Grain: snapshot_date + region + plant + factory + line + vx_type + dimension_source
+ * 來源表: gold.l5_dashboard_summary (新的 Gold 層表)
+ * 用途: 為 L5 任務執行完成度 Dashboard 提供完整的資料模型
+ * 支援: Todo/Doing/Done 分布 + 完成率折線 + 下方明細表
  * 
- * 更新記錄 (2026-01-23):
- * - 整合 MDM 主檔表提供完整五階維度支援
- * - 解決 V2/V3 維度缺失問題
- * - 新增 Region 層級維度
- * - 支援維度資料來源追蹤 (MDM_PRIMARY/FLOWABLE_FALLBACK/NO_DIMENSION)
- * - 315% 工單規則使用 LIKE '315%' 
- * - V1/V3 歸屬邏輯：工單號規則優先級最高
+ * 更新記錄 (2026-01-26):
+ * - 使用新的 Gold 層表 gold.l5_dashboard_summary
+ * - 基於 Silver 層維度補齊邏輯 (VARINST 優先，MDM 補齊)
+ * - 支援 L5 Dashboard 需求規格
+ * - 包含製造五階維度和任務狀態指標
+ * - 包含維度資料來源追蹤
  * 
- * 用途:
- * - L5 指標歷史趨勢查詢
- * - 任務完成率回溯分析
- * - 完整五階維度聚合
- * - 維度資料品質監控
+ * 維度補齊邏輯:
+ * - Region: 主要由 MDM 補齊 (非 V1 流程 VARINST 缺失)
+ * - Plant/Factory/Line: 主要來自 VARINST，MDM 作為補齊
+ * - 每個維度都有對應的 *_source 欄位標記來源
  */
 
-cube(`GoldL5TaskCompletion`, {
-  sql: `SELECT * FROM gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV FINAL`,
+cube(`L5DashboardCompletion`, {
+  sql: `SELECT * FROM gold.l5_dashboard_summary FINAL`,
   
-  title: 'L5 任務完成率快照 (Gold)',
-  description: 'Gold 層 L5 任務完成率指標快照，支援 NPE/MFG 子類型分析和歷史趨勢查詢。',
+  title: 'L5 任務執行完成度 Dashboard',
+  description: '基於維度補齊邏輯的 L5 任務執行完成度儀表板資料模型',
 
   measures: {
     // ============================================================
-    // 🥇 L5 核心任務數量指標
+    // 🎯 Dashboard 核心指標 - 任務狀態數量 (使用新的欄位名稱)
     // ============================================================
-    totalTasks: {
+    totalTask: {
       type: `sum`,
-      sql: `sum_total_task_qty`,
-      title: 'L5 總任務數',
-      description: '🥇 L5 核心指標 - 未被排除的總任務數量',
+      sql: `total_task`,
+      title: '任務總數',
+      description: '該時間區間內任務總數 (Total Task)',
     },
     
-    todoTasks: {
+    todoTask: {
       type: `sum`,
-      sql: `sum_todo_qty`,
-      title: 'L5 待辦任務數',
-      description: 'L5 指標 - 狀態為 TODO 的任務數量',
+      sql: `todo_task`,
+      title: 'Todo 任務數',
+      description: '尚未開始之任務 (Todo)',
     },
     
-    doingTasks: {
+    doingTask: {
       type: `sum`,
-      sql: `sum_doing_qty`,
-      title: 'L5 進行中任務數',
-      description: 'L5 指標 - 狀態為 DOING 的任務數量',
+      sql: `doing_task`,
+      title: 'Doing 任務數',
+      description: '執行中之任務 (Doing)',
     },
 
-    doneTasks: {
+    doneTask: {
       type: `sum`,
-      sql: `sum_done_qty`,
-      title: 'L5 已完成任務數',
-      description: 'L5 指標 - 狀態為 DONE 的任務數量',
-    },
-
-    excludedTasks: {
-      type: `sum`,
-      sql: `0`,  // MDM 版本暫時沒有 excluded_qty
-      title: 'L5 排除任務數',
-      description: 'L5 指標 - 被排除的任務數量 (MDM 版本暫不支援)',
-    },
-
-    inProgressTasks: {
-      type: `number`,
-      sql: `${doingTasks} + ${doneTasks}`,
-      title: 'L5 在途任務數',
-      description: '🥇 L5 指標 - 進行中 + 已完成任務數 (DOING + DONE)',
+      sql: `done_task`,
+      title: 'Done 任務數',
+      description: '已完成之任務 (Done)',
     },
 
     // ============================================================
-    // 🥇 L5 完成率指標 (百分比)
+    // 🎯 Dashboard 組合狀態指標 (計算欄位)
     // ============================================================
-    completionRate: {
+    doingDoneTask: {
       type: `number`,
-      sql: `CASE WHEN ${totalTasks} > 0 THEN ${doneTasks} * 100.0 / ${totalTasks} ELSE 0 END`,
-      title: 'L5 任務完成率 (%)',
-      description: '🥇 L5 核心指標 - DONE / 總任務數 × 100%',
+      sql: `${doingTask} + ${doneTask}`,
+      title: 'Doing + Done 任務數',
+      description: '已處理任務總數 (Doing+Done)',
+    },
+
+    todoDoingAccTask: {
+      type: `number`,
+      sql: `${todoTask} + ${doingTask}`,
+      title: 'Todo + Doing 任務數',
+      description: '尚未完成之累積任務 (Todo+Doing Acc)',
+    },
+
+    // ============================================================
+    // 🎯 Dashboard 比例指標 (百分比) - 動態計算
+    // ============================================================
+    todoRate: {
+      type: `number`,
+      sql: `CASE WHEN ${totalTask} > 0 THEN ${todoTask} * 100.0 / ${totalTask} ELSE 0 END`,
+      title: 'Todo 比例 (%)',
+      description: 'todo_cnt / total_task × 100%',
+      format: `percent`,
+    },
+    
+    doingRate: {
+      type: `number`,
+      sql: `CASE WHEN ${totalTask} > 0 THEN ${doingTask} * 100.0 / ${totalTask} ELSE 0 END`,
+      title: 'Doing 比例 (%)',
+      description: 'doing_cnt / total_task × 100%',
+      format: `percent`,
+    },
+    
+    doneRate: {
+      type: `number`,
+      sql: `CASE WHEN ${totalTask} > 0 THEN ${doneTask} * 100.0 / ${totalTask} ELSE 0 END`,
+      title: 'Done 比例 (%)',
+      description: 'done_cnt / total_task × 100% - 完成率折線圖',
+      format: `percent`,
+    },
+    
+    doingDoneRate: {
+      type: `number`,
+      sql: `CASE WHEN ${totalTask} > 0 THEN ${doingDoneTask} * 100.0 / ${totalTask} ELSE 0 END`,
+      title: 'Doing + Done 比例 (%)',
+      description: '(doing_cnt + done_cnt) / total_task × 100% - 執行率折線圖',
+      format: `percent`,
+    },
+    
+    todoDoingAccRate: {
+      type: `number`,
+      sql: `CASE WHEN ${totalTask} > 0 THEN ${todoDoingAccTask} * 100.0 / ${totalTask} ELSE 0 END`,
+      title: 'Todo + Doing 比例 (%)',
+      description: '(todo_cnt + doing_cnt) / total_task × 100% - 累積率折線圖',
       format: `percent`,
     },
 
-    progressRate: {
-      type: `number`,
-      sql: `CASE WHEN ${totalTasks} > 0 THEN ${inProgressTasks} * 100.0 / ${totalTasks} ELSE 0 END`,
-      title: 'L5 任務執行率 (%)',
-      description: '🥇 L5 核心指標 - (DOING + DONE) / 總任務數 × 100%',
-      format: `percent`,
-    },
-
     // ============================================================
-    // 📊 維度資料來源統計 (MDM 整合版本新增)
-    // ============================================================
-    mdmPrimaryTasks: {
-      type: `sum`,
-      sql: `sum_mdm_primary_qty`,
-      title: 'MDM 主來源任務數',
-      description: '完全來自 MDM 主檔表的任務數量',
-    },
-
-    flowableFallbackTasks: {
-      type: `sum`,
-      sql: `sum_flowable_fallback_qty`,
-      title: 'Flowable 輔助來源任務數',
-      description: '使用 Flowable 變數作為 fallback 的任務數量',
-    },
-
-    noDimensionTasks: {
-      type: `sum`,
-      sql: `sum_no_dimension_qty`,
-      title: '無維度任務數',
-      description: '無法取得維度資料的任務數量',
-    },
-
-    // ============================================================
-    // 📊 排除原因統計 (部分支援)
-    // ============================================================
-    bypassTasks: {
-      type: `sum`,
-      sql: `sum_bypass_qty`,
-      title: '旁路任務數',
-      description: 'TaskBypass != N 的任務數量',
-    },
-
-    ePrefixTasks: {
-      type: `sum`,
-      sql: `0`,  // MDM 版本暫時沒有這些統計
-      title: 'E 前綴任務數',
-      description: 'TaskDefinitionKey 以 E 開頭的任務數量 (MDM 版本暫不支援)',
-    },
-
-    cPrefixTasks: {
-      type: `sum`,
-      sql: `0`,  // MDM 版本暫時沒有這些統計
-      title: 'C 前綴任務數',
-      description: 'TaskDefinitionKey 以 C 開頭的任務數量 (MDM 版本暫不支援)',
-    },
-
-    qOrderTasks: {
-      type: `sum`,
-      sql: `0`,  // MDM 版本暫時沒有這些統計
-      title: 'Q 工單任務數',
-      description: '工單號以 Q 開頭的任務數量 (MDM 版本暫不支援)',
-    },
-
-    rOrderTasks: {
-      type: `sum`,
-      sql: `0`,  // MDM 版本暫時沒有這些統計
-      title: 'R 工單任務數',
-      description: '工單號以 R 開頭的任務數量 (MDM 版本暫不支援)',
-    },
-
-    specialV1RuleTasks: {
-      type: `sum`,
-      sql: `0`,  // MDM 版本暫時沒有這些統計
-      title: '特殊 V1 規則任務數',
-      description: '套用工單號規則的 V1 任務數量 (MDM 版本暫不支援)',
-    },
-
-    // ============================================================
-    // 📊 預計算完成率 (來自 MView)
+    // 📊 預計算比例指標 (來自 Gold 層)
     // ============================================================
     preCalculatedCompletionRate: {
       type: `avg`,
       sql: `completion_rate`,
       title: '預計算完成率 (%)',
-      description: 'MView 中預計算的完成率 (單一維度組合用)',
+      description: 'Gold 層預計算的完成率',
       format: `percent`,
     },
 
-    preCalculatedProgressRate: {
-      type: `avg`,
-      sql: `progress_rate`,
-      title: '預計算執行率 (%)',
-      description: 'MView 中預計算的執行率 (單一維度組合用)',
-      format: `percent`,
+    // ============================================================
+    // 📊 維度資料來源統計 (新的欄位)
+    // ============================================================
+    regionMdmBackfillCount: {
+      type: `sum`,
+      sql: `region_mdm_backfill_count`,
+      title: 'Region MDM 補齊數量',
+      description: 'Region 維度由 MDM 補齊的任務數量',
+    },
+
+    plantMdmBackfillCount: {
+      type: `sum`,
+      sql: `plant_mdm_backfill_count`,
+      title: 'Plant MDM 補齊數量',
+      description: 'Plant 維度由 MDM 補齊的任務數量',
+    },
+
+    factoryMdmBackfillCount: {
+      type: `sum`,
+      sql: `factory_mdm_backfill_count`,
+      title: 'Factory MDM 補齊數量',
+      description: 'Factory 維度由 MDM 補齊的任務數量',
+    },
+
+    lineMdmBackfillCount: {
+      type: `sum`,
+      sql: `line_mdm_backfill_count`,
+      title: 'Line MDM 補齊數量',
+      description: 'Line 維度由 MDM 補齊的任務數量',
     },
   },
 
   dimensions: {
     // ============================================================
-    // 時間維度
+    // 時間維度 - 基於現有欄位
     // ============================================================
     snapshotDate: {
       type: `time`,
@@ -193,8 +171,94 @@ cube(`GoldL5TaskCompletion`, {
     },
 
     // ============================================================
-    // L5 業務維度
+    // 🎯 L5 Dashboard 必要維度 - 基於現有表格欄位
     // ============================================================
+    
+    // 計算維度：流程團隊 (基於 vx_type)
+    flowTeam: {
+      type: `string`,
+      sql: `CASE 
+        WHEN vx_type IN ('V1', 'V2', 'V3') THEN CONCAT(vx_type, '+V1+V2+V3')
+        ELSE 'V1+V2+V3'
+      END`,
+      title: '流程團隊',
+      description: '流程團隊（如：V1+V2+V3）- Dashboard 必要維度',
+    },
+
+    // Region 維度 (使用補齊後的 region 欄位)
+    region: {
+      type: `string`,
+      sql: `COALESCE(NULLIF(region, ''), 'Unknown')`,
+      title: '地區',
+      description: '地區（如：CNE）- Dashboard 必要維度，已補齊',
+    },
+
+    regionSource: {
+      type: `string`,
+      sql: `region_source`,
+      title: 'Region 資料來源',
+      description: 'Region 維度資料來源 (VARINST/MDM)',
+    },
+
+    // Plant 維度 (使用補齊後的 plant 欄位)
+    plant: {
+      type: `string`,
+      sql: `COALESCE(NULLIF(plant, ''), 'Unknown')`,
+      title: '製造廠區',
+      description: '製造廠區（如：WJ2）- Dashboard 必要維度，已補齊',
+    },
+
+    plantSource: {
+      type: `string`,
+      sql: `plant_source`,
+      title: 'Plant 資料來源',
+      description: 'Plant 維度資料來源 (VARINST/MDM)',
+    },
+
+    // Factory 維度 (使用補齊後的 factory 欄位)
+    factory: {
+      type: `string`,
+      sql: `COALESCE(NULLIF(factory, ''), 'Unknown')`,
+      title: '製造產品廠',
+      description: '製造產品廠（如：NBU）- Dashboard 必要維度，已補齊',
+    },
+
+    factorySource: {
+      type: `string`,
+      sql: `factory_source`,
+      title: 'Factory 資料來源',
+      description: 'Factory 維度資料來源 (VARINST/MDM)',
+    },
+
+    // Line 維度 (使用補齊後的 line 欄位)
+    line: {
+      type: `string`,
+      sql: `COALESCE(NULLIF(line, ''), '')`,
+      title: '線體',
+      description: '線體（如：E5）- Dashboard 必要維度，已補齊，可為空',
+    },
+
+    lineSource: {
+      type: `string`,
+      sql: `line_source`,
+      title: 'Line 資料來源',
+      description: 'Line 維度資料來源 (VARINST/MDM)',
+    },
+
+    // 計算維度：vx_scope (基於 vx_type)
+    vxScope: {
+      type: `string`,
+      sql: `CASE 
+        WHEN vx_type = 'V1' THEN 'V1'
+        WHEN vx_type = 'V2' THEN 'V2'
+        WHEN vx_type = 'V3' THEN 'V3'
+        ELSE 'V1+V2+V3'
+      END`,
+      title: '任務類型範圍',
+      description: '任務類型範圍（V1 / V2 / V3 / V1+V2+V3）- Dashboard 必要維度',
+    },
+
+    // 原始 vx_type 維度
     vxType: {
       type: `string`,
       sql: `vx_type`,
@@ -206,94 +270,63 @@ cube(`GoldL5TaskCompletion`, {
       type: `string`,
       sql: `vx_subtype`,
       title: 'Vx 子類型',
-      description: 'MDM 版本暫時沒有子類型',
+      description: 'Vx 子類型',
     },
 
     // ============================================================
-    // 完整五階維度 (MDM 整合版本)
+    // 時間組合維度 - 用於 Dashboard 時間層級支援
     // ============================================================
-    regionCode: {
+    timeLevel: {
       type: `string`,
-      sql: `region_code`,
-      title: 'Region 代碼',
-      description: 'Region 層級代碼 (MDM 整合新增)',
+      sql: `'Day'`,
+      title: '時間層級',
+      description: 'Day (現有表格只支援日層級)',
     },
 
-    regionName: {
+    timeValue: {
       type: `string`,
-      sql: `region_name`,
-      title: 'Region 名稱',
-      description: 'Region 層級名稱 (MDM 整合新增)',
+      sql: `toString(snapshot_date)`,
+      title: '時間值',
+      description: '時間層級對應的值 (日期格式)',
     },
 
-    plantCode: {
+    timeDisplay: {
       type: `string`,
-      sql: `plant_code`,
-      title: '廠區代碼',
-      description: '廠區代碼 (MDM 主來源)',
-    },
-
-    plantName: {
-      type: `string`,
-      sql: `plant_name`,
-      title: '廠區名稱',
-      description: '廠區名稱 (MDM 主來源)',
-    },
-
-    factoryCode: {
-      type: `string`,
-      sql: `factory_code`,
-      title: '工廠代碼',
-      description: '工廠代碼 (MDM 主來源)',
-    },
-
-    factoryName: {
-      type: `string`,
-      sql: `factory_name`,
-      title: '工廠名稱',
-      description: '工廠名稱 (MDM 主來源)',
-    },
-
-    lineCode: {
-      type: `string`,
-      sql: `line_code`,
-      title: '產線代碼',
-      description: '產線代碼 (MDM 主來源)',
-    },
-
-    lineName: {
-      type: `string`,
-      sql: `line_name`,
-      title: '產線名稱',
-      description: '產線名稱 (MDM 主來源)',
+      sql: `CONCAT('Day: ', toString(snapshot_date))`,
+      title: '時間顯示',
+      description: '時間層級和值的組合顯示',
     },
 
     // ============================================================
-    // 相容性維度欄位 (保持向後相容)
+    // 組合維度 - 用於 Dashboard 分組顯示
     // ============================================================
-    plant: {
+    locationPath: {
       type: `string`,
-      sql: `plant`,
-      title: '廠區 (相容)',
-      description: '廠區代碼 (相容性欄位)',
-    },
-    
-    factory: {
-      type: `string`,
-      sql: `factory`,
-      title: '工廠 (相容)',
-      description: '工廠代碼 (相容性欄位)',
+      sql: `CONCAT(
+        COALESCE(NULLIF(region, ''), 'Unknown'), '-',
+        COALESCE(NULLIF(plant, ''), 'Unknown'), '-',
+        COALESCE(NULLIF(factory, ''), 'Unknown')
+      )`,
+      title: '位置路徑',
+      description: 'Region-Plant-Factory 組合維度',
     },
 
-    line: {
+    fullLocationPath: {
       type: `string`,
-      sql: `line`,
-      title: '產線 (相容)',
-      description: '產線代碼 (相容性欄位)',
+      sql: `CONCAT(
+        COALESCE(NULLIF(region, ''), 'Unknown'), '-',
+        COALESCE(NULLIF(plant, ''), 'Unknown'), '-',
+        COALESCE(NULLIF(factory, ''), 'Unknown'),
+        CASE WHEN COALESCE(NULLIF(line, ''), '') != '' 
+             THEN CONCAT('-', line)
+             ELSE '' END
+      )`,
+      title: '完整位置路徑',
+      description: '包含 Line 的完整位置路徑',
     },
 
     // ============================================================
-    // 維度資料來源 (MDM 整合版本新增)
+    // 維度資料來源 (現有欄位)
     // ============================================================
     dimensionSource: {
       type: `string`,
@@ -303,41 +336,36 @@ cube(`GoldL5TaskCompletion`, {
     },
 
     // ============================================================
-    // 組合維度 (用於分組)
+    // Dashboard 篩選維度
     // ============================================================
     regionPlant: {
       type: `string`,
-      sql: `CONCAT(region_code, '|', plant_code)`,
+      sql: `CONCAT(
+        COALESCE(NULLIF(region, ''), 'Unknown'), '|',
+        COALESCE(NULLIF(plant, ''), 'Unknown')
+      )`,
       title: 'Region-廠區',
-      description: 'Region 和廠區的組合維度',
+      description: 'Region 和廠區的組合維度，用於篩選',
     },
 
     plantFactory: {
       type: `string`,
-      sql: `CONCAT(plant_code, '|', factory_code)`,
+      sql: `CONCAT(
+        COALESCE(NULLIF(plant, ''), 'Unknown'), '|',
+        COALESCE(NULLIF(factory, ''), 'Unknown')
+      )`,
       title: '廠區-工廠',
-      description: '廠區和工廠的組合維度',
+      description: '廠區和工廠的組合維度，用於篩選',
     },
 
     factoryLine: {
       type: `string`,
-      sql: `CONCAT(factory_code, '|', line_code)`,
+      sql: `CONCAT(
+        COALESCE(NULLIF(factory, ''), 'Unknown'), '|',
+        COALESCE(NULLIF(line, ''), 'ALL')
+      )`,
       title: '工廠-產線',
-      description: '工廠和產線的組合維度',
-    },
-
-    vxTypeSubtype: {
-      type: `string`,
-      sql: `CONCAT(vx_type, CASE WHEN vx_subtype != '' THEN CONCAT('_', vx_subtype) ELSE '' END)`,
-      title: 'Vx 完整類型',
-      description: 'Vx 類型和子類型的組合 (MDM 版本暫無子類型)',
-    },
-
-    fullDimensionPath: {
-      type: `string`,
-      sql: `CONCAT(region_code, '>', plant_code, '>', factory_code, '>', line_code)`,
-      title: '完整維度路徑',
-      description: '完整五階維度路徑 (Region>Plant>Factory>Line)',
+      description: '工廠和產線的組合維度，用於篩選',
     },
 
     // ============================================================
@@ -345,78 +373,17 @@ cube(`GoldL5TaskCompletion`, {
     // ============================================================
     lastUpdated: {
       type: `time`,
-      sql: `_mview_update_time`,
+      sql: `_update_time`,
       title: '最後更新時間',
-      description: 'MView 最後更新時間',
+      description: 'Gold 表最後更新時間',
     },
   },
 
   // ============================================================
-  // 預聚合配置 (提升查詢效能) - MDM 整合版本
+  // 預聚合配置已移除 - ClickHouse 不支援無索引的 preAggregations
+  // 直接查詢 Gold 表效能已足夠
   // ============================================================
-  preAggregations: {
-    // 按日期 + Vx 類型聚合
-    dailyVxSummary: {
-      measures: [
-        GoldL5TaskCompletion.totalTasks,
-        GoldL5TaskCompletion.doneTasks,
-        GoldL5TaskCompletion.doingTasks,
-        GoldL5TaskCompletion.todoTasks,
-        GoldL5TaskCompletion.mdmPrimaryTasks,
-        GoldL5TaskCompletion.flowableFallbackTasks,
-        GoldL5TaskCompletion.noDimensionTasks,
-      ],
-      dimensions: [
-        GoldL5TaskCompletion.snapshotDate,
-        GoldL5TaskCompletion.vxType,
-        GoldL5TaskCompletion.dimensionSource,
-      ],
-      timeDimension: GoldL5TaskCompletion.snapshotDate,
-      granularity: `day`,
-      refreshKey: {
-        every: `1 hour`,
-      },
-    },
-
-    // 按完整五階維度聚合
-    fullDimensionSummary: {
-      measures: [
-        GoldL5TaskCompletion.totalTasks,
-        GoldL5TaskCompletion.doneTasks,
-        GoldL5TaskCompletion.inProgressTasks,
-      ],
-      dimensions: [
-        GoldL5TaskCompletion.snapshotDate,
-        GoldL5TaskCompletion.regionCode,
-        GoldL5TaskCompletion.plantCode,
-        GoldL5TaskCompletion.factoryCode,
-        GoldL5TaskCompletion.lineCode,
-        GoldL5TaskCompletion.vxType,
-      ],
-      timeDimension: GoldL5TaskCompletion.snapshotDate,
-      granularity: `day`,
-      refreshKey: {
-        every: `1 hour`,
-      },
-    },
-
-    // 維度資料來源品質監控
-    dimensionQualitySummary: {
-      measures: [
-        GoldL5TaskCompletion.mdmPrimaryTasks,
-        GoldL5TaskCompletion.flowableFallbackTasks,
-        GoldL5TaskCompletion.noDimensionTasks,
-      ],
-      dimensions: [
-        GoldL5TaskCompletion.snapshotDate,
-        GoldL5TaskCompletion.dimensionSource,
-        GoldL5TaskCompletion.vxType,
-      ],
-      timeDimension: GoldL5TaskCompletion.snapshotDate,
-      granularity: `day`,
-      refreshKey: {
-        every: `1 hour`,
-      },
-    },
-  },
+  // preAggregations: {
+  //   // 已移除：ClickHouse 需要索引支援才能使用 preAggregations
+  // },
 });

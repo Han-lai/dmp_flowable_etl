@@ -1,0 +1,2 @@
+﻿snapshot_date,region_code,region_name,plant_code,plant_name,factory_code,factory_name,line_code,line_name,vx_type,sum_total_task_qty,sum_todo_qty,sum_doing_qty,sum_done_qty,completion_rate,progress_rate,dimension_source
+2025-12-25,CNE,華東,PF,PF,WJ2,WJ2_NBU_MAIN,E5,NBU-E5,V3,1,0,1,0,0.0,100.0,MDM_PRIMARY
