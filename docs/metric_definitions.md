@@ -34,11 +34,18 @@ CASE
 END AS region_source
 ```
 
-**維度語意交換邏輯**：
-- `varinst.plant='WJ2'` → `mdm.factory_code='WJ2'`
-- `varinst.factory='NBU'` → `mdm.plant_code='NBU'`
-- `varinst.region='CNE'` → `mdm.region_code='CNE'` (不變)
-- `varinst.lineName='E5'` → `mdm.line_name='E5'` (不變)
+**維度對應邏輯 (2026-01-28 更新)**：
+- `varinst.plant='WJ2'` → `plant='WJ2'` (直接對應)
+- `varinst.factory='NBU'` → `factory='NBU'` (直接對應)
+- `varinst.region='CNE'` → `region='CNE'`
+- `varinst.lineName='E5'` → `line='E5'`
+
+**正確目標範本 (Verified Target)**：
+- VTYPE : V1
+- REGION: CNE
+- PLANT : WJ2
+- FACTORY : NBU
+- LINE  : E5
 
 ### ISO Week 時間合規性實作完成
 
