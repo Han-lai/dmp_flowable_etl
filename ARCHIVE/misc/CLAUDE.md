@@ -3,7 +3,7 @@
 ## 專案概述
 DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 ClickHouse，建立 Bronze/Silver/Gold 層資料倉儲，並透過 Cube.js 提供 API。
 
-## 目前狀態 (2026-01-15)
+## 目前狀態 (2026-01-30 更新)
 
 ### 🎉 專案已完成
 
@@ -16,10 +16,68 @@ DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 Cli
 | 指標驗證 | 11 個指標與 Benchmark 邏輯等價 | ✅ 完成 |
 | 技術驗證 | ClickHouse 原生增量 MView JOIN 行為測試 | ✅ 完成 |
 | 專案報告 | 主管報告文件 | ✅ 完成 |
+| **L5 指標驗證** | FlowableTaskStats 與 QAS SQL 對比 | ✅ 完成 |
+| **檔案整理** | 專案目錄重整 (Legacy/One-off 歸檔) | ✅ 完成 |
 
 ### 暫緩
 - ⏸️ 逾期在途業務事件數 (缺 HealthSettings 表)
 - ⏸️ 自動化排程 (目前手動執行)
+- ⏸️ **VxType 歸屬邏輯修正** (待確認需求)
+
+---
+
+## L5 指標驗證結果 (2026-01-30)
+
+### 驗證對象
+- `L5_task_sample.sql` - 從 MSSQL 撈取 L5 任務資料
+- `QAS_L5_task.sql` - 同上，使用 `_0108` 備份表
+- `metric_definitions.md` - L5 指標業務定義
+
+### 驗證結果
+
+| 項目 | 狀態 | 說明 |
+|------|------|------|
+| Task Status 判定 | ✅ 一致 | TODO/DOING/DONE 邏輯正確 |
+| TaskBypass 標記 | ✅ 一致 | autoComplete=1 → Y |
+| 五階維度欄位 | ✅ 可用 | Plant/Factory/Line 都有 |
+| **VxType 歸屬邏輯** | ✅ 已實作 | Silver 層 `mv_fact_task_vx` 已實作 315% → V1 規則 |
+| **Region 維度** | ✅ 已實作 | 透過 MDM 主檔 `mv_dim_mfg_five_level` 補齊 |
+
+### 數據比對 (2025-12-25, WJ2, NBU, E5)
+
+| 資料來源 | Total | TODO | DOING | DONE | 說明 |
+|---------|------:|-----:|------:|-----:|------|
+| **QAS SQL (MSSQL)** | 198 | 0 | 0 | 198 | 原始資料 (含 bypass) |
+| **Gold 層 (ClickHouse)** | 180 | 0 | 0 | 180 | 排除 bypass + 時間邏輯差異 |
+
+### 差異原因
+
+1. **時間篩選邏輯不同**
+   - QAS: `START_TIME OR CLAIM_TIME OR END_TIME` 任一符合
+   - Gold: 只看 `task_start_date` (任務建立日期)
+
+2. **TaskBypass 排除**
+   - QAS 原始結果包含 bypass 任務 (約 5 筆)
+   - Gold 層已排除 bypass 任務
+
+### 相關檔案
+- [flowable_task_stats_mapping.md](docs/flowable_task_stats_mapping.md) - 欄位對應文件
+- [query_gold_l5.py](scripts/validation/query_gold_l5.py) - Gold 層查詢腳本
+- [query_gold_l5.py](scripts/validation/query_gold_l5.py) - Gold 層查詢腳本
+- [test_time_filter.py](scripts/validation/test_time_filter.py) - 時間篩選測試腳本
+
+### E4 異常數據調查結果 (2026-02-02)
+
+**問題**: QAS 查 E4 只有 5 筆，但 ClickHouse Gold 顯示 155 筆。
+
+**根本原因 (Root Cause)**:
+- ClickHouse 正確同步了 UAT Source 的新表 (`ACT_HI_TASKINST_0108`)
+- QAS 的 View (`FlowableTaskStats`) 仍指向舊的/空的表 (`ACT_HI_TASKINST`)
+
+**證據**:
+- Source (`_0108`) 與 ClickHouse Bronze 筆數完全一致 (147萬筆)。
+- 在 ClickHouse 上模擬 QAS 邏輯，算出 E4=163, E5=196 (與 User 預期相符)。
+- **結論**: ClickHouse 數據是正確的，QAS View 需修正。
 
 ---
 
