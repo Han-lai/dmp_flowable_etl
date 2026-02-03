@@ -44,3 +44,20 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 ### 3. 重複資料處理
 - 使用 `ReplacingMergeTree` 引擎
 - 查詢時使用 `FINAL` 關鍵字確保資料一致
+
+## 🚨 關鍵安全規則 (Critical Safety Rules)
+
+### 1. 資料庫刪除規則
+> [!DANGER]
+> **嚴禁刪除任何 MSSQL 表格**
+> - 來源資料庫 (APP_SRV_BPM, APP_SRV_COMMON) 為生產環境資料
+> - 禁止執行 `DROP TABLE`, `DELETE FROM`, `TRUNCATE TABLE` 指令
+
+### 2. ClickHouse 表格刪除規範
+> [!WARNING]
+> **刪除 ClickHouse 表格需經過三次確認**
+> 如需執行 `DROP TABLE` 或 `TRUNCATE TABLE`，必須向用戶確認三次：
+> 1. 第一次：說明刪除原因和受影響範圍
+> 2. 第二次：確認是否有備份或可還原
+> 3. 第三次：再次請求用戶明確授權「請執行刪除」
+
