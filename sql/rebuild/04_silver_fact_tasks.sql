@@ -1,8 +1,7 @@
 -- ========================================
--- 步驟 4: Silver Layer 2 - 核心事實表 (Vx 歸屬 + 維度補齊)
--- 版本: v2 - 增加多時間維度以匹配原始 L5 SQL 邏輯
--- 執行時間: 約 5-10 分鐘 (資料量約 130 萬筆)
--- 前置條件: 02_silver_layer1.sql 執行完成
+-- 步驟 4: Silver Layer - Fact Tasks (Vx)
+-- 內容: mv_fact_task_vx (Core Fact Table)
+-- 前置: 03_silver_pivot_and_hierarchy
 -- ========================================
 
 DROP TABLE IF EXISTS silver.mv_fact_task_vx;
@@ -37,13 +36,13 @@ SELECT
     
     -- Vx 歸屬（工單號規則優先）
     CASE 
-        WHEN COALESCE(v.varinst_moNumber, '') LIKE '315%' THEN 'V1'
-        WHEN COALESCE(v.varinst_moNumber, '') LIKE '196%' 
-             OR COALESCE(v.varinst_moNumber, '') LIKE '199%'
-             OR COALESCE(v.varinst_moNumber, '') LIKE '200%'
-             OR COALESCE(v.varinst_moNumber, '') LIKE '210%'
-             OR COALESCE(v.varinst_moNumber, '') LIKE '212%'
-             OR COALESCE(v.varinst_moNumber, '') LIKE '213%'
+        WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '315%' THEN 'V1'
+        WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '196%' 
+             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '199%'
+             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '200%'
+             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '210%'
+             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '212%'
+             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '213%'
         THEN 'V1'
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
         WHEN t.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
@@ -52,27 +51,27 @@ SELECT
     END AS vx_type,
     
     -- 維度（VARINST 優先，MDM 補齊）
-    COALESCE(NULLIF(v.varinst_region, ''), mdm.region_code, 'UNKNOWN') AS region,
-    COALESCE(NULLIF(v.varinst_plant, ''), mdm.plant_code, 'UNKNOWN') AS plant,
-    COALESCE(NULLIF(v.varinst_factory, ''), mdm.factory_code, 'UNKNOWN') AS factory,
-    COALESCE(NULLIF(v.varinst_lineName, ''), mdm.line_name, 'UNKNOWN') AS line,
+    COALESCE(NULLIF(mv_varinst_pivoted.varinst_region, ''), mdm.region_code, 'UNKNOWN') AS region,
+    COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, 'UNKNOWN') AS plant,
+    COALESCE(NULLIF(mv_varinst_pivoted.varinst_factory, ''), mdm.factory_code, 'UNKNOWN') AS factory,
+    COALESCE(NULLIF(mv_varinst_pivoted.varinst_lineName, ''), mdm.line_name, 'UNKNOWN') AS line,
     
     -- 維度來源追蹤
-    CASE WHEN v.varinst_region != '' THEN 'VARINST' 
+    CASE WHEN mv_varinst_pivoted.varinst_region != '' THEN 'VARINST' 
          WHEN mdm.region_code IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS region_source,
-    CASE WHEN v.varinst_plant != '' THEN 'VARINST'
+    CASE WHEN mv_varinst_pivoted.varinst_plant != '' THEN 'VARINST'
          WHEN mdm.plant_code IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS plant_source,
-    CASE WHEN v.varinst_factory != '' THEN 'VARINST'
+    CASE WHEN mv_varinst_pivoted.varinst_factory != '' THEN 'VARINST'
          WHEN mdm.factory_code IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS factory_source,
-    CASE WHEN v.varinst_lineName != '' THEN 'VARINST'
+    CASE WHEN mv_varinst_pivoted.varinst_lineName != '' THEN 'VARINST'
          WHEN mdm.line_name IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS line_source,
     
     -- 排除標記
     CASE 
         WHEN tb.LONG_ = 1 THEN 1  -- bypass
         WHEN t.TASK_DEF_KEY_ LIKE 'E%' OR t.TASK_DEF_KEY_ LIKE 'C%' THEN 1
-        WHEN COALESCE(v.varinst_moNumber, '') LIKE 'Q%' 
-             OR COALESCE(v.varinst_moNumber, '') LIKE 'R%' THEN 1
+        WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'Q%' 
+             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'R%' THEN 1
         ELSE 0
     END AS is_excluded,
     
@@ -81,8 +80,8 @@ SELECT
         WHEN tb.LONG_ = 1 THEN 'bypass'
         WHEN t.TASK_DEF_KEY_ LIKE 'E%' THEN 'E_prefix'
         WHEN t.TASK_DEF_KEY_ LIKE 'C%' THEN 'C_prefix'
-        WHEN COALESCE(v.varinst_moNumber, '') LIKE 'Q%' THEN 'Q_order'
-        WHEN COALESCE(v.varinst_moNumber, '') LIKE 'R%' THEN 'R_order'
+        WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'Q%' THEN 'Q_order'
+        WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'R%' THEN 'R_order'
         ELSE NULL
     END AS exclude_reason,
     
@@ -93,14 +92,14 @@ SELECT
     -- 任務屬性
     t.TASK_DEF_KEY_ AS task_definition_key,
     t.NAME_ AS task_name,
-    v.varinst_moNumber AS mo_number,
+    mv_varinst_pivoted.varinst_moNumber AS mo_number,
     t.PROC_INST_ID_ AS proc_inst_id,
     
     now64(3) AS _mview_update_time
 
 FROM bronze.bpm_act_hi_taskinst t
-LEFT JOIN silver.mv_varinst_pivoted v ON t.PROC_INST_ID_ = v.PROC_INST_ID_
-LEFT JOIN silver.mv_dim_mfg_five_level mdm ON v.varinst_lineName = mdm.line_name
+LEFT JOIN silver.mv_varinst_pivoted ON t.PROC_INST_ID_ = mv_varinst_pivoted.PROC_INST_ID_
+LEFT JOIN silver.mv_dim_mfg_five_level mdm ON mv_varinst_pivoted.varinst_lineName = mdm.line_name
 LEFT JOIN bronze.common_hr_employee he ON t.ASSIGNEE_ = he.EmpCode
 LEFT JOIN bronze.bpm_act_hi_varinst tb ON t.ID_ = tb.TASK_ID_ AND tb.NAME_ = 'autoComplete'
 WHERE t.ID_ IS NOT NULL AND t.ID_ != '';
