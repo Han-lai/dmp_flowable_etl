@@ -18,6 +18,8 @@ DMP Flowable 資料同步專案，將 MSSQL 的 Flowable BPM 資料同步到 Cli
 | 專案報告 | 主管報告文件 | ✅ 完成 |
 | **L5 指標驗證** | FlowableTaskStats 與 QAS SQL 對比 | ✅ 完成 |
 | **檔案整理** | 專案目錄重整 (Legacy/One-off 歸檔) | ✅ 完成 |
+| **五階維度修復** | 修正 `mv_dim_mfg_five_level` 缺漏 | ✅ 完成 |
+| **技術文件** | 建立 E2E Technical Guide (Source of Truth) | ✅ 完成 |
 
 ### 暫緩
 - ⏸️ 逾期在途業務事件數 (缺 HealthSettings 表)
