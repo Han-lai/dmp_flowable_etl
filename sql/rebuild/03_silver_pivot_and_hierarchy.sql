@@ -61,8 +61,8 @@ SELECT DISTINCT
     -- Plant Level (User Request: Use PM.FACTORY)
     pm.FACTORY AS plant_code,
     pm.FACTORY AS plant_name, -- Use Code as Name since no desc available in PM
-    -- Region Level (Keep from FA)
-    fa.REGION AS region_code,
+    -- Region Level (Use MFG_SITE as region_code per user request 2026-02-04)
+    fa.MFG_SITE AS region_code,
     sm.MFG_SITE_DESC AS region_name,
     now64(3) AS _mview_update_time
 FROM bronze.common_mdm_line_desc_master ld
