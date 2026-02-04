@@ -34,8 +34,11 @@ SELECT
         ELSE 'TODO'
     END AS task_status,
     
-    -- Vx 歸屬（工單號規則優先）
+    -- Vx 歸屬（任務定義鍵規則優先，避免 315% 誤判 V3 為 V1）
     CASE 
+        WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
+        WHEN t.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
+        WHEN t.TASK_DEF_KEY_ LIKE 'V3%' THEN 'V3'
         WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '315%' THEN 'V1'
         WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '196%' 
              OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '199%'
@@ -44,9 +47,6 @@ SELECT
              OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '212%'
              OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '213%'
         THEN 'V1'
-        WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
-        WHEN t.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
-        WHEN t.TASK_DEF_KEY_ LIKE 'V3%' THEN 'V3'
         ELSE COALESCE(substring(t.TASK_DEF_KEY_, 1, 2), 'Unknown')
     END AS vx_type,
     
@@ -75,14 +75,13 @@ SELECT
         ELSE 0
     END AS is_excluded,
     
-    -- 排除原因
     CASE 
         WHEN tb.LONG_ = 1 THEN 'bypass'
-        WHEN t.TASK_DEF_KEY_ LIKE 'E%' THEN 'E_prefix'
-        WHEN t.TASK_DEF_KEY_ LIKE 'C%' THEN 'C_prefix'
+        WHEN t.TASK_DEF_KEY_ LIKE 'E%' THEN 'system_node'
+        WHEN t.TASK_DEF_KEY_ LIKE 'C%' THEN 'system_node'
         WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'Q%' THEN 'Q_order'
         WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'R%' THEN 'R_order'
-        ELSE NULL
+        ELSE ''
     END AS exclude_reason,
     
     -- 人員資訊

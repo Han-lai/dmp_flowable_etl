@@ -44,6 +44,11 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 ### 3. 重複資料處理
 - 使用 `ReplacingMergeTree` 引擎
 - 查詢時使用 `FINAL` 關鍵字確保資料一致
+ 
+### 4. 指標計算標準模式 (Metric Patterns)
+- **時點快照 (Snapshot Status)**: 使用 `snapshot_date` 與任務生命週期 (Start/Claim/End) 動態比對，而非依賴當前狀態。
+- **滑動活動視窗 (Rolling Activity Window)**: 針對積壓指標 (如 Acc)，採用 D-6 至 D 的核心活動判定，以反應近期動態。
+- **Vx 歸屬優先級**: `TaskDefinitionKey` (流程定義) > `moNumber` (工單規則)。
 
 ## 🚨 關鍵安全規則 (Critical Safety Rules)
 
