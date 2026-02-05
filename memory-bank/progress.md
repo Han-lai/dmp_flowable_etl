@@ -2,6 +2,16 @@
 
 ## 已完成里程碑
  
+### 2026-02-05 (今日進度)
+- ✅ **Gold 層架構修復 (Background Refresh Logic)**:
+    - 解決 `gold.rmv_l5_task_completion` 定時刷新失敗問題 (修正 JOIN 語法為 CROSS JOIN)。
+    - 資料恢復完成並與基準值對應 (Done=192, ACC=41 for 12/25)。
+- ✅ **12/25 數據基準再確認**:
+    - 每日任務數 (Daily Task Count) 確立為 192 筆。
+    - 累積在途量 (ACC) 確立目標值為 40 筆 (目前 41 筆，1 筆差異調查中)。
+- ✅ **Cube.js 模型同步**:
+    - 確認 `L5TaskCompletion` 模型直接引用 Gold 層資料。
+
 ### 2026-02-04
 - ✅ **L5 指標業務邏輯修正與對齊**:
   - **Vx 歸屬修正**: 修正歸類權重 (TaskDefKey > moNumber)，解決跨流程 (V1 call V3) 的歸屬偏差問題。
