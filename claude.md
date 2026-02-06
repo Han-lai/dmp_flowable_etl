@@ -1,12 +1,12 @@
 # CLAUDE.md - DMP Flowable 快速上指南 (Quick Start)
 
-## 🎯 專案當前狀態 (2026-02-05)
-本專案已完成 **Gold 層背景刷新機制修復** 與 **12/25 數據基準確認**。
+## 🎯 專案當前狀態 (2026-02-06)
+本專案已完成 **L5 任務指標的視覺化整合 (Superset)** 與 **Gold 層背景刷新機制**。
+- **週期性報表**: 成功實作 Superset 混合圖表 (Bar + Line) 雙軸顯示與自定義排序 (Month/Week/Day)。
+- **Cube.js 穩定**: `L5TaskPeriodic` 模型已對齊 ClickHouse 函數相容性，且能正確產出固定週期的業務報表。
 - **數據基準**: 12/25 (WJ2/E5) 關鍵指標 (Todo, Doing, Acc) 與預期 **完全一致**。
-- **邏輯固定**: 確立 Vx 歸屬優先級、歷史時點快照判斷、7 天滑動 Acc 視窗。
-- **文件鞏固**: 定義文件 `docs/03_1_columns_defin.md` 已注入修正歷程。
-- **報告產出**: 已生成 `docs/reports/L5_Periodic_Metrics_Report_20260204.md`，提供 W51-W01 及全月指標總覽。
-- **已知差異**: WJ2/E5 在 12/30, 12/31 保留部分 DONE 差異 (+2/+1)，已在文件中註記。
+- **文件產出**: 新增 `docs/L5_Completion_Superset_Guide.md`，詳列 Superset 圖表設定參數與專案完成度確認表。
+- **邏輯固定**: 確立 Vx 歸屬優先級、歷史時點快照判斷、7 天滑動 Acc 視窗機制。
 
 ---
 

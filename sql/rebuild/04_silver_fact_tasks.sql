@@ -72,6 +72,7 @@ SELECT
         WHEN t.TASK_DEF_KEY_ LIKE 'E%' OR t.TASK_DEF_KEY_ LIKE 'C%' THEN 1
         WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'Q%' 
              OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'R%' THEN 1
+        WHEN t.NAME_ LIKE '%Notify%' OR t.NAME_ LIKE '%Dummy%' THEN 1
         ELSE 0
     END AS is_excluded,
     
@@ -81,6 +82,8 @@ SELECT
         WHEN t.TASK_DEF_KEY_ LIKE 'C%' THEN 'system_node'
         WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'Q%' THEN 'Q_order'
         WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'R%' THEN 'R_order'
+        WHEN t.NAME_ LIKE '%Notify%' THEN 'notify_task'
+        WHEN t.NAME_ LIKE '%Dummy%' THEN 'dummy_task'
         ELSE ''
     END AS exclude_reason,
     

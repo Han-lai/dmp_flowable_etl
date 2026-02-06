@@ -1,116 +1,91 @@
 /**
- * L5 任務完成率 Cube - 整合版
+ * L5 任務完成率 Cube - 轉置版 (Pivoted for Superset 2026-02-05)
  * 
- * 來源表: gold.rmv_l5_task_completion (REFRESHABLE MView，每小時刷新)
- * 用途: 為 Superset L5 任務執行完成度 Dashboard 提供資料模型
- * 
- * 更新記錄 (2026-01-30):
- * - 整合 L5TaskCompletion 和 L5DashboardSummary 為單一 Cube
- * - 使用新的 Gold 層表 gold.rmv_l5_task_completion
- * - 欄位: todo_count, doing_count, done_count, completion_rate, execution_rate
+ * 來源表: gold.rmv_l5_task_completion
+ * 用途: 支援 L5 Status Comparison Report，讓指標轉換為維度以固定在縱軸顯示。
  */
 
 cube(`L5TaskCompletion`, {
-    sql: `SELECT * FROM gold.rmv_l5_task_completion FINAL`,
+    sql: `
+    SELECT * FROM (
+      SELECT 
+        snapshot_date, region, plant, factory, line, vx_type, _refresh_time,
+        '1. Total Task' as status_name, total_task as task_qty, 100.0 as task_pct, 1 as sort_order
+      FROM gold.rmv_l5_task_completion
+      UNION ALL
+      SELECT 
+        snapshot_date, region, plant, factory, line, vx_type, _refresh_time,
+        '2. Todo' as status_name, todo_count as task_qty, 
+        round(todo_count * 100.0 / nullIf(total_task, 0), 2) as task_pct, 2 as sort_order
+      FROM gold.rmv_l5_task_completion
+      UNION ALL
+      SELECT 
+        snapshot_date, region, plant, factory, line, vx_type, _refresh_time,
+        '3. Doing' as status_name, doing_count as task_qty, 
+        round(doing_count * 100.0 / nullIf(total_task, 0), 2) as task_pct, 3 as sort_order
+      FROM gold.rmv_l5_task_completion
+      UNION ALL
+      SELECT 
+        snapshot_date, region, plant, factory, line, vx_type, _refresh_time,
+        '4. Done' as status_name, done_count as task_qty, 
+        round(done_count * 100.0 / nullIf(total_task, 0), 2) as task_pct, 4 as sort_order
+      FROM gold.rmv_l5_task_completion
+      UNION ALL
+      SELECT 
+        snapshot_date, region, plant, factory, line, vx_type, _refresh_time,
+        '5. Doing+Done' as status_name, (doing_count + done_count) as task_qty, 
+        round((doing_count + done_count) * 100.0 / nullIf(total_task, 0), 2) as task_pct, 5 as sort_order
+      FROM gold.rmv_l5_task_completion
+      UNION ALL
+      SELECT 
+        snapshot_date, region, plant, factory, line, vx_type, _refresh_time,
+        '6. Todo+Doing(Acc)' as status_name, acc_todo_doing as task_qty, 
+        round(acc_todo_doing * 100.0 / nullIf(total_task, 0), 2) as task_pct, 6 as sort_order
+      FROM gold.rmv_l5_task_completion
+    ) AS pivoted
+    `,
 
     title: 'L5 任務完成率',
-    description: 'L5 任務執行完成度指標，支援 Dashboard 需求',
+    description: 'L5 任務執行指標，指標已轉置為維度以利 Superset 展示',
 
     measures: {
-        // ============================================================
-        // 任務狀態數量
-        // ============================================================
-        totalTask: {
+        taskQty: {
             type: `sum`,
-            sql: `total_task`,
-            title: '任務總數',
+            sql: `task_qty`,
+            title: 'Task Qty',
         },
-
-        todoCount: {
-            type: `sum`,
-            sql: `todo_count`,
-            title: 'Todo 數量',
-        },
-
-        doingCount: {
-            type: `sum`,
-            sql: `doing_count`,
-            title: 'Doing 數量',
-        },
-
-        doneCount: {
-            type: `sum`,
-            sql: `done_count`,
-            title: 'Done 數量',
-        },
-
-        // ============================================================
-        // 組合指標
-        // ============================================================
-        doingDoneCount: {
-            type: `number`,
-            sql: `${doingCount} + ${doneCount}`,
-            title: 'Doing + Done 數量',
-        },
-
-        todoDoingCount: {
-            type: `number`,
-            sql: `${todoCount} + ${doingCount}`,
-            title: 'Todo + Doing 數量',
-        },
-
-        // ============================================================
-        // 比例指標
-        // ============================================================
-        todoRate: {
-            type: `number`,
-            sql: `CASE WHEN ${totalTask} > 0 THEN ${todoCount} * 100.0 / ${totalTask} ELSE 0 END`,
-            title: 'Todo 比例 (%)',
-            format: `percent`,
-        },
-
-        doingRate: {
-            type: `number`,
-            sql: `CASE WHEN ${totalTask} > 0 THEN ${doingCount} * 100.0 / ${totalTask} ELSE 0 END`,
-            title: 'Doing 比例 (%)',
-            format: `percent`,
-        },
-
-        doneRate: {
-            type: `number`,
-            sql: `CASE WHEN ${totalTask} > 0 THEN ${doneCount} * 100.0 / ${totalTask} ELSE 0 END`,
-            title: 'Done 比例 (%)',
-            format: `percent`,
-        },
-
-        completionRate: {
+        taskPct: {
             type: `avg`,
-            sql: `completion_rate`,
-            title: '完成率 (%)',
-            format: `percent`,
-        },
-
-        executionRate: {
-            type: `avg`,
-            sql: `execution_rate`,
-            title: '執行率 (%)',
-            format: `percent`,
-        },
+            sql: `task_pct`,
+            title: 'Task (%)'
+        }
     },
 
     dimensions: {
-        // ============================================================
-        // 時間維度
-        // ============================================================
+        id: {
+            sql: `concat(toString(snapshot_date), '_', region, '_', plant, '_', factory, '_', line, '_', vx_type, '_', status_name)`,
+            type: `string`,
+            primaryKey: true,
+        },
+
         snapshotDate: {
             type: `time`,
             sql: `snapshot_date`,
             title: '快照日期',
         },
 
-        // ============================================================
-        // 製造五階維度
-        // ============================================================
+        statusName: {
+            type: `string`,
+            sql: `status_name`,
+            title: '任務狀態',
+        },
+
+        sortOrder: {
+            type: `number`,
+            sql: `sort_order`,
+            title: '排序序號',
+        },
+
         vxType: {
             type: `string`,
             sql: `vx_type`,
@@ -139,73 +114,6 @@ cube(`L5TaskCompletion`, {
             type: `string`,
             sql: `COALESCE(NULLIF(line, ''), '')`,
             title: '線體',
-        },
-
-        // ============================================================
-        // 組合維度
-        // ============================================================
-        locationPath: {
-            type: `string`,
-            sql: `CONCAT(
-        COALESCE(NULLIF(region, ''), 'UNKNOWN'), '-',
-        COALESCE(NULLIF(plant, ''), 'UNKNOWN'), '-',
-        COALESCE(NULLIF(factory, ''), 'UNKNOWN')
-      )`,
-            title: '位置路徑',
-        },
-
-        // ============================================================
-        // Metadata
-        // ============================================================
-        refreshTime: {
-            type: `time`,
-            sql: `_refresh_time`,
-            title: '刷新時間',
-        },
-    },
-
-    preAggregations: {
-        // 按日期 + Vx 類型 + 廠區聚合
-        dailyVxSummary: {
-            measures: [
-                L5TaskCompletion.totalTask,
-                L5TaskCompletion.todoCount,
-                L5TaskCompletion.doingCount,
-                L5TaskCompletion.doneCount,
-            ],
-            dimensions: [
-                L5TaskCompletion.snapshotDate,
-                L5TaskCompletion.vxType,
-                L5TaskCompletion.region,
-                L5TaskCompletion.plant,
-            ],
-            timeDimension: L5TaskCompletion.snapshotDate,
-            granularity: `day`,
-            refreshKey: {
-                every: `1 hour`,
-            },
-        },
-
-        // 完整維度聚合
-        fullDimensionSummary: {
-            measures: [
-                L5TaskCompletion.totalTask,
-                L5TaskCompletion.doneCount,
-                L5TaskCompletion.completionRate,
-            ],
-            dimensions: [
-                L5TaskCompletion.snapshotDate,
-                L5TaskCompletion.region,
-                L5TaskCompletion.plant,
-                L5TaskCompletion.factory,
-                L5TaskCompletion.line,
-                L5TaskCompletion.vxType,
-            ],
-            timeDimension: L5TaskCompletion.snapshotDate,
-            granularity: `day`,
-            refreshKey: {
-                every: `1 hour`,
-            },
-        },
-    },
+        }
+    }
 });
