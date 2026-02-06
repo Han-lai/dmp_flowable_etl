@@ -2,15 +2,24 @@
 
 ## 已完成里程碑
  
-### 2026-02-05 (今日進度)
+### 2026-02-06 (今日進度)
+### 2026-02-06 (今日進度)
+- ✅ **L5 週期性報表完成 (Stable Dual-Axis)**:
+    - 成功實作 Superset 混合圖表 (Mixed Chart) 的自定義排序 (`periodSortOrder`) 與雙軸顯示 (Quantity + Rate)。
+    - 完成 `cube_l5_task_periodic.js` 的穩定版開發 (Month/Week/Day 混合顯示)，確保 ClickHouse 函數相容性。
+    - 建立 `docs/L5_Completion_Superset_Guide.md` 作為交付文件，記載設定參數與專案完成度。
+- ✅ **L5 任務週期報表優化 (Mixed Chart Sorting)**:
+
+### 2026-02-05
 - ✅ **Gold 層架構修復 (Background Refresh Logic)**:
     - 解決 `gold.rmv_l5_task_completion` 定時刷新失敗問題 (修正 JOIN 語法為 CROSS JOIN)。
     - 資料恢復完成並與基準值對應 (Done=192, ACC=41 for 12/25)。
 - ✅ **12/25 數據基準再確認**:
     - 每日任務數 (Daily Task Count) 確立為 192 筆。
     - 累積在途量 (ACC) 確立目標值為 40 筆 (目前 41 筆，1 筆差異調查中)。
-- ✅ **Cube.js 模型同步**:
-    - 確認 `L5TaskCompletion` 模型直接引用 Gold 層資料。
+- ✅ **Cube.js 模型架構分拆 (Dual-File Architecture)**:
+    - `cube_l5_task_completion.js`: 保持「轉置版 (Pivoted)」，穩定支援 Superset 樞紐分析表。
+    - `cube_l5_task_chart.js` [NEW]: 「寬表版 (Wide)」，專用於 Superset 混合圖表 (Mixed Chart) 與 Tooltip 百分比顯示。
 
 ### 2026-02-04
 - ✅ **L5 指標業務邏輯修正與對齊**:
@@ -39,7 +48,7 @@
   - `silver_mviews_architecture.md` - 更新為 3 張 MVIEW
   - `data_pipeline_diagram.md` - 更新為單路徑 + Refreshable MView
 
-### 2026-02-03
+### 2026-02-03 (Early)
 - ✅ 恢復 `VARINST` 資料同步 (17.3M 筆, finish at 2026-01-08)
 - ✅ 恢復 `TASKINST` 資料同步 (1.48M 筆, finish at 2026-01-08)
 - ✅ 驗證 `Silver Layer (mv_fact_task_vx)` 資料正確注入 (1.49M 筆)
