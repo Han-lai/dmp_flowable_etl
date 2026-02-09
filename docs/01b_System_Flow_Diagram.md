@@ -1,7 +1,7 @@
 # 資料管道流程圖
 
 > **版本**: v2.1 (架構優化版)  
-> **最後更新**: 2026-02-03  
+> **最後更新**: 2026-02-09  
 > **架構類型**: 單路徑 + ClickHouse 原生 Refreshable MView
 
 
@@ -77,7 +77,7 @@
         │  ┌─────────────────────────────────────────────────────┐ │
         │  │ Layer 2: 核心事實表                                 │ │
         │  │ - mv_fact_task_vx         (L5 任務事實表)          │ │
-        │  │   ├─ Vx 歸屬邏輯 (315% → V1)                       │ │
+        │  │   ├─ Vx 歸屬邏輯 (Key > moNumber)                   │ │
         │  │   ├─ Task Status (TODO/DOING/DONE)                 │ │
         │  │   ├─ 五階維度 (Region/Plant/Factory/Line)          │ │
         │  │   └─ 排除標記 (bypass/E/C)                         │ │
@@ -186,4 +186,4 @@ OPTIMIZE TABLE silver.mv_fact_task_vx FINAL;
 
 ---
 
-**文件更新時間**: 2026-01-30
+**文件更新時間**: 2026-02-09

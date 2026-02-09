@@ -2,7 +2,7 @@
 
 ## 1. L5 專案完成度概覽 (Project Completion Status)
 
-截至 2026-02-06，L5 任務指標專案的核心架構與關鍵指標已完成開發與驗證。
+截至 2026-02-09，L5 任務指標專案的核心架構與關鍵指標已完成開發與驗證。
 
 | 項目 (Component) | 狀態 | 說明 (Details) |
 | :--- | :--- | :--- |
@@ -44,10 +44,13 @@
 | **Shared Sort By** | `periodSortOrder` | **Ascending** (升冪) |
 | **Query A (Bar)** | **Metrics**: `totalQty` | |
 | **Query B (Line)** | **Metrics**: `doneRate` | 勾選 **Secondary Y Axis** (副軸) |
-| **關鍵動作: Time Range** | 設定 **TIME** 區塊: | 設定特定日期以觸發時光機 |
+| **關鍵動作: Time Range** | 設定 **TIME** 區塊: | 已全面支持 YYYY-MM-DD 或長字串 |
 | - Time Column | `snapshotDate` | |
 | - Time Range | **Custom** (自定義) | |
-| - Start / End | `2025-12-31` | **起始與結束設為同一天**，即等同於 Equal 效果 |
+| - Start / End | `2025-12-31` | **起始與結束選同一天** 或使用 Dashboard 分別選 Start/End |
+
+> [!TIP]
+> **V2 篩選穩定化**：現在系統已具備 Triple-OR 魯棒性，能自動處理 Superset 帶入的 `.000000` 微秒字串，用戶不再需要擔心「Cannot convert string to Date」錯誤。
 
 ---
 
