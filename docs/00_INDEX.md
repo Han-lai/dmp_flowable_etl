@@ -9,6 +9,7 @@
 4.  **[03_Business_Metric_Definitions.md](03_Business_Metric_Definitions.md)**: 業務指標 (L5/L7) 的精確定義。
 5.  **[04_Data_Lineage_Mapping.md](04_Data_Lineage_Mapping.md)**: 五階維度與 MDM 來源血緣分析。
 6.  **[05_Field_Verification_Reference.md](05_Field_Verification_Reference.md)**: MSSQL 與 ClickHouse 欄位對應與對帳手冊。
+7.  **[03_1_columns_defin.md](03_1_columns_defin.md)**: 進階欄位細項定義與邏輯修正歷程。
 
 ## 🛠️ 技術細節
 *   **[06_Technical_Deep_Dive_MViews.md](06_Technical_Deep_Dive_MViews.md)**: Silver 層 Materialized Views 的實作細節。
@@ -18,8 +19,9 @@
     *   [L5 Dashboard 規格書](specs/l5_dashboard_spec.md)
     *   [L7 人員使用率技術規格](specs/user_utilization_spec.md)
 
-## 🎨 使用手冊
-*   請參考 **[guides/](guides/)** 目錄：
+*   請參考 **[guides/](guides/)** 與根目錄手冊：
+    *   [L5 專案完成度與 Superset 指南](L5_Completion_Superset_Guide.md)
+    *   [L5 週期報表 V2 流程圖說明](L5_Periodic_Report_V2_Flow.md)
     *   [Superset 儀表板配置手冊](guides/superset_dashboard_guide.md)
 
 ---

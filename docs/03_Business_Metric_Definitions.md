@@ -1,5 +1,12 @@
 # 流程指標業務定義文件 (Metric Definition Document)
 
+> [!CAUTION]
+> **本文件內容部分已過時 (2026-01-26 版)**。
+> 關於 L5 指標的最新精確定義（包含 7 天滾動分母、V2 模型特性）、篩選器邏輯與數據核帳基準，**請優先參考以下文件**：
+> 1. [**03_1_columns_defin.md (L5 最新定義與歷程)**](03_1_columns_defin.md)
+> 2. [**L5_Completion_Superset_Guide.md (BI 設定指南)**](L5_Completion_Superset_Guide.md)
+> 3. [**05_Field_Verification_Reference.md (最終對帳基準)**](05_Field_Verification_Reference.md)
+
 **版本：** 1.4  
 **更新日期：** 2026-01-26  
 **適用範圍：** DMP Flowable 流程分析系統

@@ -1,7 +1,7 @@
 # DMP Flowable 架構總覽
 
 > **文件版本**: v2.1 (架構優化版)  
-> **最後更新**: 2026-02-03  
+> **最後更新**: 2026-02-09  
 > **架構類型**: Bronze/Silver/Gold 三層資料倉儲 + ClickHouse 原生自動化
 
 
@@ -116,11 +116,11 @@ ENGINE = ReplacingMergeTree(_refresh_time)
 
 ```sql
 CASE 
-    WHEN moNumber LIKE '315%' THEN 'V1'  -- 工單號規則優先
-    WHEN moNumber LIKE '196%' OR '199%' OR '200%' ... THEN 'V1'
-    WHEN taskDefinitionKey LIKE 'V1%' THEN 'V1'
+    WHEN taskDefinitionKey LIKE 'V1%' THEN 'V1'  -- 任務定義優先
     WHEN taskDefinitionKey LIKE 'V2%' THEN 'V2'
     WHEN taskDefinitionKey LIKE 'V3%' THEN 'V3'
+    WHEN moNumber LIKE '315%' THEN 'V1'         -- 工單號輔助判定
+    WHEN moNumber LIKE '196%' OR '199%' OR '200%' ... THEN 'V1'
     ELSE 'Unknown'
 END AS vx_type
 ```

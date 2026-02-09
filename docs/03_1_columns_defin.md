@@ -11,7 +11,7 @@
 | **W44**<br/>`pattern: W${x}`     | Numeric + Percentage | 根據篩選月份推算出該月份對應的**最大週別 Wx**，並計算該週內的所有任務數與佔比。<br/><br/>- 若該週尚未結束（例如僅有 3 天資料），則僅統計目前已發生的日期<br/>- 該週數值會在週結束後「結算並固定」                        |
 | **W43**<br/>`pattern: W(${x}-1)` | Numeric + Percentage | 依據 **Wx** 往前推一週，計算上一週（完整 Mon ~ Sun）的所有任務數與佔比                                                                                           |
 | **W42**<br/>`pattern: W(${x}-2)` | Numeric + Percentage | 依據 **Wx-1** 再往前推一週，計算前兩週（完整 Mon ~ Sun）的所有任務數與佔比                                                                                        |
-| **Dn-1 ~ Dn-7**                  | Numeric + Percentage | 依據基準日逐日往前推算的日級指標：<br/><br/>- Dn-1：基準日（當天）<br/>- Dn-2：基準日 - 1<br/>- …<br/>- Dn-7：基準日 - 6<br/><br/>每一日皆計算該日的任務數與佔 **Total Task** 的比例 (%) |
+| **Dn-1 ~ Dn-7**                  | Numeric + Percentage | 依據基準日逐日往前推算的日級指標：<br/><br/>- Dn-1：基準日（當天）<br/>- Dn-2：基準日 - 1<br/>- …<br/>- Dn-7：基準日 - 6<br/><br/>**累積比率 (Acc Rate) 修正**：<br/>每一日皆計算該日的 Qty 佔 **7 天滑動總量 (Total Task Rolling 7D)** 的比例 (%)。這解決了週末因單日任務量低導致比例暴增的問題。 |
 
 
 欄位定義說明（Dynamic Time Columns）
@@ -99,3 +99,11 @@
     *   **計算範圍**：[快照日 Dn, Dn-6] 區間內有活動（開始/認領/結束）的任務。
     *   **判定準則**：該範圍內曾活動過，且截至 `snapshot_date` 當日結束時尚未結案（非 Done）的任務總數。
 *   **目標**：真實反映「近期一週內產出且積壓中」的實際工作負擔。
+
+### 4. V2 模型大氣候與篩選魯棒性 (V2 Robust Filtering)
+針對 Superset 不同情境（Dashboard vs Chart）傳送的時間格式不一問題，實施以下改善：
+*   **Triple-OR 篩選邏輯**：在 `params` CTE 中同時比對 `YYYY-MM-DD`、`YYYY-MM-DD 00:00:00.000000` (微秒) 與 ISO 格式。
+*   **全字串化比對**：將日期欄位 `toString` 後再與篩選參數比對，徹底排除 ClickHouse 報錯 「Cannot convert string to type Date」。
+*   **分母對齊 (Denominator Alignment)**：
+    *   **Day**: 使用 7 天滾動總量。
+    *   **Week/Month**: 使用整個週期內的加總量。
