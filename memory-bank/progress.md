@@ -2,8 +2,30 @@
 
 ## 已完成里程碑
  
-### 2026-02-06 (今日進度)
-### 2026-02-06 (今日進度)
+### 2026-02-09 (今日進度)
+- ✅ **L5 Acc Rate 指標邏輯修正**:
+    - **核心問題**: 解決週末/連假期間因當日活動量 (`total_task`) 驟減導致 Acc Rate 暴飆 (如 12/28 達 418%) 的問題。
+    - **解決方案**: 
+        - **日報表**: 引入「7天滾動總量」作為分母，平滑波動，確保 12/28 數據準核對齊為 7%。
+        - **週/月報表**: 自動採用週期內的總量作為分母。
+- ✅ **L5 週期報表模型 (V2) 最終穩定化**:
+    - **技術突破**: 解決 Superset Chart 傳送帶有微秒的 Timestamp (`.000000`) 導致的「Cannot convert string to Date」轉換錯誤。
+    - **魯棒性優化**: 實作 `params` CTE 的 **Triple-OR 篩選邏輯**。透過「字串對字串」比對技術，全方位支持 Dashboard 與 Chart 的不同時間篩選格式。
+    - **UI 優化**: 修正五階維度名稱 (如「廠區」字樣) 與排序邏輯。
+- ✅ **CNS DG3 資料核帳**: 協助用戶確認 CNS DG3 廠區的線體對應關係（S06 對應 ST06），並驗證 12/31 數據準確性。
+
+### 2026-02-06
+- ✅ **L5 週期報表架構優化 (Refactoring)**:
+    - **Phase 1 (SQL Standard)**: 建立 `sql/rebuild/dynamic_periodic_report.sql`，採用「參數推論 (Inference)」邏輯，自動依據日期範圍判斷當月/歷史模式，解除對 Superset Jinja 的依賴。
+    - **Phase 2 (Cube V2)**: 實作新模型 `cube_l5_task_periodic_v2.js`，將所有運算邏輯下沉至 SQL CTE，Cube 僅負責 Schema Mapping，大幅減輕維護負擔。
+- ✅ **L5 週期報表架構優化 (Refactoring)**:
+    - **Phase 1 (SQL Standard)**: 完成 `sql/rebuild/dynamic_periodic_report.sql` 標準化，改採參數推論邏輯 (Inference Logic)。
+    - **Phase 2 (Cube V2)**: 成功部署 `cube_l5_task_periodic_v2.js`，實現 Logic Push-down 架構。
+    - **關鍵技術突破**: 解決 View Predicate Pushdown 失效問題，改用 Cube SQL Injection + Filter Separation 技術，實現「時光機 (Time Machine)」任意日期回溯與「8天滑動視窗」顯示。
+- ✅ **L5 週期報表架構優化 (Refactoring - V2 Final)**:
+    - **Phase 1 (SQL Standard)**: 邏輯 100% 下沉至 Clickhouse，解除對 BI 工具特定語法的依賴。
+    - **Phase 2 (Cube V2)**: 實現「時光機 (Time Machine)」架喚，透過 Filter-Display 分離技術突破日期篩選限制。
+    - **Phase 3 (Superset Integration)**: 解決 Dashboard 帶入 ISO Timestamp 的類型轉換錯誤，達成「選一天看全週」的穩定功能。
 - ✅ **L5 週期性報表完成 (Stable Dual-Axis)**:
     - 成功實作 Superset 混合圖表 (Mixed Chart) 的自定義排序 (`periodSortOrder`) 與雙軸顯示 (Quantity + Rate)。
     - 完成 `cube_l5_task_periodic.js` 的穩定版開發 (Month/Week/Day 混合顯示)，確保 ClickHouse 函數相容性。
