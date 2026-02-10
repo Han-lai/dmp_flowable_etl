@@ -52,11 +52,7 @@ dmp_flowable/
 ├── docker/                     # 🐋 基礎設施 (Docker Compose)
 │   ├── clickhouse/
 │   └── jdbc-bridge/
-│
-└── ARCHIVE/                    # 🗃️ 專案歷史歸檔
-    ├── misc/CLAUDE.md          # 2026-01-30 舊版進度紀錄
-    ├── scripts_old/
-    └── sql_old/
+└── ...                         # (其餘雜項已清理)
 ```
 
 ---
@@ -66,6 +62,7 @@ dmp_flowable/
 ### 📋 入口引導
 - **`claude.md`** - **開發首選入口**，包含當前狀態、常用指令與 L5 結案進度。
 - **`PROJECT_STRUCTURE.md`** - 本檔案，定義專案各目錄之用途。
+- **`PROJECT_AUDIT_REPORT.md`** - **專案全體審核報告** (Source of Truth)，包含完整架構、資料流與指標定義。
 - **`GETTING_STARTED.md`** - 提供一鍵部署與基礎環境建立流程。
 
 ### 🐍 腳本分類 (精簡版)
@@ -77,6 +74,7 @@ dmp_flowable/
 - **`sql/rebuild/`**: 定義了從 Bronze 到 Gold 的完整資料轉換路徑。
   - `03_silver_pivot`: 採用 **Refreshable MView** 的關鍵組件。
   - `04_silver_fact`: 支援多時間點的任務事實表。
+  - `dynamic_periodic_report`: 支援 L5 週期報表的 Logic Push-down 查詢模板。
 
 ### � 文件編號系統
 文檔目錄 `docs/` 採用 **01~06 序號命名**，確保開發人員能按邏輯順序讀取系統架構與業務邏輯。

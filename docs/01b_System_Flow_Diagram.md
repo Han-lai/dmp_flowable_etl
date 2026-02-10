@@ -14,17 +14,17 @@
 │                         MSSQL 來源系統                               │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │ APP_SRV_BPM                                                     │ │
-│  │ - ACT_HI_TASKINST (任務實例)     ← L5 任務主要來源              │ │
-│  │ - ACT_HI_VARINST (流程變數)      ← plant/factory/line/moNumber  │ │
-│  │ - ACT_HI_PROCINST (流程實例)                                    │ │
+│  │ - ACT_HI_TASKINST_0108 (任務實例) ← L5 任務主要來源          │ │
+│  │ - ACT_HI_VARINST_0108 (流程變數)  ← plant/factory/line/moNumber│ │
+│  │ - ACT_HI_PROCINST_0108 (流程實例)                             │ │
 │  └─────────────────────────────────────────────────────────────────┘ │
 │  ┌─────────────────────────────────────────────────────────────────┐ │
 │  │ APP_SRV_COMMON                                                  │ │
 │  │ - HR_Employee (員工)                                            │ │
-│  │ - MDM_MFG_SITE_MASTER (地區主檔)                                │ │
-│  │ - MDM_FACTORY_AREA_MASTER (工廠主檔)                            │ │
-│  │ - MDM_PROD_AREA_MASTER (產區主檔)                               │ │
-│  │ - MDM_LINE_DESC_MASTER (產線主檔)                               │ │
+│  │ - MDM_MFG_SITE_MASTER_0202 (地區主檔)                          │ │
+│  │ - MDM_FACTORY_AREA_MASTER_0202 (工廠主檔)                      │ │
+│  │ - MDM_PROD_AREA_MASTER_0202 (產區主檔)                         │ │
+│  │ - MDM_LINE_DESC_MASTER_0202 (產線主檔)                         │ │
 │  └─────────────────────────────────────────────────────────────────┘ │
 └──────────────────────────────────────────────────────────────────────┘
                                  │
@@ -80,7 +80,7 @@
         │  │   ├─ Vx 歸屬邏輯 (Key > moNumber)                   │ │
         │  │   ├─ Task Status (TODO/DOING/DONE)                 │ │
         │  │   ├─ 五階維度 (Region/Plant/Factory/Line)          │ │
-        │  │   └─ 排除標記 (bypass/E/C)                         │ │
+        │  │   └─ 排除標記 (bypass/E/C/Notify/Dummy)                 │ │
         │  └─────────────────────────────────────────────────────┘ │
         └──────────────────────────────────────────────────────────┘
                                  │

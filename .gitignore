@@ -1,0 +1,25 @@
+# AI / Agent Tools
+.agent/
+.agents/
+.claude/
+.codex/
+.cursor/
+.gemini/
+.kiro/
+
+# IDE / Editor Config
+.vscode/
+.idea/
+
+# Environment / Dependencies
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# OS specific
+.DS_Store
+Thumbs.db

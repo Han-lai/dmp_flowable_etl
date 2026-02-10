@@ -136,7 +136,7 @@ cube(`L5TaskPeriodicV2`, {
         // 五階組織維度
         diffVxType: { type: `string`, sql: `vx_type`, title: 'Vx 類型' },
         diffRegion: { type: `string`, sql: `region`, title: '地區' },
-        diffPlant: { type: `string`, sql: `plant`, title: '厂區' },
+        diffPlant: { type: `string`, sql: `plant`, title: '廠區' },
         diffFactory: { type: `string`, sql: `factory`, title: '工廠' },
         diffLine: { type: `string`, sql: `line`, title: '線體' }
     }
