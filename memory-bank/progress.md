@@ -2,7 +2,22 @@
 
 ## 已完成里程碑
  
-### 2026-02-09 (今日進度)
+### 2026-02-10 (今日進度)
+- ✅ **Cube Model 架構優化與歸檔**:
+    - **模型精簡**: 將 7 個 Cube 模型精簡至 2 個 (減少 71% 維護負擔)
+    - **歸檔清單**: 移動 5 個舊版模型至 `cube/model/cubes/archive/`:
+        - `cube_gold_l5_task_completion.js` (舊版 Gold 層模型)
+        - `cube_l5_dashboard_summary.js` (舊版 Dashboard 模型)
+        - `cube_l5_task_completion.js` (舊版 Pivot 模型)
+        - `cube_l5_task_periodic.js` (V1 週期性報表)
+        - `cube_user_utilization.js` (用戶利用率模型)
+    - **保留模型**: 僅保留 V2 系列
+        - `cube_l5_task_periodic_v2.js` (週期性報表，支援 7 天滾動分母)
+        - `cube_l5_task_periodic_v2_pivot.js` (狀態比較報表，支援歷史查詢)
+    - **文件更新**: 更新 `README_L5_DASHBOARD_CUBE.md` 說明當前架構
+    - **效益**: 統一使用 V2 進階邏輯，簡化維護流程
+
+### 2026-02-09 (昨日進度)
 - ✅ **L5 Acc Rate 指標邏輯修正**:
     - **核心問題**: 解決週末/連假期間因當日活動量 (`total_task`) 驟減導致 Acc Rate 暴飆 (如 12/28 達 418%) 的問題。
     - **解決方案**: 
