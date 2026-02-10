@@ -14,9 +14,9 @@
 │                        MSSQL 來源系統                                │
 │  ┌────────────────────────────┐  ┌────────────────────────────────┐ │
 │  │ APP_SRV_BPM               │  │ APP_SRV_COMMON                 │ │
-│  │ • ACT_HI_TASKINST         │  │ • HR_Employee                  │ │
-│  │ • ACT_HI_VARINST          │  │ • MDM_* (主檔)                 │ │
-│  │ • ACT_HI_PROCINST         │  │                                │ │
+│  │ • ACT_HI_TASKINST_0108    │  │ • HREmployee                   │ │
+│  │ • ACT_HI_VARINST_0108     │  │ • MDM_*_0202 (主檔)            │ │
+│  │ • ACT_HI_PROCINST_0108    │  │                                │ │
 │  └────────────────────────────┘  └────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
@@ -70,10 +70,10 @@
 
 | 表名 | 來源 | 同步方式 | 說明 |
 |------|------|---------|------|
-| `bpm_act_hi_taskinst` | ACT_HI_TASKINST | 增量 | 任務實例 |
-| `bpm_act_hi_varinst` | ACT_HI_VARINST | 增量 | 流程變數 |
-| `common_hr_employee` | HR_Employee | 全量 | 員工主檔 |
-| `common_mdm_*` | MDM_* | 全量 | 五階維度主檔 |
+| `bpm_act_hi_taskinst` | ACT_HI_TASKINST_0108 | 增量 | 任務實例 |
+| `bpm_act_hi_varinst` | ACT_HI_VARINST_0108 | 增量 | 流程變數 |
+| `common_hr_employee` | HREmployee | 全量 | 員工主檔 |
+| `common_mdm_*` | MDM_*_0202 | 全量 | 五階維度主檔 |
 
 ### Silver 層 (Materialized View)
 
@@ -81,7 +81,7 @@
 |------|------|---------|------|
 | `mv_varinst_pivoted` | bpm_act_hi_varinst | **REFRESH EVERY 1 HOUR** | EAV 轉置 |
 | `mv_dim_mfg_five_level` | common_mdm_* | POPULATE | 五階維度 (修正 MDM 路徑) |
-| `mv_fact_task_vx` | 上述表 JOIN | POPULATE | 核心事實表 (100% 對齊) |
+| `mv_fact_task_vx` | 上述表 JOIN | POPULATE | 核心事實表 (VarInst > MDM 優先級) |
 
 
 ### Gold 層 (Refreshable MView)
@@ -131,6 +131,7 @@ END AS vx_type
   - TaskBypass = 'Y' (autoComplete)
   - TaskDefinitionKey 以 'E' 或 'C' 開頭
   - moNumber 以 'Q' 或 'R' 開頭
+  - 任務名稱包含 'Notify' 或 'Dummy'
 
 ---
 

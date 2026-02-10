@@ -16,11 +16,15 @@ CH_CONFIG = {
 }
 
 # SQL 檔案執行順序
+# SQL 檔案執行順序
 SQL_FILES = [
-    ('01_bronze_add_ttl.sql', 'Bronze TTL 設定'),
-    ('02_silver_layer1.sql', 'Silver Layer 1 (VARINST + 五階維度)'),
-    ('03_silver_layer2.sql', 'Silver Layer 2 (核心事實表)'),
-    ('04_gold_refreshable.sql', 'Gold REFRESHABLE MView'),
+    ('01_bronze_flowable_core.sql', 'Bronze Layer 1 (Flowable 核心表)'),
+    ('02_bronze_common_dims.sql', 'Bronze Layer 2 (Common Dimensions)'),
+    ('03_silver_pivot_and_hierarchy.sql', 'Silver Layer 1 (Pivot + 五階維度)'),
+    ('04_silver_fact_tasks.sql', 'Silver Layer 2 (核心事實表)'),
+    ('05_silver_dim_users.sql', 'Silver Layer 3 (User Dimension)'),
+    ('06_gold_kpi_task_completion.sql', 'Gold Layer 1 (L5 任務完成率)'),
+    ('07_gold_kpi_user_utilization.sql', 'Gold Layer 2 (L7 人員使用率)'),
 ]
 
 def get_client():
@@ -28,13 +32,45 @@ def get_client():
     return clickhouse_connect.get_client(**CH_CONFIG)
 
 def execute_sql_file(client, sql_file: Path, description: str):
-    """執行單一 SQL 檔案"""
-    print(f"\n{'='*60}")
-    print(f"執行: {sql_file.name}")
+    """執行單一 SQL 檔案 (附帶安全檢查)"""
+    print(f"\n{'-'*60}")
+    print(f"準備執行: {sql_file.name}")
     print(f"說明: {description}")
-    print('='*60)
     
     sql_content = sql_file.read_text(encoding='utf-8')
+    
+    # 1. 解析目標表 (簡單 Regex)
+    import re
+    # 匹配 CREATE TABLE/VIEW/MATERIALIZED VIEW db.table
+    pattern = re.compile(r'CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|MATERIALIZED\s+VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.]+)', re.IGNORECASE)
+    tables = pattern.findall(sql_content)
+    
+    # 2. 檢查表是否存在與資料量
+    existing_tables = []
+    for table in tables:
+        try:
+            # 檢查是否存在
+            check_sql = f"EXISTS TABLE {table}"
+            exists = client.command(check_sql)
+            if exists:
+                # 檢查資料量
+                count = client.command(f"SELECT count() FROM {table}")
+                existing_tables.append((table, count))
+        except Exception:
+            pass # 忽略檢查錯誤
+            
+    # 3. 若表存在，詢問使用者
+    if existing_tables:
+        print(f"\n⚠️  警告: 此腳本將重建以下已存在的表 (包含 DROP TABLE):")
+        for table, count in existing_tables:
+            print(f"   - {table}: {count:,} rows")
+        
+        response = input("\n是否繼續執行重建? (y/N): ").lower().strip()
+        if response != 'y':
+            print(f"⛔ 已跳過: {sql_file.name}")
+            return
+
+    print('-'*60)
     
     # 分割成多個語句（以分號分隔，忽略註解中的分號）
     statements = []
@@ -57,23 +93,18 @@ def execute_sql_file(client, sql_file: Path, description: str):
         try:
             # 檢查是否是 SELECT 語句
             if stmt.strip().upper().startswith('SELECT'):
-                result = client.query(stmt)
-                if result.result_rows:
-                    print(f"\n[{i}/{len(statements)}] 查詢結果:")
-                    # 印出欄位名稱
-                    print("  " + " | ".join(str(c) for c in result.column_names))
-                    print("  " + "-" * 50)
-                    for row in result.result_rows[:10]:  # 最多顯示 10 筆
-                        print("  " + " | ".join(str(v) for v in row))
+                # 略過 SELECT 輸出以免洗版 (或可保留)
+                pass 
             else:
                 client.command(stmt)
-                print(f"[{i}/{len(statements)}] ✓ 執行成功")
+                # 簡化輸出
+                # print(f"[{i}/{len(statements)}] ✓ 語句執行成功")
         except Exception as e:
             print(f"[{i}/{len(statements)}] ✗ 錯誤: {e}")
             # 繼續執行下一個語句
             continue
     
-    print(f"\n✓ {sql_file.name} 執行完成")
+    print(f"✓ {sql_file.name} 執行完成")
 
 def main():
     """主程式"""

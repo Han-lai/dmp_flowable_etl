@@ -1,6 +1,0 @@
-﻿snapshot_date,region_code,plant_code,factory_code,line_code,vx_type,sum_total_task_qty,sum_todo_qty,sum_doing_qty,sum_done_qty,completion_rate,progress_rate
-2025-12-25,CNE,PF,WJ2,E5,V1,4,4,0,0,0.0,0.0
-2025-12-25,CNE,PF,WJ2,E5,V3,1,0,1,0,0.0,100.0
-2025-12-29,CNE,PF,WJ2,E5,V1,1,1,0,0,0.0,0.0
-2025-12-30,CNE,PF,WJ2,E5,V1,7,6,1,0,0.0,14.29
-2025-12-31,CNE,PF,WJ2,E5,V1,13,8,3,2,15.38,38.46
