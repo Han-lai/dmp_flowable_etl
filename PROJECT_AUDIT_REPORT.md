@@ -193,6 +193,17 @@ graph TD
     - **Time Machine**: 支援「指定錨點日期」回溯歷史數據。
     - **Filter Separation**: 解決 Superset 帶入微秒 Timestamp 導致的格式錯誤。
 
+- **L5 狀態轉置 (Pivot)**: `cube/model/cubes/cube_l5_task_completion.js`
+    - **Structure**: 將 Total/Todo/Doing/Done 等指標轉置為 `status_name` 維度。
+    - **Usage**: 專用於 "Status Comparison Report"，將多個指標並列於縱軸展示。
+
+- **L5 狀態轉置 V2 (Pivot V2)**: `cube/model/cubes/cube_l5_task_periodic_v2_pivot.js`
+    - **Upgrade**: 結合 V2 的 Time Machine 邏輯與 Pivot 結構。
+    - **Benefit**: 讓狀態比較報表也能支援「指定歷史日期」的回溯查詢。
+
+- **L7 人員使用率**: `cube/model/cubes/cube_user_utilization.js`
+    - **Simple Mapping**: 直接映射包含 `active_users`, `utilization_rate` 等指標的 Gold 表。
+
 ---
 
 ## 3. 各層資料表對應關係 (End-to-End Table Mapping)
