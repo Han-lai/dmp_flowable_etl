@@ -1,11 +1,28 @@
-# L5 Dashboard Cube Model 更新完成
+# L5 Cube Model 使用說明
 
-## ✅ 完成項目
+> **最後更新**: 2026-02-10  
+> **狀態**: 已歸檔舊版模型，保留 V2 系列
 
-### 🎯 Cube Model 修改
-- **檔案**: `cube_gold_l5_task_completion.js`
-- **資料來源**: 使用現有的 `gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV`
-- **支援功能**: 基於現有表格結構對應 L5 Dashboard 需求
+## 📦 目前使用中的 Cube Models (2)
+
+### 1. `cube_l5_task_periodic_v2.js`
+- **用途**: L5 週期性報表 (V2 進階邏輯)
+- **資料來源**: `gold.rmv_l5_task_completion`
+- **特色**: 支援 7 天滾動分母、動態時間模式 (D0/W-pattern)
+
+### 2. `cube_l5_task_periodic_v2_pivot.js`
+- **用途**: L5 狀態比較報表 (Pivot 展開)
+- **資料來源**: `gold.rmv_l5_task_completion`
+- **特色**: 結合 V2 邏輯與 Pivot 結構，支援歷史狀態查詢
+
+## 🗄️ 已歸檔的 Cube Models (5)
+
+以下模型已移至 `archive/` 目錄，不再使用：
+- `cube_gold_l5_task_completion.js` (舊版 Gold 層模型)
+- `cube_l5_dashboard_summary.js` (舊版 Dashboard 模型)
+- `cube_l5_task_completion.js` (舊版 Pivot 模型)
+- `cube_l5_task_periodic.js` (V1 週期性報表)
+- `cube_user_utilization.js` (用戶利用率模型)
 
 ### 📊 維度支援 (基於現有欄位)
 - **flowTeam**: 計算維度，基於 vx_type
