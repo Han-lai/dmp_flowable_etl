@@ -57,7 +57,8 @@ cube(`L5TaskPeriodicV2Pivot`, {
                 anchor_dt as filter_date, anchor_dt as snapshot_date_real,
                 sum(total_task) as total_qty, sum(todo_count) as todo_qty, sum(doing_count) as doing_qty,
                 sum(doing_count + done_count) as doing_done_qty, sum(done_count) as done_qty, 
-                argMax(acc_todo_doing, snapshot_date) as acc_qty
+                argMax(acc_todo_doing, snapshot_date) as acc_qty,
+                sum(total_task) as acc_total_qty
             FROM base CROSS JOIN calc_anchor
             WHERE snapshot_date >= toStartOfMonth(anchor_dt) AND snapshot_date <= anchor_dt
             GROUP BY vx_type, region, plant, factory, line, anchor_dt, period_name
@@ -74,7 +75,8 @@ cube(`L5TaskPeriodicV2Pivot`, {
                 anchor_dt as filter_date, max(snapshot_date) as snapshot_date_real,
                 sum(total_task) as total_qty, sum(todo_count) as todo_qty, sum(doing_count) as doing_qty,
                 sum(doing_count + done_count) as doing_done_qty, sum(done_count) as done_qty, 
-                argMax(acc_todo_doing, snapshot_date) as acc_qty
+                argMax(acc_todo_doing, snapshot_date) as acc_qty,
+                sum(total_task) as acc_total_qty
             FROM base CROSS JOIN calc_anchor
             WHERE (
                 (toWeek(snapshot_date, 1) = toWeek(anchor_dt, 1) AND snapshot_date <= anchor_dt) OR 
@@ -88,7 +90,9 @@ cube(`L5TaskPeriodicV2Pivot`, {
             -- C. Day: 當日任務，但 Acc 使用 7 天滾動總量
             SELECT granularity, period_name, sort_order, vx_type, region, plant, factory, line, 
                    filter_date, snapshot_date_real,
-                   total_qty, todo_qty, doing_qty, doing_done_qty, done_qty, acc_qty
+                    total_qty, todo_qty, doing_qty, doing_done_qty, done_qty, acc_qty,
+                   sum(total_qty) OVER (PARTITION BY vx_type, region, plant, factory, line ORDER BY snapshot_date_real ASC ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as acc_total_qty,
+                   sum(total_qty) OVER (PARTITION BY vx_type, region, plant, factory, line ORDER BY snapshot_date_real ASC ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as acc_total_qty
             FROM (
                 SELECT 'Day' as granularity, toString(snapshot_date) as period_name,
                        5 + dateDiff('day', snapshot_date, anchor_dt) as sort_order,
@@ -158,7 +162,7 @@ cube(`L5TaskPeriodicV2Pivot`, {
             vx_type, region, plant, factory, line, filter_date, snapshot_date_real,
             granularity, period_name, sort_order as period_sort,
             '6. Todo+Doing(Acc)' as status_name, acc_qty as task_qty, 
-            round(acc_qty * 100.0 / nullIf(total_qty, 0), 2) as task_pct, 6 as status_sort
+            round(acc_qty * 100.0 / nullIf(acc_total_qty, 0), 2) as task_pct, 6 as status_sort
         FROM v2_wide_metrics
     ) AS pivoted_result
     `,

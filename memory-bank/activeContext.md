@@ -1,11 +1,17 @@
-# 當前工作狀態 - DMP Flowable
+# 當前工作脈絡 (Active Context)
 
-## 最後更新
-2026-02-10 17:15
+**最後更新**: 2026-02-10 17:28
 
+---
 
-## 當前任務
-**Cube Model 架構優化 (✅ 已完成 2026-02-10)**
+## 🎯 當前焦點 (Current Focus)
+
+### ⏸️ 待處理問題 (Pending)
+- (None)
+
+### 核心任務
+- **Cube Model 架構優化**: 已完成 V2 系列模型修正 (ACC Rate Logic Fix) 與文件同步。
+- **文件標準化**: 完成 `PROJECT_AUDIT_REPORT.md` 的深度校正與術語統一。
 
 ## 進行中的工作
 
@@ -18,7 +24,17 @@
 ### L5 累積指標修正 (2026-02-09)
 - **7天滾動分母實作**: 徹底解決週末 Acc Rate 暴飆問題，達成日、週、月指標邏輯的一致。
 - **V2 模型魯棒性增強**: 通過 Triple-OR 篩選邏輯，解決了 Superset 不同模式（Dashboard vs Chart）下的時間格式轉換錯誤。
+- **V2 模型魯棒性增強**: 通過 Triple-OR 篩選邏輯，解決了 Superset 不同模式（Dashboard vs Chart）下的時間格式轉換錯誤。
 - **資料核對**: 完成 CNS DG3 SV (SMT) S06 線體的資料路徑驗證與核實。
+
+### Logic Fixes
+- [x] L5 V2 Pivot Cube Model (Implemented & Documented)
+- [x] ACC Rate Calculation (Daily Rolling / Period Snapshot Logic clarified)
+- [x] Vx Attribution Priority (Updated Spec to match Code: Key > Mo)
+
+### Verification
+- [x] QAS WJ2/NBU Verification (Zero V1 tasks found)
+- [x] QAS DG3/SMT Verification (V1 tasks exist but belong to NPE, not SMT)
 
 ### L5 週期性報表與視覺化 (2026-02-06)
 - **Superset 雙軸圖表整合**: 成功解決混合圖表 (Bar + Line) 的排序與雙軸顯示問題。
@@ -33,3 +49,4 @@
 - [x] Cube.js 週期性報表 X 軸自動排序支援
 - [ ] 任務二：驗證 L7 人員使用率 (User Utilization) 指標
 - [ ] 監控全自動刷新定時器的資源消耗
+```

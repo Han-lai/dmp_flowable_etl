@@ -26,14 +26,14 @@ graph TD
     subgraph Source [MSSQL 來源系統]
         direction TB
         subgraph DB_Core [APP_SRV_BPM]
-            BPM_Task[ACT_HI_TASKINST_0108<br>任務實例]
-            BPM_Var[ACT_HI_VARINST_0108<br>流程變數]
-            BPM_Proc[ACT_HI_PROCINST_0108<br>流程實例]
+            BPM_Task["ACT_HI_TASKINST_0108<br>任務實例"]
+            BPM_Var["ACT_HI_VARINST_0108<br>流程變數"]
+            BPM_Proc["ACT_HI_PROCINST_0108<br>流程實例"]
         end
         
         subgraph DB_Common [APP_SRV_COMMON]
-            MDM_Emp[HREmployee<br>員工主檔]
-            MDM_Masters[MDM_*_MASTER_0202<br>五階維度主檔]
+            MDM_Emp["HREmployee<br>員工主檔"]
+            MDM_Masters["MDM_*_MASTER_0202<br>五階維度主檔"]
         end
     end
 
@@ -41,12 +41,12 @@ graph TD
     subgraph ETL [ETL Pipeline]
         direction TB
         JDBC[JDBC Bridge]
-        Sync_Inc[增量同步 Batch Sync<br>(Task/Var/Proc)]
-        Sync_Full[全量同步 Full Sync<br>(MDM/HR)]
+        Sync_Inc["增量同步 Batch Sync<br>(Task/Var/Proc)"]
+        Sync_Full["全量同步 Full Sync<br>(MDM/HR)"]
     end
 
     %% 3. Bronze Layer
-    subgraph Bronze [Bronze Layer - 原始資料<br>(ClickHouse Native)]
+    subgraph Bronze ["Bronze Layer - 原始資料<br>(ClickHouse Native)"]
         direction TB
         B_Task[bpm_act_hi_taskinst]
         B_Var[bpm_act_hi_varinst]
@@ -61,29 +61,28 @@ graph TD
         direction TB
         
         subgraph Silver_L1 [Layer 1: 基礎聚合]
-            S_Pivot[mv_varinst_pivoted<br>(EAV 轉置)]
-            S_Dim[mv_dim_mfg_five_level<br>(MDM 整合)]
+            S_Pivot["mv_varinst_pivoted<br>(EAV 轉置)"]
+            S_Dim["mv_dim_mfg_five_level<br>(MDM 整合)"]
         end
         
         subgraph Silver_L2 [Layer 2: 核心事實表]
-            S_Fact[mv_fact_task_vx<br>(Fact Task)]
+            S_Fact["mv_fact_task_vx<br>(Fact Task)"]
             note_logic["> Vx 歸屬邏輯 (Key > Mo)<br>> Status (Todo/Doing/Done)<br>> 排除 Notify/Dummy"]
             
             S_Fact -.- note_logic
-            S_Config[dim_config_users<br>(合規用戶)]
+            S_Config["dim_config_users<br>(合規用戶)"]
         end
     end
 
     %% 5. Gold Layer
-    subgraph Gold [Gold Layer - 指標聚合<br>(Refreshable MView)]
+    subgraph Gold ["Gold Layer - 指標聚合<br>(Refreshable MView)"]
         direction TB
-        G_L5[rmv_l5_task_completion<br>(L5 完成率 / Acc)<br>Refresh 1H]
-        G_L7[rmv_user_utilization<br>(L7 使用率)<br>Refresh 1H]
+        G_L5["rmv_l5_task_completion<br>(L5 完成率 / Acc)<br>Refresh 1H"]
     end
 
     %% 6. Serving Layer
     subgraph Serving [應用層]
-        Cube[Cube.js API<br>Semantic Layer]
+        Cube["Cube.js API<br>Semantic Layer"]
         Superset[Superset Dashboard]
     end
 
@@ -116,12 +115,9 @@ graph TD
     
     %% Silver to Gold
     S_Fact --> G_L5
-    S_Fact --> G_L7
-    S_Config --> G_L7
     
     %% Gold to Serving
     G_L5 --> Cube
-    G_L7 --> Cube
     Cube --> Superset
 ```
 
@@ -188,21 +184,15 @@ graph TD
 
 
 ### C. API 服務 (Cube.js)
-- **L5 週期報表 (V2)**: `cube/model/cubes/cube_l5_task_periodic_v2.js`
-    - **Logic Push-down**: 將大部分運算邏輯下沉至 SQL CTE。
-    - **Time Machine**: 支援「指定錨點日期」回溯歷史數據。
-    - **Filter Separation**: 解決 Superset 帶入微秒 Timestamp 導致的格式錯誤。
+- **L5 週期報表主模型 (Standard V2)**: `cube/model/cubes/cube_l5_task_periodic_v2.js`
+    - **核心邏輯**: 採用「V2 Time Machine」架構，支援指定任意歷史日期 (Anchor Date) 進行回溯查詢。
+    - **報表結構**: **寬表 (Wide Table)**。時間軸為橫向維度 (Month/Week/Day)，各指標 (Total/Todo/Doing/Done) 為獨立欄位。
+    - **應用場景**: **趨勢分析報表**。例如：「過去 12 個月的完成率趨勢」、「每週積壓量的變化」。
 
-- **L5 狀態轉置 (Pivot)**: `cube/model/cubes/cube_l5_task_completion.js`
-    - **Structure**: 將 Total/Todo/Doing/Done 等指標轉置為 `status_name` 維度。
-    - **Usage**: 專用於 "Status Comparison Report"，將多個指標並列於縱軸展示。
-
-- **L5 狀態轉置 V2 (Pivot V2)**: `cube/model/cubes/cube_l5_task_periodic_v2_pivot.js`
-    - **Upgrade**: 結合 V2 的 Time Machine 邏輯與 Pivot 結構。
-    - **Benefit**: 讓狀態比較報表也能支援「指定歷史日期」的回溯查詢。
-
-- **L7 人員使用率**: `cube/model/cubes/cube_user_utilization.js`
-    - **Simple Mapping**: 直接映射包含 `active_users`, `utilization_rate` 等指標的 Gold 表。
+- **L5 狀態比較模型 (Pivot V2)**: `cube/model/cubes/cube_l5_task_periodic_v2_pivot.js`
+    - **核心邏輯**: 繼承 V2 的 Time Machine 邏輯，但增加 **Unpivot (轉置)** 處理。
+    - **報表結構**: **長表 (Long Table)**。將 Total/Todo/Doing/Done 等指標轉置為統一的 `status_name` 維度。
+    - **應用場景**: **狀態結構比較**。例如：「各廠區目前的任務狀態分佈堆疊圖」、「WJ2 廠區 Todo vs Doing 的比例」。
 
 ---
 
@@ -211,8 +201,25 @@ graph TD
 下表詳列從來源到目標的完整 ETL 邏輯，包含抽取條件與轉換規則。
 
 ### A. Bronze 層 (原始資料同步)
-| MSSQL 來源表 | 抽取條件 (Extract) | 轉換邏輯 (Transform) | ClickHouse 目標表 | 同步策略 |
-| `mv_fact_task_vx` | **Refreshable (1H)** | **Snapshoting**: 每日快照聚合<br>**Rolling**: 計算 7 天 Acc 累積量 | `gold.rmv_l5_task_completion` | L5 完成率, 執行率<br>Acc 累積在途量 |
+| 來源表 (MSSQL) | 抽取條件 (Extract) | 目標表 (Bronze) | 同步策略 |
+| :--- | :--- | :--- | :--- |
+| `ACT_HI_TASKINST_0108` | `START_TIME_` (Batch) | `bpm_act_hi_taskinst` | **Idempotent Batch**: 依區間刪除後寫入，防止重複。 |
+| `ACT_HI_VARINST_0108` | `CREATE_TIME_` (Batch) | `bpm_act_hi_varinst` | 同上。 |
+| `ACT_HI_PROCINST_0108` | `START_TIME_` (Batch) | `bpm_act_hi_procinst` | 同上。 |
+| `MDM_*_MASTER_0202` | 全量 (Full) | `common_mdm_*_master` | **Truncate Load**: 每次清空重寫，確保主檔一致。 |
+| `HREmployee` | 全量 (Full) | `common_hr_employee` | 同上。 |
+
+### B. Silver 層 (轉換與清洗)
+| 來源表 (Bronze) | 轉換邏輯 (Transform) | 目標表 (Silver) | 目的 |
+| :--- | :--- | :--- | :--- |
+| `bpm_act_hi_varinst` | **Pivot (Row to Col)**:<br>將 EAV 結構轉為寬表 (Region/Plant/Factory/Line/Mo) | `mv_varinst_pivoted` | 解決 EAV 查詢效能問題，提供扁平化變數。 |
+| `common_mdm_masters` | **ClickHouse Join**:<br>串接 Line $\rightarrow$ ProdArea $\rightarrow$ Factory $\rightarrow$ Site | `mv_dim_mfg_five_level` | 建構標準五階組織維度 (Five-Level Hierarchy)。 |
+| `bpm_act_hi_taskinst`<br>+ `mv_varinst_pivoted`<br>+ `mv_dim_mfg_five_level` | **Enrichment**:<br>1. 關聯變數與維度<br>2. 計算 Vx 歸屬 (Mo > TaskDef)<br>3. 標記排除任務 (Notify/Dummy) | `mv_fact_task_vx` | **核心事實表**<br>所有後續指標計算的基礎資料源。 |
+
+### C. Gold 層 (指標聚合)
+| 來源表 (Silver) | 聚合邏輯 (Aggregations) | 目標表 (Gold) | 應用場景 |
+| :--- | :--- | :--- | :--- |
+| `mv_fact_task_vx` | **Daily Snapshot**:<br>計算每日 Todo/Doing/Done 數量<br><br>**Rolling Acc**:<br>計算 7日滾動不重複任務數 (`uniqExact`) | `rmv_l5_task_completion` | **L5 任務完成率面板**<br>提供 Daily/Weekly/Monthly 趨勢分析。 |
 
 ---
 
@@ -232,8 +239,8 @@ graph TD
 │   └─ mv_fact_task_vx 觸發更新 (依賴 L1 完備性，接近即時)
 │
 ├─ T3: Gold 層刷新 (每小時)
-│   ├─ rmv_l5_task_completion 自動刷新 (Re-calculate snapshots)
-│   └─ rmv_user_utilization 自動刷新
+│   └─ rmv_l5_task_completion 自動刷新 (Re-calculate snapshots)
+│
 │
 └─ T4: 應用層查詢可用
     └─ Superset Dashboard 讀取最新指標
@@ -311,7 +318,7 @@ graph TD
 
 ## 6. 業務指標計算邏輯 (Business Metric Calculation Logic)
 
-本專案目前核心指標分為 **L5 (任務完成率)** 與 **L7 (人員使用率)** 兩大類。下表整理了其實作邏輯。
+本專案目前核心指標為 **L5 (任務完成率)**。下表整理了其實作邏輯。
 
 ### A. 指標彙總表 (Metric Summary)
 
@@ -327,19 +334,22 @@ graph TD
 
 ---
 
+---
+
 ### B. 核心邏輯詳解 (Detailed Logic)
 
 #### 1. V1/V3 歸屬邏輯 (Vx Attribution Logic)
 實作於 `silver.mv_fact_task_vx`，決定任務屬於 V1, V2 或 V3。
 
 - **優先順序 (Priority)**:
-    1. **工單號規則 (MoNumber Rules)**: **最高優先權**。
-        - 若 `moNumber` 開頭為 `315`, `196`, `199`, `200`, `210`, `212`, `213`，強制歸類為 **V1**。
-        - 此規則優先於任務定義鍵 (TaskDefinitionKey)。
-    2. **任務定義規則 (TaskDef Rules)**:
+    1. **任務定義規則 (TaskDef Rules)**: **最高優先權**。
+        - 此規則優先於工單號規則，確保明確定義的 `V` 流程不被誤判。
         - `TaskDefinitionKey` 以 `V1` 開頭 $\rightarrow$ V1
         - `TaskDefinitionKey` 以 `V2` 開頭 $\rightarrow$ V2
         - `TaskDefinitionKey` 以 `V3` 開頭 $\rightarrow$ V3
+    2. **工單號規則 (MoNumber Rules)**: **補充判斷**。
+        - 用於補救那些 Key 未明確標示 V1/V2/V3，但依據工單特性應歸類的情況。
+        - 若 `moNumber` 開頭為 `315`, `196`, `199`, `200`, `210`, `212`, `213`，強制歸類為 **V1**。
     3. **預設**: 取 `TaskDefinitionKey` 前兩字元，若無法識別則為 `Unknown`。
 
 #### 2. L5 任務完成率 & 狀態判斷
@@ -368,7 +378,15 @@ graph TD
 - **定義**: 過去 7 天內（D-6 到 D）曾經存在過的任務去重總數。
 - **目的**: 觀察短期內的任務積壓水位，避免單日波動雜訊。
 
-#### 4. 時間維度與 ISO 週次邏輯 (Time Dimension & ISO Week)
+#### 4. ACC 計算邏輯差異 (Granularity Differences)
+因應不同時間粒度的業務洞察需求，Cube 層針對 **Daily** 與 **Week/Month** 採用不同的聚合邏輯：
+
+| 粒度 (Granularity) | 時間視窗 (Window) | 分子 (Numerator) | 分母 (Denominator) | 業務意義 |
+| :--- | :--- | :--- | :--- | :--- |
+| **Daily (日)** | **Rolling 7 Days** | 當日快照 (Snapshot) | **7天滾動總量** (Sum of D-6 to D) | **短期積壓率**<br>平滑單日波動，避免週末分母過小導致指標失真。 |
+| **Week/Month (週/月)** | **Fixed Period** | **期末狀態** (End of Period Status) | **週期總量** (Sum of Period) | **週期消化壓力**<br>觀察該週/該月結束時，還有多少 **未完成積壓 (Unfinished Backlog)** 留給下個週期。 |
+
+#### 5. 時間維度與 ISO 週次邏輯 (Time Dimension & ISO Week)
 實作於 `gold.vw_l5_dashboard_time_patterns`，確保跨年份週次計算一致。
 
 - **W-pattern 動態邏輯**:
@@ -387,11 +405,51 @@ graph TD
     - **串接路徑**: `Line (MDM_LINE_DESC) -> Prod Area -> Plant/Factory (MDM_MFG_PLANT) -> Region (MDM_MFG_SITE)`
     - **欄位修正**: 依據需求，Factory Code 取自 `MFG_PLANT_CODE`, Plant Code 取自 `FACTORY`。
 
+    **五階主檔 ER 關係圖 (Entity-Relationship Diagram)**:
+    ```mermaid
+    erDiagram
+        MDM_LINE_DESC_MASTER }|..|| MDM_PROD_AREA_MASTER : "belongs to (PROD_AREA_ID)"
+        MDM_PROD_AREA_MASTER }|..|| MDM_MFG_PLANT_MASTER : "belongs to (MFG_PLANT_ID)"
+        MDM_PROD_AREA_MASTER }|..|| MDM_FACTORY_AREA_MASTER : "belongs to (FACTORY)"
+        MDM_FACTORY_AREA_MASTER }|..|| MDM_MFG_SITE_MASTER : "belongs to (MFG_SITE)"
+
+        MDM_LINE_DESC_MASTER {
+            string LINE_NAME PK
+            string LINE_DESC
+            string PROD_AREA_ID FK
+        }
+
+        MDM_PROD_AREA_MASTER {
+            string PROD_AREA_ID PK
+            string PROD_AREA_CODE
+            string MFG_PLANT_ID FK
+            string FACTORY FK
+        }
+
+        MDM_MFG_PLANT_MASTER {
+            string MFG_PLANT_ID PK
+            string MFG_PLANT_CODE "Factory Code"
+            string FACTORY "Plant Code"
+        }
+
+        MDM_FACTORY_AREA_MASTER {
+            string FACTORY PK
+            string MFG_SITE FK "Region Code"
+        }
+
+        MDM_MFG_SITE_MASTER {
+            string MFG_SITE PK
+            string MFG_SITE_DESC "Region Name"
+        }
+    ```
+
 - **優先順序原則 (Priority Logic)**: `silver.mv_fact_task_vx`
     - 採用 **`COALESCE(VarInst, MDM, 'UNKNOWN')`** 策略。
     - **第一優先**: **流程變數 (ACT_HI_VARINST)**。若有值，直接使用。
     - **第二優先**: **MDM 主檔補齊**。僅當流程變數為空時，透過 `lineName` 關聯 MDM 補齊上層維度。
     - **關鍵依賴**: MDM 補齊機制 **完全依賴 `lineName`**。若變數中無 `lineName`，則無法透過 MDM 補齊 Region/Plant/Factory，維度將標記為 `UNKNOWN`。
+    > [!WARNING]
+    > **變數缺失風險**: 實測發現部分廠區 (如 `WJ2`, `DG3`, `NBU`, `SMT`) 的流程變數缺乏 `Region` 或 `lineName`。若原始資料未帶入這些變數，MDM 補齊將失效，導致 Gold 層維度缺失。
 
 ---
 
@@ -405,9 +463,9 @@ graph TD
 | `sql/rebuild/02_bronze_common_dims.sql` | Bronze | Common & HR 維度表 | `CREATE TABLE` |
 | `sql/rebuild/03_silver_pivot_and_hierarchy.sql` | Silver | 變數透視與五階維度表 | `MVIEW` |
 | `sql/rebuild/04_silver_fact_tasks.sql` | Silver | **L5 核心事實表** (Task Fact) | `MVIEW` |
-| `sql/rebuild/05_silver_dim_users.sql` | Silver | **L7 用戶分母表** (User Config) | `VIEW` |
+| `sql/rebuild/05_silver_dim_users.sql` | Silver | **L7 用戶分母表** (User Config) | `VIEW` (Inactive) |
 | `sql/rebuild/06_gold_kpi_task_completion.sql` | Gold | **L5 任務完成率** (KPI + Acc) | `MVIEW` (Refreshable) |
-| `sql/rebuild/07_gold_kpi_user_utilization.sql` | Gold | **L7 人員使用率** (KPI) | `MVIEW` (Refreshable) |
+| `sql/rebuild/07_gold_kpi_user_utilization.sql` | Gold | **L7 人員使用率** (KPI) | `MVIEW` (Inactive) |
 
 ---
 *Generated by Deep Codebase Scan at 2026-02-09*
