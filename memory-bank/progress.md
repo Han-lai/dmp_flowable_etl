@@ -3,6 +3,13 @@
 ## 已完成里程碑
  
 ### 2026-02-10 (今日進度)
+- ⚠️ **發現 V2 Pivot 模型 ACC Rate 計算錯誤**:
+    - **問題**: `cube_l5_task_periodic_v2_pivot.js` 在 Pivot 轉換時遺漏了 `acc_total_qty` 欄位
+    - **影響**: ACC Rate 使用錯誤的分母 (`total_qty` 而非 7天滾動總量),導致 2025-12-28 等日期出現異常大的比率
+    - **根源**: 第 161 行使用 `total_qty` 作為分母,應使用 `acc_total_qty`
+    - **狀態**: 已建立修正計劃 (`implementation_plan.md`),待明日實作
+
+### 2026-02-10 (今日進度 - 早期)
 - ✅ **Cube Model 架構優化與歸檔**:
     - **模型精簡**: 將 7 個 Cube 模型精簡至 2 個 (減少 71% 維護負擔)
     - **歸檔清單**: 移動 5 個舊版模型至 `cube/model/cubes/archive/`:
@@ -17,7 +24,31 @@
     - **文件更新**: 更新 `README_L5_DASHBOARD_CUBE.md` 說明當前架構
     - **效益**: 統一使用 V2 進階邏輯，簡化維護流程
 
-### 2026-02-09 (昨日進度)
+## 進行中的工作
+
+### 2026-02-11
+- ✅ **V2 Pivot ACC Rate 計算修復**:
+    - **修正**: 在 `cube_l5_task_periodic_v2_pivot.js` 中補回 Month/Week 的 `acc_total_qty` 欄位
+    - **驗證**: 確保 Day 粒度使用 7天滾動總量，Month/Week 使用週期總量作為分母
+    - **交付**: 提供 Python 驗證腳本 `scripts/validation/verify_gold_acc.py` 供用戶自行核對 Gold 層數據
+
+- ✅ **2026-02-11**:
+    - **Documentation**: Overhauled `PROJECT_AUDIT_REPORT.md`, clarified ACC logic, removing L7.
+    - **QAS Verification**:
+        - Confirmed **Zero** V1 tasks in `WJ2/NBU` scope (QAS Env).
+        - Confirmed V1 tasks in `DG3` belong to `NPE`, not `SMT`.
+        - Verified standard SQL for `WJ2/NBU/E5` (Count: 184) and `DG3/SMT/ST02` (Count: 3636).
+    - **Spec Compliance**:
+        - Updated Vx Attribution Priority in Spec to match Code (`Key > Mo`).
+        - Added warning about missing variables (Region/Line) in QAS data.
+    - **Feature**: Removed L7 User Utilization from active scope.
+    - **架構校正**: 重寫 `PROJECT_AUDIT_REPORT.md` 的 End-to-End Table Mapping，補齊 Bronze/Silver/Gold 完整流向。
+    - **邏輯釐清**: 明確定義 ACC Rate 在 Daily (Rolling) 與 Week/Month (Fixed Period) 的計算差異。
+    - **術語優化**: 將「期末快照」與「轉結水位」白話化為「期末狀態」與「未完成積壓」。
+    - **L7 移除**: 應要求暫時移除 L7 人員使用率相關內容，聚焦於 L5 指標。
+    - **模型簡化**: 明確標記舊版 Pivot 模型為 Deprecated，僅保留 V2 Standard 與 V2 Pivot。
+
+### 2026-02-10 (昨日進度)
 - ✅ **L5 Acc Rate 指標邏輯修正**:
     - **核心問題**: 解決週末/連假期間因當日活動量 (`total_task`) 驟減導致 Acc Rate 暴飆 (如 12/28 達 418%) 的問題。
     - **解決方案**: 

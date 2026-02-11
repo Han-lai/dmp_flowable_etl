@@ -9,6 +9,7 @@
   - 保留: `cube_l5_task_periodic_v2_pivot.js` (狀態比較報表)
   - 歸檔: 5 個舊版模型至 `cube/model/cubes/archive/`
 - **維護效益**: 減少 71% 模型數量 (7→2)，統一使用 V2 進階邏輯
+- **文件重構**: `PROJECT_AUDIT_REPORT.md` 完成三層架構對映修正，並暫時移除未啟用的 L7 指標。
 
 ### 核心功能 (2026-02-09)
 - **累積比率 (Acc Rate) 修正**: 實作「7 天滾動總量」分母邏輯，解決週末數據波動問題，達成 12/28 基準值 (7%) 對齊。
@@ -57,7 +58,13 @@ python scripts/validation/multi_scenario_verify.py
 ---
 
 ## 📝 待辦事項 (Backlog)
+
+### 已完成修正
+- **2026-02-11**: QAS Verification (WJ2/DG3 V1 checking) & Spec Compliance (Vx Priority).
+- **2026-02-11**: Documentation Overhaul (Audit Report) & L7 Removal.
+
+### 其他待辦
 - [ ] **1 筆差異排除**: 將 12/25 的 ACC 數據從 41 修正為 40 (篩選器細調)。
-- [ ] **任務二**: 驗證 **L7 人員使用率 (User Utilization)** 指標。
+- [ ] **任務二**: 驗證 **L7 人員使用率 (User Utilization)** 指標 (目前暫緩，已從文件移除)。
 - [ ] 監控背景 REFRESH 任務的效能負擔。
-- [ ] 擴展 WJ2 以外廠區的數據精度對帳。
+
