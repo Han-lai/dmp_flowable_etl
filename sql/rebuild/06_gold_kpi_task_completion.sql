@@ -10,7 +10,7 @@ SET allow_experimental_refreshable_materialized_view = 1;
 DROP TABLE IF EXISTS gold.rmv_l5_task_completion;
 
 CREATE MATERIALIZED VIEW gold.rmv_l5_task_completion
-REFRESH EVERY 1 HOUR
+REFRESH EVERY 48 HOUR
 ENGINE = ReplacingMergeTree(_refresh_time)
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR
@@ -43,15 +43,14 @@ acc_stats AS (
         ARRAY JOIN arrayDistinct(arrayFilter(d -> d IS NOT NULL, [task_start_date, task_claim_date, task_end_date])) AS snapshot_date
         WHERE is_excluded = 0
     ) AS dates
-    INNER JOIN silver.mv_fact_task_vx AS tasks ON (
-        tasks.task_start_date <= dates.snapshot_date
-        AND (tasks.task_end_date IS NULL OR tasks.task_end_date > dates.snapshot_date)
-        AND (
-            tasks.task_start_date >= subtractDays(dates.snapshot_date, 6)
-            OR (tasks.task_claim_date IS NOT NULL AND tasks.task_claim_date >= subtractDays(dates.snapshot_date, 6))
-        )
-    )
+    CROSS JOIN silver.mv_fact_task_vx AS tasks 
     WHERE tasks.is_excluded = 0
+      AND tasks.task_start_date <= dates.snapshot_date
+      AND (tasks.task_end_date IS NULL OR tasks.task_end_date > dates.snapshot_date)
+      AND (
+          tasks.task_start_date >= subtractDays(dates.snapshot_date, 6)
+          OR (tasks.task_claim_date IS NOT NULL AND tasks.task_claim_date >= subtractDays(dates.snapshot_date, 6))
+      )
     GROUP BY dates.snapshot_date, tasks.vx_type, tasks.region, tasks.plant, tasks.factory, tasks.line
 )
 SELECT

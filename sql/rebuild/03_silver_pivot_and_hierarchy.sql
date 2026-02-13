@@ -13,7 +13,7 @@ SET allow_experimental_refreshable_materialized_view = 1;
 DROP TABLE IF EXISTS silver.mv_varinst_pivoted;
 
 CREATE MATERIALIZED VIEW silver.mv_varinst_pivoted
-REFRESH EVERY 1 HOUR
+REFRESH EVERY 48 HOUR
 ENGINE = ReplacingMergeTree(_refresh_time)
 ORDER BY (PROC_INST_ID_)
 TTL toDate(_refresh_time) + INTERVAL 1 YEAR

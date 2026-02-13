@@ -41,10 +41,10 @@ SELECT
     
     -- 維度 (來自 Config Users 配置)
     u.final_vx_type as vx_type,
-    u.region_code,
-    u.plant_code,
-    u.factory_code,
-    u.line_name,
+    u.region_code as region_code,
+    u.plant_code as plant_code,
+    COALESCE(u.factory_code, '') as factory_code,
+    COALESCE(u.line_name, '') as line_name,
     
     -- 指標
     count(DISTINCT u.emp_code) as config_users,

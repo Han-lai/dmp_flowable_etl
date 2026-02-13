@@ -3,7 +3,17 @@
 ## 🎯 專案當前狀態 (2026-02-10 UPDATE)
 本專案已完成 **Cube Model 架構優化** 與 **L5 週期報表 V2 全面校正**。
 
-### 最新完成 (2026-02-10)
+### 最新完成 (2026-02-13)
+- **L5 維度修復**: 解決 Gold 層五階維度 (Region/Plant/...) 為空的問題，確認為主從 MView 刷新延遲導致，已在重建腳本中加入 `sleep` 等待機制。
+- **Cube 錯誤修正**: 修復 `cube_l5_task_periodic_v2_pivot.js` 因 `UNION` 欄位數量不一致導致的報錯。
+- **ACC Rate 決策**: 確認 L5 累積完成率 (ACC Rate) 的「7天滾動分母」邏輯保留在 Cube 層，Gold SQL 層維持每日匯總。
+- **L7 狀態**: L7 人員使用率 (`rmv_user_utilization`) 重建任務依據用戶要求暫緩 (Deferred)。
+
+### 已完成 (2026-02-12)
+- **MView 更新頻率調整**: 將 Silver/Gold 層的 Refreshable MView 更新頻率從 1 小時調整為 **48 小時**，以降低資源消耗。
+- **安全重建腳本**: 建立 `scripts/rebuild/update_mviews_no_data_loss.py`，支援在不刪除 Bronze 層原始資料的情況下重建 MView。
+
+### 已完成 (2026-02-10)
 - **Cube Model 精簡**: 歸檔 5 個舊版模型，僅保留 2 個 V2 系列模型
   - 保留: `cube_l5_task_periodic_v2.js` (週期性報表)
   - 保留: `cube_l5_task_periodic_v2_pivot.js` (狀態比較報表)

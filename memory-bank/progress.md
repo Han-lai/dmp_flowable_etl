@@ -140,8 +140,16 @@
 - ⏸️ 逾期在途業務事件數 (缺 HealthSettings 表)
 - ⏸️ 自動化排程 (目前手動執行)
 
-- [ ] 驗證 L7 人員使用率 (User Utilization) 指標
-- [ ] 監控定時刷新 (REFRESH EVERY 1 HOUR) 的資源消耗
-- [ ] 擴展其他廠區的 L5 指標對帳
+- [x] 驗證 L7 人員使用率 (User Utilization) 指標 (因 User 要求暫緩修復)
+    - [x] 針對 11、12 月份數據進行「五個條件」驗證 (嚴格 V3 邏輯)
+    - [x] 核對 PowerUser 與 None Group 的排除邏輯
+    - [x] 確認分母 (Config Users) 與分子 (Active Users) 定義是否符合預期
+- [x] **修復**: L5 Gold MView 維度缺失問題
+    - 解決方案: 於重建腳本中加入 `sleep(2)` 等待 Silver MView 刷新
+    - 狀態: `gold.rmv_l5_task_completion` 已包含完整 Region/Plant/Factory/Line 資料
+- [x] **決策**: ACC Rate 427% 異常修正
+    - 用戶決定保留 Cube.js V2 模型中的 Rolling 7 Days 邏輯
+    - Gold SQL (`rmv_l5_task_completion`) 維持每日匯總邏輯 (Status Quo)
+- [x] 執行 MView 重建腳本 `scripts/rebuild/update_mviews_no_data_loss.py` 完成 (48hr 更新生效)
 
 

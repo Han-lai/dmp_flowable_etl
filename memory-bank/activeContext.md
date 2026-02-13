@@ -7,11 +7,12 @@
 ## 🎯 當前焦點 (Current Focus)
 
 ### ⏸️ 待處理問題 (Pending)
-- (None)
+- **L7 User Utilization (Deferred)**: User requested to defer the fix for `gold.rmv_user_utilization` (currently empty/dropped) and its validation.
+- **L7 Logic Discrepancy**: Nov & Dec analysis shows need for strict "5 conditions" validation when resumed.
 
 ### 核心任務
 - **Cube Model 架構優化**: 已完成 V2 系列模型修正 (ACC Rate Logic Fix) 與文件同步。
-- **文件標準化**: 完成 `PROJECT_AUDIT_REPORT.md` 的深度校正與術語統一。
+- **L5 資料完整性**: 修復 MView 刷新競態條件 (Race Condition)，確保 Gold 層維度資料完整。
 
 ## 進行中的工作
 
@@ -29,12 +30,14 @@
 
 ### Logic Fixes
 - [x] L5 V2 Pivot Cube Model (Implemented & Documented)
-- [x] ACC Rate Calculation (Daily Rolling / Period Snapshot Logic clarified)
+- [x] ACC Rate Calculation (Cube-only Rolling Logic approved)
 - [x] Vx Attribution Priority (Updated Spec to match Code: Key > Mo)
+- [x] Gold MView Rebuild Logic (Added Sleep for Consistency)
 
 ### Verification
 - [x] QAS WJ2/NBU Verification (Zero V1 tasks found)
 - [x] QAS DG3/SMT Verification (V1 tasks exist but belong to NPE, not SMT)
+- [x] L5 Gold Dimensions Verification (Region/Plant populated)
 
 ### L5 週期性報表與視覺化 (2026-02-06)
 - **Superset 雙軸圖表整合**: 成功解決混合圖表 (Bar + Line) 的排序與雙軸顯示問題。
@@ -46,7 +49,8 @@
 - [x] 成功修復並實施 Refreshable Pivot 架構
 - [x] 完成 100+ 腳本與 12+ 文件之清理與歸檔
 - [x] L5 指標業務邏輯深度校正 (Attribution, Snapshot, Acc)
+- [x] L5 Gold 維度修復 (Race Condition Fix)
 - [x] Cube.js 週期性報表 X 軸自動排序支援
-- [ ] 任務二：驗證 L7 人員使用率 (User Utilization) 指標
+- [ ] 任務二：驗證 L7 人員使用率 (User Utilization) 指標 (暫緩)
 - [ ] 監控全自動刷新定時器的資源消耗
 ```
