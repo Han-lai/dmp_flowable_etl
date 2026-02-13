@@ -4,6 +4,8 @@
 本專案已完成 **Cube Model 架構優化** 與 **L5 週期報表 V2 全面校正**。
 
 ### 最新完成 (2026-02-13)
+- **Gold V2 Migration**: 修復 Gold View Detached 問題，遷移至 `gold.rmv_l5_task_completion_v2`。
+- **Data Backfill**: 完成 `DG3/SMT/ST02` 資料回補。
 - **L5 維度修復**: 解決 Gold 層五階維度 (Region/Plant/...) 為空的問題，確認為主從 MView 刷新延遲導致，已在重建腳本中加入 `sleep` 等待機制。
 - **Cube 錯誤修正**: 修復 `cube_l5_task_periodic_v2_pivot.js` 因 `UNION` 欄位數量不一致導致的報錯。
 - **ACC Rate 決策**: 確認 L5 累積完成率 (ACC Rate) 的「7天滾動分母」邏輯保留在 Cube 層，Gold SQL 層維持每日匯總。

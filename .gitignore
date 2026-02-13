@@ -23,3 +23,9 @@ __pycache__/
 # OS specific
 .DS_Store
 Thumbs.db
+
+# Temporary Logs and Data
+logs/
+*.log
+*.txt
+*.csv

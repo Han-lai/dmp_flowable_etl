@@ -152,6 +152,20 @@ TABLE_CONFIGS = {
         "target": "bronze.common_mdm_mfg_plant_master",
         "strategy": "full",
         "columns": "MFG_PLANT_ID, MFG_PLANT_CODE, MFG_PLANT_DESC, FACTORY, VALIDITY"
+    },
+    
+    # --- DMP Function Configuration ---
+    "dmp_func_config": {
+        "source": "APP_SRV_COMMON.dbo.DMPFunctionConfig_0202",
+        "target": "bronze.common_dmp_function_config",
+        "strategy": "full",
+        "columns": "*"
+    },
+    "dmp_func_client_mapping": {
+        "source": "APP_SRV_COMMON.dbo.DMPFunctionClientMapping_0202",
+        "target": "bronze.common_dmp_function_client_mapping",
+        "strategy": "full",
+        "columns": "*"
     }
 }
 
