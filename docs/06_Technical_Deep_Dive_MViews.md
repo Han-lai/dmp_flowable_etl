@@ -54,7 +54,7 @@ graph TD
 
 ### mv_varinst_pivoted
 
-**更新機制**: **REFRESH EVERY 1 HOUR** (解決非同步資料碎片化問題)
+**更新機制**: **REFRESH EVERY 48 HOUR** (解決非同步資料碎片化問題)
 
 **SQL 位置**: `sql/rebuild/03_silver_pivot_and_hierarchy.sql`
 
@@ -166,7 +166,7 @@ SELECT ...
 
 ```sql
 CREATE MATERIALIZED VIEW gold.rmv_l5_task_completion
-REFRESH EVERY 1 HOUR  -- 每小時全量刷新
+REFRESH EVERY 48 HOUR  -- 每48小時全量刷新
 AS
 SELECT ...
 FROM silver.mv_fact_task_vx FINAL

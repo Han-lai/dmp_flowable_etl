@@ -35,7 +35,8 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 ### 1. 為什麼用 Refreshable MView 而非原生增量 MView？
 - ClickHouse 原生 MView 只在主表 INSERT 時觸發
 - JOIN 表更新時不會觸發 MView 刷新
-- 使用 `REFRESH EVERY 1 HOUR` 確保資料一致性
+- 使用 `REFRESH EVERY 48 HOUR` 確保資料一致性 (2026-02-12 調整)
+- **注意**: 多層級 MView (Silver -> Gold) 刷新存在延遲，執行全量重建腳本時需加入等待緩衝 (`sleep`) 以避免讀取空資料。
 
 ### 2. 資料保留策略
 - 使用 TTL 設定：`TTL snapshot_date + INTERVAL 1 YEAR`

@@ -7,7 +7,8 @@
 - **維度**: Plant, Factory, Line, VxType
 - **指標**: 任務總數 (Total), 待辦 (Todo), 進行中 (Doing), 已完成 (Done)
 - **指標**: 任務總數 (Total), 待辦 (Todo), 進行中 (Doing), 已完成 (Done)
-- **邏輯**: 排除 Bypass=Y, 排除 E/C 開頭任務, 排除 Q/R 工單, **ACC 7天滾動計算** (解決週末分母過小問題)
+- **邏輯**: 排除 Bypass=Y, 排除 E/C 開頭任務, 排除 Q/R 工單
+- **ACC 邏輯**: **Cube 層**採用 7天滾動計算 (解決週末分母過小問題)；**SQL 層**維持每日快照。
 
 ## Cube 模型架構 (V2)
 - **標準版 (V2 Standard)**: `cube_l5_task_periodic_v2.js`
