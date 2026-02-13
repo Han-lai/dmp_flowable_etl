@@ -36,6 +36,11 @@
 - ProcessRoleUserMapping_0202 → `common_process_role_user_mapping` ✅
 - UserGroup_0202 → `common_user_group` ✅
 
+
+### DMP 功能配置表 (用於 L7 指標計算)
+- DMPFunctionConfig_0202 → `bronze.common_dmp_function_config` ✅
+- DMPFunctionClientMapping_0202 → `bronze.common_dmp_function_client_mapping` ✅
+
 ### MDM 主檔表
 - MDM_LINE_DESC_MASTER_0202 → `common_mdm_line_desc_master` ✅
 - MDM_PROD_AREA_MASTER_0202 → `common_mdm_prod_area_master` ✅
@@ -43,11 +48,7 @@
 - MDM_MFG_SITE_MASTER_0202 → `common_mdm_mfg_site_master` ✅
 - MDM_MFG_PLANT_MASTER_0202 → `common_mdm_mfg_plant_master` ✅
 
-## ❌ 缺少的表 (11 張)
-
-### DMP 功能配置表 (2 張)
-1. **DMPFunctionClientMapping_0202** - DMP 功能客戶端對應
-2. **DMPFunctionConfig_0202** - DMP 功能配置
+## ❌ 缺少的表 (9 張)
 
 ### MDM 組織主檔表 (6 張)
 3. **MDM_BG_ORG_TYPE_MASTER_0202** - BG 組織類型主檔
@@ -67,8 +68,8 @@
 ## 📊 統計摘要
 
 - **MSSQL 來源表總數**: 22 張 (去重後)
-- **已配置**: 11 張 (50%)
-- **缺少**: 11 張 (50%)
+- **已配置**: 13 張 (59%)
+- **缺少**: 9 張 (41%)
 
 ## 💡 建議
 
@@ -85,6 +86,3 @@
 - `ProcessRoleGroup_0202`
 - `ProcessRoleGroupMapping_0202`
 
-### 優先級 4 (功能配置)
-- `DMPFunctionConfig_0202`
-- `DMPFunctionClientMapping_0202`

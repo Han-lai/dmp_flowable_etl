@@ -14,7 +14,7 @@ cube(`L5TaskPeriodicV2Pivot`, {
             SELECT 
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
-            FROM gold.rmv_l5_task_completion
+            FROM gold.rmv_l5_task_completion_v2
             WHERE (
                 ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.snapshotDate.filter('toString(snapshot_date)')}
                 OR ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
@@ -37,7 +37,7 @@ cube(`L5TaskPeriodicV2Pivot`, {
         ),
         base AS (
             SELECT *
-            FROM gold.rmv_l5_task_completion
+            FROM gold.rmv_l5_task_completion_v2
             CROSS JOIN calc_anchor
             WHERE snapshot_date >= toStartOfMonth(anchor_dt) - INTERVAL 1 MONTH
               AND snapshot_date <= toLastDayOfMonth(anchor_dt) + INTERVAL 1 MONTH

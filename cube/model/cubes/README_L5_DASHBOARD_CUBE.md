@@ -1,18 +1,18 @@
 # L5 Cube Model 使用說明
 
-> **最後更新**: 2026-02-10  
+> **最後更新**: 2026-02-13  
 > **狀態**: 已歸檔舊版模型，保留 V2 系列
 
 ## 📦 目前使用中的 Cube Models (2)
 
 ### 1. `cube_l5_task_periodic_v2.js`
 - **用途**: L5 週期性報表 (V2 進階邏輯)
-- **資料來源**: `gold.rmv_l5_task_completion`
+- **資料來源**: `gold.rmv_l5_task_completion_v2`
 - **特色**: 支援 7 天滾動分母、動態時間模式 (D0/W-pattern)
 
 ### 2. `cube_l5_task_periodic_v2_pivot.js`
 - **用途**: L5 狀態比較報表 (Pivot 展開)
-- **資料來源**: `gold.rmv_l5_task_completion`
+- **資料來源**: `gold.rmv_l5_task_completion_v2`
 - **特色**: 結合 V2 邏輯與 Pivot 結構，支援歷史狀態查詢
 
 ## 🗄️ 已歸檔的 Cube Models (5)
@@ -69,7 +69,7 @@
 
 ## ⚠️ 注意事項
 
-1. **資料來源**: 直接使用現有的 `gold.DAILY_L5_TASK_COMPLETION_SNAPSHOT_MV`
+1. **資料來源**: 直接使用現有的 `gold.rmv_l5_task_completion_v2`
 2. **時間層級限制**: 目前只支援 Day 層級，Week/Month 需要額外聚合
 3. **Cube 重啟**: 修改後需要重啟 Cube.js 服務
 4. **維度計算**: flow_team 和 vx_scope 為計算維度，基於現有 vx_type 欄位

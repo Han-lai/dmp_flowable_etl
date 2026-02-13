@@ -22,6 +22,11 @@
 - **文件更新**: 更新 README 說明當前使用的模型與歸檔狀態
 - **效益**: 減少 71% 維護負擔，統一使用 V2 進階邏輯
 
+### Gold Layer Recovery (2026-02-13)
+- **View Migration**: `gold.rmv_l5_task_completion` -> `gold.rmv_l5_task_completion_v2`.
+- **Data Gap Fixed**: Backfilled `DG3/SMT/ST02` data (176 rows).
+- **Cube Synced**: All active models updated to V2.
+
 ### L5 累積指標修正 (2026-02-09)
 - **7天滾動分母實作**: 徹底解決週末 Acc Rate 暴飆問題，達成日、週、月指標邏輯的一致。
 - **V2 模型魯棒性增強**: 通過 Triple-OR 篩選邏輯，解決了 Superset 不同模式（Dashboard vs Chart）下的時間格式轉換錯誤。

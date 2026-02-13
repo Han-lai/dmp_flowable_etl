@@ -208,6 +208,8 @@ graph TD
 | `ACT_HI_PROCINST_0108` | `START_TIME_` (Batch) | `bpm_act_hi_procinst` | 同上。 |
 | `MDM_*_MASTER_0202` | 全量 (Full) | `common_mdm_*_master` | **Truncate Load**: 每次清空重寫，確保主檔一致。 |
 | `HREmployee` | 全量 (Full) | `common_hr_employee` | 同上。 |
+| `DMPFunctionConfig` | 全量 (Full) | `common_dmp_function_config` | **[NEW] L7 指標用**: DMP 功能配置表。 |
+| `DMPFunctionClientMapping` | 全量 (Full) | `common_dmp_function_client_mapping` | **[NEW] L7 指標用**: DMP 功能對應表。 |
 
 ### B. Silver 層 (轉換與清洗)
 | 來源表 (Bronze) | 轉換邏輯 (Transform) | 目標表 (Silver) | 目的 |
@@ -359,6 +361,11 @@ graph TD
     - 只要 `START_TIME_`, `CLAIM_TIME_`, `END_TIME_` 任一時間點落在查詢區間內，該任務即被納入。
     - 確保所有在區間內有「活動」的任務都被統計。
 
+- **快照日期機制 (Snapshot Date Mechanism)**:
+    - `snapshot_date` 並非原始欄位，而是透過 ClickHouse `ARRAY JOIN` 語法動態生成。
+    - **邏輯**: `ARRAY JOIN arrayDistinct([Start, Claim, End])`
+    - **去重**: 若 Start/Claim/End 發生在同一天，`arrayDistinct` 會將其合併為單一日期，因此**不會重複計算**。當天狀態將依據優先權判定 (End > Claim > Start)。
+
 - **狀態流轉邏輯 (Status Logic)**:
     基於每日快照日期 (`snapshot_date`) 判斷當時狀態：
     - **Done**: `snapshot_date >= task_end_date`
@@ -404,6 +411,7 @@ graph TD
     - **來源**: 整合 `MDM_LINE_DESC`, `MDM_PROD_AREA` 等主檔。
     - **串接路徑**: `Line (MDM_LINE_DESC) -> Prod Area -> Plant/Factory (MDM_MFG_PLANT) -> Region (MDM_MFG_SITE)`
     - **欄位修正**: 依據需求，Factory Code 取自 `MFG_PLANT_CODE`, Plant Code 取自 `FACTORY`。
+    - **特別說明**: Plant 與 Factory **來自同一張表 (`common_mdm_mfg_plant_master`)**，透過 `MFG_PLANT_ID` 關聯。雖然命名為 `FACTORY` 的欄位被對應到 Plant，而 `MFG_PLANT_CODE` 被對應到 Factory，但它們本質上是同一筆主檔資料的不同屬性。
 
     **五階主檔 ER 關係圖 (Entity-Relationship Diagram)**:
     ```mermaid

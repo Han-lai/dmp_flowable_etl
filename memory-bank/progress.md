@@ -2,7 +2,16 @@
 
 ## 已完成里程碑
  
-### 2026-02-10 (今日進度)
+### 2026-02-13 (今日進度 - Gold 修復)
+- ✅ **Gold 層視圖修復 (V2 Migration)**:
+    - **問題**: 原本的 `gold.rmv_l5_task_completion` 視圖因 Metadata 錯亂導致 detached 且無法恢復 (需 Experimental Feature)。
+    - **解決**: 建立新視圖 `gold.rmv_l5_task_completion_v2`，並成功遷移。
+    - **回補**: 針對 `DG3/SMT/ST02` 執行手動回補 (Backfill)，寫入 176 筆聚合資料，解決報表空值問題。
+- ✅ **Cube.js 模型同步更新**:
+    - **修正**: 將 `cube_l5_task_periodic_v2.js` 與 `cube_l5_task_periodic_v2_pivot.js` 資料來源指向 V2 視圖。
+    - **文檔**: 更新 `README_L5_DASHBOARD_CUBE.md` 反映 V2 架構。
+
+### 2026-02-10 (此前進度)
 - ⚠️ **發現 V2 Pivot 模型 ACC Rate 計算錯誤**:
     - **問題**: `cube_l5_task_periodic_v2_pivot.js` 在 Pivot 轉換時遺漏了 `acc_total_qty` 欄位
     - **影響**: ACC Rate 使用錯誤的分母 (`total_qty` 而非 7天滾動總量),導致 2025-12-28 等日期出現異常大的比率
