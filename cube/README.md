@@ -1,322 +1,97 @@
-# Cube.js 整合說明
+# Cube.js 語意層
+
+> **最後更新**: 2026-02-24  
+> **資料來源**: `gold.rmv_l5_task_completion_v2`
 
 ## 架構
 
 ```
-ClickHouse (Silver RMV)
+ClickHouse (Gold Layer)
         │
         ▼
     Cube.js
     ├── REST API (port 4002)
     ├── Playground (port 4003)
-    └── Model (3 個 Cube)
+    └── Model (2 個 Active Cube)
         │
         ▼
-    前端 Dashboard
+    Superset Dashboard
 ```
 
 ## 目錄結構
 
 ```
 cube/
-├── model/                    # 數據模型（官方標準）
-│   ├── cubes/               # Cube 定義
-│   │   ├── cube_proc_task_node.js         # 任務節點 (Silver)
-│   │   ├── cube_biz_event_info.js         # 業務事件 (Silver)
-│   │   ├── cube_proc_inst_node.js         # 流程實例 (Silver)
-│   │   ├── cube_daily_metrics_snapshot.js # 每日指標快照 (Gold)
-│   │   └── cube_daily_biz_event_snapshot.js # 每日業務事件快照 (Gold)
-│   └── views/               # View 定義（對外 API 層）
-│       └── view_historical_trends.js      # 歷史趨勢查詢介面
-├── docker-compose.yml
-└── README.md
+├── docker-compose.yml           # Cube.js 部署設定
+├── .env.example                 # 環境變數範本
+├── README.md                    # 本檔案
+└── model/
+    ├── cubes/
+    │   ├── cube_l5_task_periodic_v2.js        # ✅ L5 週期報表 (Active)
+    │   ├── cube_l5_task_periodic_v2_pivot.js   # ✅ L5 狀態比較 (Active)
+    │   ├── README_L5_DASHBOARD_CUBE.md        # 模型說明
+    │   └── archive/                            # 舊版模型 (5 個, 已棄用)
+    └── views/
+        └── view_historical_trends.js           # 歷史趨勢 View
 ```
 
-**命名規範：**
-- Cube 定義：`cube_` 前綴
-- View 定義：`view_` 前綴
-- 複合指標：`metric_` 前綴
-- 基礎定義用 `.yml`，複雜邏輯用 `.js`
+## Active Models
 
-**資料層級：**
-- Silver Cube：即時資料，來自 `silver.RMV_*`
-- Gold Cube：歷史快照，來自 `gold.DAILY_*`
-- View：對外 API 介面，組合多個 Cube
+### 1. `cube_l5_task_periodic_v2.js` — 週期性報表
+- **資料來源**: `gold.rmv_l5_task_completion_v2`
+- **功能**: L5 任務完成率週期報表
+- **特色**:
+  - 7 天滾動分母（避免週末波動）
+  - Triple-OR 時間篩選（相容 Dashboard / Chart 不同格式）
+  - 動態時間模式（D0 / W-pattern / Month）
+
+### 2. `cube_l5_task_periodic_v2_pivot.js` — 狀態比較報表
+- **資料來源**: `gold.rmv_l5_task_completion_v2`
+- **功能**: L5 任務狀態比較（Pivot 展開）
+- **特色**:
+  - 結合 V2 進階邏輯與 Pivot 結構
+  - 支援 6 種狀態橫向比較
+  - 支援歷史時點回溯查詢
 
 ## 快速開始
 
-### 1. 啟動 Cube.js
+### 啟動
 
-```bash
+```powershell
 cd cube
-docker-compose up -d
+docker compose up -d
 ```
 
-### 2. 存取 Playground
+### 存取 Playground
 
-開啟瀏覽器：http://localhost:4003
+瀏覽器開啟：http://localhost:4003
 
-### 3. 測試 API
+### API 測試
 
 ```bash
-# 查詢在途任務數
 curl http://localhost:4002/cubejs-api/v1/load \
   -H "Authorization: dmp_flowable_cube_secret_key_2026" \
-  -G --data-urlencode 'query={"measures":["ProcTaskNode.inProgressTaskCount"]}'
+  -G --data-urlencode 'query={"measures":["L5TaskPeriodicV2.totalTask"]}'
 ```
 
-## Cube Schema
+## 環境設定
 
-### ProcTaskNode (任務節點)
-
-**來源：** `silver.RMV_HI_PROC_TASK_NODE`
-
-**維度：**
-- taskId, procInstId, businessKey
-- taskName, taskStatus, assignee, deptName
-- factory, plant, lineName, region
-- startTime, endTime, claimTime
-
-**指標：**
-- inProgressTaskCount - 在途任務數
-- todoCount, doingCount, doneCount, doneAutoCount, cancelledCount
-- autoCompleteRate - 自動完成率 (%)
-- avgWorkDuration - 平均任務處理時長 (秒)
-
-### BizEventInfo (業務事件)
-
-**來源：** `silver.RMV_HI_BIZ_EVENT_INFO`
-
-**維度：**
-- businessKey, firstProcDefName
-- factory, plant, lineName, region
-- firstStartTime, finalEndTime
-
-**指標：**
-- inProgressEventCount - 在途業務事件數
-- completedEventCount - 已完成業務事件數
-- avgTotalDuration - 平均業務事件總歷時 (秒)
-
-### ProcInstNode (流程實例)
-
-**來源：** `silver.RMV_HI_PROCINST_NODE`
-
-**維度：**
-- procInstId, procDefName, businessKey
-- depth, superId
-- factory, plant, lineName, region
-- procStatus, startTime, endTime
-
-**指標：**
-- inProgressCount - 在途流程數
-- completedCount - 已完成流程數
-- terminatedCount - 終止流程數
-
-## 指標對應
-
-| 指標 | Cube | Measure |
-|------|------|---------|
-| 在途業務事件總數 | BizEventInfo | inProgressEventCount |
-| 在途任務總數 | ProcTaskNode | inProgressTaskCount |
-| 事件自動完成率 | ProcTaskNode | autoCompleteRate |
-| TASK_STATUS 分布 | ProcTaskNode | todoCount, doingCount, ... |
-| 在途任務數-依廠區 | ProcTaskNode | inProgressTaskCount + plant 維度 |
-| 在途任務數-依部門 | ProcTaskNode | inProgressTaskCount + deptName 維度 |
-| 在途任務數-依人員 | ProcTaskNode | inProgressTaskCount + assignee 維度 |
-| 平均業務事件總歷時 | BizEventInfo | avgTotalDuration |
-| 平均任務處理時長 | ProcTaskNode | avgWorkDuration |
-| 在途流程健康度快照 | BizEventInfo | inProgressEventCount + firstProcDefName 維度 |
-| 依流程的自動完成率 | ProcTaskNode | autoCompleteRate + procDefName 維度 |
-
-## 查詢範例
-
-### 在途任務數 - 依廠區
-
-```json
-{
-  "measures": ["ProcTaskNode.inProgressTaskCount"],
-  "dimensions": ["ProcTaskNode.plant"],
-  "order": { "ProcTaskNode.inProgressTaskCount": "desc" },
-  "limit": 10
-}
-```
-
-### 自動完成率 - 依流程
-
-```json
-{
-  "measures": ["ProcTaskNode.autoCompleteRate", "ProcTaskNode.doneTotalForRate"],
-  "dimensions": ["ProcTaskNode.procDefName"],
-  "filters": [
-    { "member": "ProcTaskNode.doneTotalForRate", "operator": "gte", "values": ["10"] }
-  ],
-  "order": { "ProcTaskNode.doneTotalForRate": "desc" },
-  "limit": 10
-}
-```
-
-### 歷史趨勢 - 每日在途任務數
-
-```json
-{
-  "measures": ["ProcTaskNode.inProgressTaskCount"],
-  "timeDimensions": [
-    {
-      "dimension": "ProcTaskNode.startTime",
-      "granularity": "day",
-      "dateRange": "last 30 days"
-    }
-  ]
-}
-```
-
----
-
-## Gold 層 Cube（歷史趨勢）
-
-### DailyMetricsSnapshot (每日指標快照)
-
-**來源：** `gold.DAILY_METRICS_SNAPSHOT`
-
-**用途：** 查詢歷史趨勢、指標回溯
-
-**維度：**
-- snapshotDate - 快照日期
-- factory, plant, procDefName
-
-**指標：**
-- inProgressTaskCount - 在途任務數
-- autoCompleteRate - 自動完成率 (%)
-- avgWorkDurationSec - 平均處理時長 (秒)
-- inProgressProcCount - 在途流程數
-- completedProcCount - 已完成流程數
-
-**查詢範例 - 本週趨勢：**
-```json
-{
-  "measures": ["DailyMetricsSnapshot.inProgressTaskCount"],
-  "timeDimensions": [
-    {
-      "dimension": "DailyMetricsSnapshot.snapshotDate",
-      "granularity": "day",
-      "dateRange": "last 7 days"
-    }
-  ]
-}
-```
-
-**查詢範例 - 依工廠的歷史趨勢：**
-```json
-{
-  "measures": ["DailyMetricsSnapshot.inProgressTaskCount"],
-  "dimensions": ["DailyMetricsSnapshot.factory"],
-  "timeDimensions": [
-    {
-      "dimension": "DailyMetricsSnapshot.snapshotDate",
-      "granularity": "day",
-      "dateRange": "last 30 days"
-    }
-  ]
-}
-```
-
-### DailyBizEventSnapshot (每日業務事件快照)
-
-**來源：** `gold.DAILY_BIZ_EVENT_SNAPSHOT`
-
-**用途：** 查詢業務事件歷史趨勢
-
-**維度：**
-- snapshotDate - 快照日期
-- firstProcDefName - 首個流程類型
-
-**指標：**
-- inProgressEventCount - 在途業務事件數
-- completedEventCount - 已完成業務事件數
-- avgEventDurationHour - 平均業務事件歷時 (小時)
-
-**⚠️ 注意：** 此 Cube 沒有 factory/plant 維度
-
-**查詢範例：**
-```json
-{
-  "measures": ["DailyBizEventSnapshot.inProgressEventCount"],
-  "timeDimensions": [
-    {
-      "dimension": "DailyBizEventSnapshot.snapshotDate",
-      "granularity": "day",
-      "dateRange": "last 30 days"
-    }
-  ]
-}
-```
-
----
-
-## Views（對外 API 介面）
-
-### HistoricalTrends (歷史趨勢)
-
-**用途：** 簡化的歷史趨勢查詢介面
-
-**來源 Cube：** DailyMetricsSnapshot
-
-**維度：**
-- snapshotDate, factory, plant, procDefName
-
-**指標：**
-- inProgressTaskCount, todoCount, doingCount
-- autoCompleteRate, doneAutoCount, doneTotalCount
-- avgWorkDurationSec, avgWorkDurationMin
-- inProgressProcCount, completedProcCount
-
-**查詢範例：**
-```json
-{
-  "measures": ["HistoricalTrends.inProgressTaskCount"],
-  "dimensions": ["HistoricalTrends.factory"],
-  "timeDimensions": [
-    {
-      "dimension": "HistoricalTrends.snapshotDate",
-      "granularity": "day",
-      "dateRange": "last 30 days"
-    }
-  ]
-}
-```
-
-### HistoricalBizEvents (歷史業務事件趨勢)
-
-**用途：** 業務事件歷史趨勢查詢介面
-
-**來源 Cube：** DailyBizEventSnapshot
-
-**維度：**
-- snapshotDate, firstProcDefName
-
-**指標：**
-- inProgressEventCount, completedEventCount
-- avgEventDurationSec, avgEventDurationHour
-
-**⚠️ 注意：** 此 View 沒有 factory/plant 維度
-
-**查詢範例：**
-```json
-{
-  "measures": ["HistoricalBizEvents.inProgressEventCount"],
-  "timeDimensions": [
-    {
-      "dimension": "HistoricalBizEvents.snapshotDate",
-      "granularity": "day",
-      "dateRange": "last 30 days"
-    }
-  ]
-}
-```
+| 變數 | 預設值 | 說明 |
+|------|--------|------|
+| `CUBEJS_DB_TYPE` | `clickhouse` | 資料庫類型 |
+| `CUBEJS_DB_HOST` | `10.136.218.207` | ClickHouse 主機 |
+| `CUBEJS_DB_PORT` | `8121` | ClickHouse HTTP Port |
+| `CUBEJS_DB_USER` | `default` | 使用者 |
+| `CUBEJS_DB_NAME` | `silver` | 預設 DB |
+| `CUBEJS_API_SECRET` | (見 .env.example) | API 金鑰（生產環境請更換） |
 
 ## 注意事項
 
-1. **ClickHouse 連線**：確保 ClickHouse 允許來自 Docker 容器的連線
-2. **API Secret**：生產環境請更換 `CUBEJS_API_SECRET`
-3. **Pre-aggregations**：首次查詢可能較慢，因為需要建立預聚合
-4. **時區**：Cube.js 預設使用 UTC，如需調整請設定 `CUBEJS_SCHEDULED_REFRESH_TIMEZONE`
+1. **ClickHouse 連線**: 確保 ClickHouse 允許來自 Docker 容器的連線
+2. **API Secret**: 生產環境請更換 `CUBEJS_API_SECRET`
+3. **Cube 重啟**: 修改 Model 後需要重啟 Cube.js 服務
+4. **時區**: 預設使用 UTC，如需調整請設定 `CUBEJS_SCHEDULED_REFRESH_TIMEZONE`
+
+## 詳細模型說明
+
+請參閱 [README_L5_DASHBOARD_CUBE.md](model/cubes/README_L5_DASHBOARD_CUBE.md)。
