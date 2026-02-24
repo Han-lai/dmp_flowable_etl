@@ -42,30 +42,30 @@ python scripts/rebuild/sync_batches_consolidated.py
 
 ### 2. 重建管線 (Silver / Gold)
 ```powershell
-# 重建 Silver Pivot (Refreshable)
-python scripts/rebuild/run_silver_pivot_sql.py
+# 完整重建 Bronze → Silver → Gold
+python scripts/rebuild/execute_rebuild.py
 
-# 重建 Silver Fact (Multi-Time Dimension)
-python scripts/rebuild/run_silver_fact_sql.py
-
-# 重建 Gold KPI
-python scripts/rebuild/run_gold_kpi_sql.py
+# 不中斷更新 MView
+python scripts/rebuild/update_mviews_no_data_loss.py
 ```
 
-### 3. 自動化驗證
+### 3. 驗證 (scripts/validation/ 下各子目錄)
 ```powershell
-# 執行全場景數據對稱比對
-python scripts/validation/multi_scenario_verify.py
+# 快速統計
+python scripts/validation/data_explore/quick_stats.py
 ```
 
 ---
 
 ## 📂 核心目錄結構
-- `sql/rebuild/`: 包含 v2.1 穩定版的 SQL 建表文檔。
+- `sql/rebuild/`: Bronze → Silver → Gold 完整管線 SQL。
 - `docs/`: 核心技術手冊 (01~06 序號排列)。
 - `scripts/`:
-  - `rebuild/`: 同步與部署腳本。
-  - `validation/`: 正式驗證工具。
+  - `rebuild/`: 生產同步與重建腳本 (7 個)。
+  - `setup/`: 一次性設定腳本。
+  - `validation/`: 驗證腳本 (分 7 個子類：date_audit, infra_check, data_explore, logic_verify, gold_layer, l5_l7, debug)。
+- `docker/`: ClickHouse + JDBC Bridge 部署設定。
+- `cube/`: Cube.js 語意層模型。
 
 ---
 

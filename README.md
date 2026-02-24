@@ -31,8 +31,8 @@ python scripts/rebuild/sync_unified.py
 ### 4. 資料驗證 (Validation)
 驗證 ClickHouse 數據與 MSSQL 來源的一致性：
 ```bash
-# 執行多場景驗證腳本
-python scripts/validation/multi_scenario_verify.py
+# 快速統計檢查
+python scripts/validation/data_explore/quick_stats.py
 ```
 
 ---
@@ -43,7 +43,7 @@ python scripts/validation/multi_scenario_verify.py
 | :--- | :--- |
 | **[PROJECT_AUDIT_REPORT.md](PROJECT_AUDIT_REPORT.md)** | **[核心]** 專案全審核報告，包含架構圖、業務邏輯與 SQL 清單。 |
 | **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** | **[目錄]** 專案目錄結構說明與檔案用途索引。 |
-| **[GETTING_STARTED.md](GETTING_STARTED.md)** | **[新手]** 詳細的環境建置與部署指南。 |
+| **[docs/02_E2E_Implementation_Guide.md](docs/02_E2E_Implementation_Guide.md)** | **[新手]** 端到端建置指南，包含環境準備與部署流程。 |
 
 ---
 
@@ -59,13 +59,18 @@ python scripts/validation/multi_scenario_verify.py
 ```
 dmp_flowable/
 ├── PROJECT_AUDIT_REPORT.md     # 核心架構文件
-├── scripts/
-│   ├── rebuild/                # 核心腳本: sync_unified.py, execute_rebuild.py
-│   └── validation/             # 驗證腳本: multi_scenario_verify.py
+├── config/environments/        # 環境設定 (dev/prod)
+├── docker/                     # ClickHouse + JDBC Bridge 部署
 ├── sql/
-│   └── rebuild/                # 核心 SQL: 01_bronze ~ 07_gold
-├── docs/                       # 技術文檔庫 (01~06)
-└── config/                     # 系統設定檔
+│   ├── setup/                  # 初始化 SQL
+│   └── rebuild/                # Bronze → Silver → Gold SQL
+├── scripts/
+│   ├── rebuild/                # 🔄 生產同步腳本
+│   ├── setup/                  # 🔧 一次性設定
+│   └── validation/             # 🔍 驗證腳本 (7 個子類)
+├── cube/                       # Cube.js 語意層
+├── docs/                       # 技術文檔 (01~06)
+└── logs/                       # 輸出與日誌
 ```
 
 詳細結構請參閱 `PROJECT_STRUCTURE.md`。
