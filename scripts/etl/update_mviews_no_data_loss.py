@@ -81,7 +81,7 @@ def main():
     print("="*60)
     
     # 取得 SQL 目錄
-    sql_dir = Path(r'D:\kiro\dmp_flowable\sql\rebuild')
+    sql_dir = Path(r'D:\kiro\dmp_flowable\sql\etl')
     
     if not sql_dir.exists():
         print(f"錯誤: SQL 目錄不存在: {sql_dir}")

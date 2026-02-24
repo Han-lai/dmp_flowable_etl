@@ -150,11 +150,11 @@
 
 | 檔案 | 順序 | 說明 |
 |------|------|------|
-| `sql/rebuild/01_bronze_add_ttl.sql` | 1 | Bronze 層 TTL |
-| `sql/rebuild/02_bronze_common_dims.sql` | 2 | Bronze 維度表同步 |
-| `sql/rebuild/03_silver_pivot_and_hierarchy.sql` | 3 | Silver L1 (透視表 + 維度) |
-| `sql/rebuild/04_silver_fact_tasks.sql` | 4 | Silver L2 (核心事實表) |
-| `sql/rebuild/06_gold_kpi_task_completion.sql` | 5 | Gold 層 (Refreshable) |
+| `sql/etl/01_bronze_add_ttl.sql` | 1 | Bronze 層 TTL |
+| `sql/etl/02_bronze_common_dims.sql` | 2 | Bronze 維度表同步 |
+| `sql/etl/03_silver_pivot_and_hierarchy.sql` | 3 | Silver L1 (透視表 + 維度) |
+| `sql/etl/04_silver_fact_tasks.sql` | 4 | Silver L2 (核心事實表) |
+| `sql/etl/06_gold_kpi_task_completion.sql` | 5 | Gold 層 (Refreshable) |
 
 
 ---

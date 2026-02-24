@@ -13,7 +13,7 @@
 
 ### 已完成 (2026-02-12)
 - **MView 更新頻率調整**: 將 Silver/Gold 層的 Refreshable MView 更新頻率從 1 小時調整為 **48 小時**，以降低資源消耗。
-- **安全重建腳本**: 建立 `scripts/rebuild/update_mviews_no_data_loss.py`，支援在不刪除 Bronze 層原始資料的情況下重建 MView。
+- **安全重建腳本**: 建立 `scripts/etl/update_mviews_no_data_loss.py`，支援在不刪除 Bronze 層原始資料的情況下重建 MView。
 
 ### 已完成 (2026-02-10)
 - **Cube Model 精簡**: 歸檔 5 個舊版模型，僅保留 2 個 V2 系列模型
@@ -37,16 +37,16 @@
 ### 1. 數據同步 (Bronze)
 ```powershell
 # 同步大表與維度表
-python scripts/rebuild/sync_batches_consolidated.py
+python scripts/etl/sync_batches_consolidated.py
 ```
 
 ### 2. 重建管線 (Silver / Gold)
 ```powershell
 # 完整重建 Bronze → Silver → Gold
-python scripts/rebuild/execute_rebuild.py
+python scripts/etl/execute_etl.py
 
 # 不中斷更新 MView
-python scripts/rebuild/update_mviews_no_data_loss.py
+python scripts/etl/update_mviews_no_data_loss.py
 ```
 
 ### 3. 驗證 (scripts/validation/ 下各子目錄)
@@ -58,10 +58,10 @@ python scripts/validation/data_explore/quick_stats.py
 ---
 
 ## 📂 核心目錄結構
-- `sql/rebuild/`: Bronze → Silver → Gold 完整管線 SQL。
+- `sql/etl/`: Bronze → Silver → Gold 完整管線 SQL。
 - `docs/`: 核心技術手冊 (01~06 序號排列)。
 - `scripts/`:
-  - `rebuild/`: 生產同步與重建腳本 (7 個)。
+  - `etl/`: 生產同步與重建腳本 (7 個)。
   - `setup/`: 一次性設定腳本。
   - `validation/`: 驗證腳本 (分 7 個子類：date_audit, infra_check, data_explore, logic_verify, gold_layer, l5_l7, debug)。
 - `docker/`: ClickHouse + JDBC Bridge 部署設定。

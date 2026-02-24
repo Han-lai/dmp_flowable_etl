@@ -38,7 +38,7 @@ graph TD
 ### 資料流細節
 
 #### Source → Ingest
-- **工具**: Python (`scripts/rebuild/sync_unified.py`) (整合 Flowable, HR, MDM)
+- **工具**: Python (`scripts/etl/sync_unified.py`) (整合 Flowable, HR, MDM)
 - **機制**: 
     - 大表 (`ACT_HI_TASKINST`, `ACT_HI_VARINST`) 採 **增量同步 (Batch)**，依 `START_TIME_`/`CREATE_TIME_` 切分，支援中斷續傳 (Watermark)。
     - 小表 (`MDM_*`, `HR_Employee`, `ACT_RE_PROCDEF`) 採 **全量同步 (Full Sync/Truncate-Load)**。
@@ -142,16 +142,16 @@ graph TD
 
 | 任務名稱 | 執行指令 | 頻率 | 失敗策略 | 重跑 |
 |:---:|:---|:---:|:---:|:---:|
-| **Main Sync** | `python scripts/rebuild/sync_batches_consolidated.py --table all` | 每 30 分 | Retry 3次 | Idempotent (可重入) |
+| **Main Sync** | `python scripts/etl/sync_batches_consolidated.py --table all` | 每 30 分 | Retry 3次 | Idempotent (可重入) |
 | **Refresh Pivot**| (ClickHouse 內建) | 每 1 小時 | 自動重試 | `SYSTEM REFRESH VIEW ...` |
 | **Refresh Gold** | (ClickHouse 內建) | 每 1 小時 | 自動重試 | `SYSTEM REFRESH VIEW ...` |
-| **Validation** | `python scripts/rebuild/run_validation.py` | 每日 08:00 | 發送告警 | 手動觸發 |
+| **Validation** | `python scripts/etl/run_validation.py` | 每日 08:00 | 發送告警 | 手動觸發 |
 
 
 ### 歷史資料回補
 若需重新同步特定日期區間：
 ```powershell
-python scripts/rebuild/sync_batches_consolidated.py --start 2025-01-01 --end 2025-01-31 --step-days 7
+python scripts/etl/sync_batches_consolidated.py --start 2025-01-01 --end 2025-01-31 --step-days 7
 ```
 
 ---
@@ -161,7 +161,7 @@ python scripts/rebuild/sync_batches_consolidated.py --start 2025-01-01 --end 202
 ### 驗收清單 (Checklist)
 1. **Row Count 對帳**:
     * 執行 `scripts/validation/check_total_counts.py` (MSSQL vs Bronze 總量).
-    * 執行 `scripts/rebuild/run_validation.py` (Bronze/Silver/Gold 各層一致性).
+    * 執行 `scripts/etl/run_validation.py` (Bronze/Silver/Gold 各層一致性).
     * 標準: MSSQL Count vs Bronze Count 差異 **應為 0** (針對已同步區間)。
 
 2. **主鍵唯一性**:
@@ -172,7 +172,7 @@ python scripts/rebuild/sync_batches_consolidated.py --start 2025-01-01 --end 202
 
 ### 擴充規範
 * **禁止**隨意新增一次性驗證腳本。
-* 需擴充驗證時，請修改 `scripts/rebuild/run_validation.py` 或在 `sql/rebuild/` 下新增標準 SQL 檔 (例如命名為 `07_validation_xxx.sql`)。
+* 需擴充驗證時，請修改 `scripts/etl/run_validation.py` 或在 `sql/etl/` 下新增標準 SQL 檔 (例如命名為 `07_validation_xxx.sql`)。
 
 ---
 

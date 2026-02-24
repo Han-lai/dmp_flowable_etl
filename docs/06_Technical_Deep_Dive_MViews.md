@@ -56,7 +56,7 @@ graph TD
 
 **更新機制**: **REFRESH EVERY 48 HOUR** (解決非同步資料碎片化問題)
 
-**SQL 位置**: `sql/rebuild/03_silver_pivot_and_hierarchy.sql`
+**SQL 位置**: `sql/etl/03_silver_pivot_and_hierarchy.sql`
 
 
 ---
@@ -75,7 +75,7 @@ graph TD
 | `plant_code` | 廠區代碼 |
 | `region_code` | 地區代碼 |
 
-**SQL 位置**: `sql/rebuild/03_silver_pivot_and_hierarchy.sql` (已修復 MDM Join 路徑)
+**SQL 位置**: `sql/etl/03_silver_pivot_and_hierarchy.sql` (已修復 MDM Join 路徑)
 
 
 ---
@@ -139,7 +139,7 @@ END AS is_excluded
 | `is_excluded` | 排除標記 |
 | `mo_number` | 工單編號 |
 
-**SQL 位置**: `sql/rebuild/04_silver_fact_tasks.sql` (核心事實表)
+**SQL 位置**: `sql/etl/04_silver_fact_tasks.sql` (核心事實表)
 
 
 ---

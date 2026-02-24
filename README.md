@@ -17,15 +17,15 @@ pip install -r requirements.txt
 ### 2. 資料庫重建 (Rebuild Database)
 若需從零建立 Bronze/Silver/Gold 層結構，請執行：
 ```bash
-# 此腳本會依序執行 sql/rebuild/ 下的所有 SQL 檔案
-python scripts/rebuild/execute_rebuild.py
+# 此腳本會依序執行 sql/etl/ 下的所有 SQL 檔案
+python scripts/etl/execute_etl.py
 ```
 
 ### 3. 資料同步 (Data Sync)
 執行 ETL 作業，將 MSSQL 資料同步至 ClickHouse：
 ```bash
 # 執行 Unified Sync (包含 Batch 與 Full 模式)
-python scripts/rebuild/sync_unified.py
+python scripts/etl/sync_unified.py
 ```
 
 ### 4. 資料驗證 (Validation)
@@ -63,9 +63,9 @@ dmp_flowable/
 ├── docker/                     # ClickHouse + JDBC Bridge 部署
 ├── sql/
 │   ├── setup/                  # 初始化 SQL
-│   └── rebuild/                # Bronze → Silver → Gold SQL
+│   └── etl/                # Bronze → Silver → Gold SQL
 ├── scripts/
-│   ├── rebuild/                # 🔄 生產同步腳本
+│   ├── etl/                # 🔄 生產同步腳本
 │   ├── setup/                  # 🔧 一次性設定
 │   └── validation/             # 🔍 驗證腳本 (7 個子類)
 ├── cube/                       # Cube.js 語意層

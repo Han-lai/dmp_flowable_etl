@@ -71,7 +71,7 @@ graph TD
 ### 3.2 Silver 層 (商業邏輯)
 
 #### A. 配置人員邏輯 (`silver.dim_config_users`)
-定義於 `sql/rebuild/08_silver_config_users.sql`。
+定義於 `sql/etl/08_silver_config_users.sql`。
 *   **目標**: 識別「分母」(誰 *應該* 使用系統？)。
 *   **V1/V2/V3 規則**:
     *   解析 `EmpNodeRoleMapping` 中的 `NodeCode` 欄位。
@@ -86,7 +86,7 @@ graph TD
     *   關聯 `EmpOrgInfoMapping` 與 `Five Level Master` 以取得 `Region` (區域), `Factory` (工廠), `Line` (產線) 等資訊。
 
 #### B. 活躍人員邏輯 (`silver.mv_fact_task_vx`)
-定義於 `sql/rebuild/03_silver_layer2.sql`。
+定義於 `sql/etl/03_silver_layer2.sql`。
 *   **目標**: 識別「分子」(誰 *正在* 使用系統？)。
 *   **邏輯**:
     *   從 `common_flowable_task_stats` 提取任務資料。
@@ -96,7 +96,7 @@ graph TD
 ### 3.3 Gold 層 (指標聚合)
 
 #### `gold.rmv_user_utilization`
-定義於 `sql/rebuild/09_gold_user_utilization_v2.sql`.
+定義於 `sql/etl/09_gold_user_utilization_v2.sql`.
 
 **設計策略: 骨架/驅動表 (Skeleton/Driver Table)**
 為了正確計算使用率 (即使當日活躍度為 0 也要有分母)，我們採用 **交叉連接 (Cross Join)** 策略：

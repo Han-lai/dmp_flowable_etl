@@ -71,10 +71,10 @@
 
 ### 2026-02-06
 - ✅ **L5 週期報表架構優化 (Refactoring)**:
-    - **Phase 1 (SQL Standard)**: 建立 `sql/rebuild/dynamic_periodic_report.sql`，採用「參數推論 (Inference)」邏輯，自動依據日期範圍判斷當月/歷史模式，解除對 Superset Jinja 的依賴。
+    - **Phase 1 (SQL Standard)**: 建立 `sql/etl/dynamic_periodic_report.sql`，採用「參數推論 (Inference)」邏輯，自動依據日期範圍判斷當月/歷史模式，解除對 Superset Jinja 的依賴。
     - **Phase 2 (Cube V2)**: 實作新模型 `cube_l5_task_periodic_v2.js`，將所有運算邏輯下沉至 SQL CTE，Cube 僅負責 Schema Mapping，大幅減輕維護負擔。
 - ✅ **L5 週期報表架構優化 (Refactoring)**:
-    - **Phase 1 (SQL Standard)**: 完成 `sql/rebuild/dynamic_periodic_report.sql` 標準化，改採參數推論邏輯 (Inference Logic)。
+    - **Phase 1 (SQL Standard)**: 完成 `sql/etl/dynamic_periodic_report.sql` 標準化，改採參數推論邏輯 (Inference Logic)。
     - **Phase 2 (Cube V2)**: 成功部署 `cube_l5_task_periodic_v2.js`，實現 Logic Push-down 架構。
     - **關鍵技術突破**: 解決 View Predicate Pushdown 失效問題，改用 Cube SQL Injection + Filter Separation 技術，實現「時光機 (Time Machine)」任意日期回溯與「8天滑動視窗」顯示。
 - ✅ **L5 週期報表架構優化 (Refactoring - V2 Final)**:
@@ -136,7 +136,7 @@
 
 ### 2026-01-29
 - ✅ 完成資料同步驗證
-- ✅ Data Pipeline 架構重建 (sql/rebuild)
+- ✅ Data Pipeline 架構重建 (sql/etl)
 
 ### 2026-01-15 (之前)
 - ✅ Bronze 層 18 張表同步完成
@@ -159,6 +159,6 @@
 - [x] **決策**: ACC Rate 427% 異常修正
     - 用戶決定保留 Cube.js V2 模型中的 Rolling 7 Days 邏輯
     - Gold SQL (`rmv_l5_task_completion`) 維持每日匯總邏輯 (Status Quo)
-- [x] 執行 MView 重建腳本 `scripts/rebuild/update_mviews_no_data_loss.py` 完成 (48hr 更新生效)
+- [x] 執行 MView 重建腳本 `scripts/etl/update_mviews_no_data_loss.py` 完成 (48hr 更新生效)
 
 
