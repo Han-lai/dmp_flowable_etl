@@ -22,12 +22,10 @@ dmp_flowable/
 │       ├── production.env.example   # 正式環境範本
 │       └── .env.validation          # 驗證環境
 │
-├── docker/                          #  基礎設施
-│   ├── docker-compose.yml           # ClickHouse + JDBC Bridge
-│   ├── docker-compose-portainer.yml # Portainer 管理介面
+├── docker/                          # 🐋 基礎設施
+│   ├── docker-compose.yml           # ClickHouse + JDBC Bridge 部署
 │   ├── clickhouse/config/           # ClickHouse 設定
-│   ├── jdbc-bridge/                 # JDBC Bridge 設定 + 驅動
-│   └── mssql-mock/                  # 本地 MSSQL Mock 測試環境
+│   └── jdbc-bridge/                 # JDBC Bridge 設定 + 驅動
 │
 ├── sql/                             #  資料庫定義 (Source of Truth)
 │   ├── setup/
