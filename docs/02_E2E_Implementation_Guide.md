@@ -126,7 +126,7 @@ graph TD
 
 ## 5. Metrics & Definitions (指標定義)
 
-詳見 [metric_definitions.md](metric_definitions.md)。
+詳見 [03_Business_Metric_Definitions.md](03_Business_Metric_Definitions.md)。
 
 * **完成率 (Completion Rate)**: `DONE_AUTO + DONE_MANUAL` / `Total Assigned`
 * **執行率 (Execution Rate)**: ... (請參照 Metric Doc)
@@ -145,7 +145,7 @@ graph TD
 | **Main Sync** | `python scripts/etl/sync_batches_consolidated.py --table all` | 每 30 分 | Retry 3次 | Idempotent (可重入) |
 | **Refresh Pivot**| (ClickHouse 內建) | 每 1 小時 | 自動重試 | `SYSTEM REFRESH VIEW ...` |
 | **Refresh Gold** | (ClickHouse 內建) | 每 1 小時 | 自動重試 | `SYSTEM REFRESH VIEW ...` |
-| **Validation** | `python scripts/etl/run_validation.py` | 每日 08:00 | 發送告警 | 手動觸發 |
+| **Validation** | `python scripts/validation/data_explore/quick_stats.py` | 每日 08:00 | 發送告警 | 手動觸發 |
 
 
 ### 歷史資料回補
@@ -160,8 +160,7 @@ python scripts/etl/sync_batches_consolidated.py --start 2025-01-01 --end 2025-01
 
 ### 驗收清單 (Checklist)
 1. **Row Count 對帳**:
-    * 執行 `scripts/validation/check_total_counts.py` (MSSQL vs Bronze 總量).
-    * 執行 `scripts/etl/run_validation.py` (Bronze/Silver/Gold 各層一致性).
+    * 使用 `scripts/validation/` 下的驗證腳本檢查各層一致性。
     * 標準: MSSQL Count vs Bronze Count 差異 **應為 0** (針對已同步區間)。
 
 2. **主鍵唯一性**:
@@ -171,8 +170,8 @@ python scripts/etl/sync_batches_consolidated.py --start 2025-01-01 --end 2025-01
     * 驗證 OR 條件 (`START` / `CLAIM` / `END`) 是否一致。
 
 ### 擴充規範
-* **禁止**隨意新增一次性驗證腳本。
-* 需擴充驗證時，請修改 `scripts/etl/run_validation.py` 或在 `sql/etl/` 下新增標準 SQL 檔 (例如命名為 `07_validation_xxx.sql`)。
+* 驗證腳本統一放置於 `scripts/validation/` 下對應子目錄。
+* 需擴充驗證時，在 `sql/etl/` 下新增標準 SQL 檔 (例如命名為 `07_validation_xxx.sql`)。
 
 ---
 
