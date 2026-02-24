@@ -76,7 +76,7 @@
 
 | 設定項 (Setting) | 值 (Value) | 備註 |
 | :--- | :--- | :--- |
-| **Dataset** | `L5 Task Completion` | Cube: `cube_l5_task_completion.js` |
+| **Dataset** | `L5 Task Periodic V2 Pivot` | Cube: `cube_l5_task_periodic_v2_pivot.js` |
 | **Chart Type** | **Pivot Table v2** | |
 | **Rows** | `region`, `plant`, `line` | 依需求拖拉組織層級 |
 | **Columns** | `vxType` (V1/V3) | |

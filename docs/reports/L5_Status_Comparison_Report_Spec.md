@@ -40,7 +40,7 @@
 
 ## ⚙️ 3. 技術實現規則 (Technical Rules)
 - **資料來源**:
-    - Snapshot 類: `gold.rmv_l5_task_completion`
+    - Snapshot 類: `gold.rmv_l5_task_completion_v2`
     - ACC 類: `silver.mv_fact_task_vx`
 - **Region 歸屬機制**: 
     - 必須取自 MDM 的 `region_code` (對應 `common_mdm_factory_area_master` 的 `MFG_SITE` 欄位)。
@@ -51,5 +51,5 @@
 > 請完全依照現有報表的欄位定義、欄位順序與計算邏輯輸出結果，不可自行調整格式。表格左側維度欄位依序為：流程區域(Vx)、地區、製造廠區、製造產品類、線別、任務狀態(Task Status)。Task Status 僅包含：Total Task、Todo、Doing、Done、Doing+Done、Todo+Doing(Acc)，且順序不可變。右側時間欄位請依序輸出：Dec、W49、W50、W51，以及 Daily（2025-12-25 至 2025-12-31，由舊到新）。每個時間單位需同時輸出 Task Qty 與 (%)。百分比定義為該狀態 Task Qty 除以同一時間區間內的 Total Task。Weekly、Monthly 與 Daily 使用相同的加總邏輯。某時間區間無資料請顯示 0，但欄位仍需保留。
 
 ---
-## 🛠️ 5. 自動化腳本位置
-`scripts/validation/generate_l5_full_report.py`
+## 🛠️ 5. 相關腳本
+驗證腳本位於 `scripts/validation/l5_l7/` 目錄下。
