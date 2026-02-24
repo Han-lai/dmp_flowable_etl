@@ -297,9 +297,9 @@ graph TD
 ## 📝 相關檔案 (更新版)
 
 ### SQL 檔案
-- `sql/rebuild/03_silver_pivot_and_hierarchy.sql` - 第一層 (Pivot + Dim)
-- `sql/rebuild/04_silver_fact_tasks.sql` - 第二層 (Fact Task)
-- `sql/rebuild/06_gold_kpi_task_completion.sql` - Gold 層
+- `sql/etl/03_silver_pivot_and_hierarchy.sql` - 第一層 (Pivot + Dim)
+- `sql/etl/04_silver_fact_tasks.sql` - 第二層 (Fact Task)
+- `sql/etl/06_gold_kpi_task_completion.sql` - Gold 層
 
 
 ### 驗證腳本

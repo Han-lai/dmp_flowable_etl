@@ -23,7 +23,7 @@
 ## 重要路徑
 | 路徑 | 說明 |
 |------|------|
-| `sql/rebuild/` | Bronze/Silver/Gold 層 SQL 定義 |
+| `sql/etl/` | Bronze/Silver/Gold 層 SQL 定義 |
 | `scripts/validation/` | 資料驗證腳本 |
 | `docs/` | 文件與參考 SQL |
 | `ARCHIVE/misc/CLAUDE.md` | 專案快速上手指南 |

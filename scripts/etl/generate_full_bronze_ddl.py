@@ -123,10 +123,10 @@ def main():
     output_content.append(NEW_TABLES_DDL)
     
     # 3. Write to file
-    with open('sql/rebuild/01_bronze_tables.sql', 'w', encoding='utf-8') as f:
+    with open('sql/etl/01_bronze_tables.sql', 'w', encoding='utf-8') as f:
         f.write('\n'.join(output_content))
         
-    print("Successfully generated sql/rebuild/01_bronze_tables.sql")
+    print("Successfully generated sql/etl/01_bronze_tables.sql")
 
 if __name__ == "__main__":
     main()
