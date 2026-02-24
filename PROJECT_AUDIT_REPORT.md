@@ -471,6 +471,46 @@ graph TD
 | `sql/etl/02_bronze_common_dims.sql` | Bronze | Common & HR 維度表 | `CREATE TABLE` |
 | `sql/etl/03_silver_pivot_and_hierarchy.sql` | Silver | 變數透視與五階維度表 | `MVIEW` |
 | `sql/etl/04_silver_fact_tasks.sql` | Silver | **L5 核心事實表** (Task Fact) | `MVIEW` |
+## 驗證範圍：L5 Task Completion 指標
+
+### 1. 核心邏輯驗證 (WJ2/NBU/E5 基準測試)
+- **狀態**：✅ 通過
+- **驗證項目**：
+  - 各日期 Total Task, Todo, Doing, Done 計算邏輯。
+  - 累積指標 (Acc Todo+Doing) 的 7 天滾動窗格與 `snapshot_date` 判定。
+- **結論**：ClickHouse Gold 層 (`06_gold_kpi_task_completion.sql`) 的狀態判定與時間切片邏輯，與 QAS MSSQL 原始資料的核對結果完全一致。
+
+### 2. Vx 歸屬邏輯衝突 (DG3 vs WJ2)
+在擴大驗證範圍至 DG3 廠區時，發現現有報表系統對任務的 Vx (V1/V2/V3) 歸屬邏輯存在**廠區特化 (Plant-specific)** 的衝突現象。現有 ClickHouse Silver 層的單一邏輯無法同時滿足兩廠的報表期望值。
+
+#### 衝突詳情：
+| 廠區/線體 | 期望 Vx | 實際 `TASK_DEF_KEY_` 特徵 | 實際 `moNumber` 特徵 |
+| :--- | :---: | :--- | :--- |
+| **DG3/SMT/ST02** | **V1** | 全為 `V3_5_*` 開頭 | 包含 `199`, `196`, `210`, `315` 等前綴 |
+| **WJ2/NBU/E5**   | **V3** | 包含 `V3_5_*` 開頭 | 全為 `315` 前綴 |
+
+#### 驗證結論與所需條件：
+為了各自對齊兩廠的離線期望值報表，必須採用完全不同的判斷優先級：
+
+1. **DG3 (以 V1 期望值為例)**
+   - **必須使用的條件**：**`moNumber` 優先規則**。
+   - **邏輯**：只要 `moNumber` 前綴為特定值 (`196`, `199`, `210`, `315` 等)，即強制歸類為 V1，**無視**其 `TASK_DEF_KEY_` 是否為 `V3_5_*`。
+   - **驗證結果**：使用此規則過濾後，Todo 與 Doing 數量與 DG3 報表 100% 完美吻合 (Done 數量略多，推測報表有額外的業務排除規則)。
+
+2. **WJ2 (以 V3 期望值為例)**
+   - **必須使用的條件**：**`TASK_DEF_KEY_` 優先規則** (即目前 ClickHouse 原始邏輯)。
+   - **邏輯**：只要 `TASK_DEF_KEY_` 以 `V3` 開頭，即歸類為 V3。**必須無視** `moNumber` 是否為 `315` (若按 DG3 邏輯，315 會被誤判為 V1)。
+   - **驗證結果**：使用此規則不過濾 `315`，所有日指標 (Total, Todo, Doing, Done) 與 WJ2 報表 100% 完美吻合。
+
+#### 下一步修正方向 (待確認)：
+未來在修改 `04_silver_fact_tasks.sql` 時，`vx_type` 的 CASE WHEN 判斷必須加入 `plant` 維度作為前置條件：
+```sql
+CASE 
+    WHEN plant = 'DG3' THEN /* 套用 moNumber 優先邏輯 */
+    WHEN plant = 'WJ2' THEN /* 套用 TASK_DEF_KEY_ 優先邏輯 */
+    ELSE /* 預設邏輯 */
+END AS vx_type
+```
 | `sql/etl/05_silver_dim_users.sql` | Silver | **L7 用戶分母表** (User Config) | `VIEW` (Inactive) |
 | `sql/etl/06_gold_kpi_task_completion.sql` | Gold | **L5 任務完成率** (KPI + Acc) | `MVIEW` (Refreshable) |
 | `sql/etl/07_gold_kpi_user_utilization.sql` | Gold | **L7 人員使用率** (KPI) | `MVIEW` (Inactive) |
