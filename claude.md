@@ -3,6 +3,16 @@
 ## 🎯 專案當前狀態 (2026-02-10 UPDATE)
 本專案已完成 **Cube Model 架構優化** 與 **L5 週期報表 V2 全面校正**。
 
+### 最新修復 (2026-02-26)
+- **Vx 歸屬邏輯修復 (解決 V1 掛零異常)**:
+  - **問題**: NPE 與 DG3 廠區的 V1 資料短少 (甚至為 0)，且全部湧入 V3 造成數量膨脹。
+  - **根源**: Silver 層 `vx_type` 判斷序列將 `TASK_DEF_KEY_` 優先級置於頂層，導致本該由工單號 (MO) 強制轉為 V1 的特權工單被 `V3_` 開頭的自身屬性騎劫。
+  - **解決**: 重新實作廠區限定之過濾白名單 (`Plant = DG3` 或 `Plant LIKE %NPE%`)。確保特定工單前綴 (196, 315 等) 優先轉換為 V1，並實機比對確認千筆以上的懸案任務已正確歸屬。
+- **MDM 維度對應修復 (異廠同名線段)**: 
+  - **問題**: Superset 上 DG3 廠區的 ST02 等線體在選擇 `Region: CNS` 時無資料。
+  - **根源**: MDM 主檔中存在多條 `ST02`，分別隸屬 WJ5 (華東) 與 DG3 (華南)。Silver 視圖建構時僅依賴 `LineName` 去重，導致 DG3 誤判為 CNE。
+  - **解決**: 於 Silver 層 (`03_silver`, `04_silver`) MDM 加入 `PlantCode` 進行雙重複合鍵 (`Line + Plant`) 交集比對與去重，徹底解決同名線段的歸屬錯亂，並完成 Data 重新載入。
+
 ### 最新完成 (2026-02-13)
 - **Gold V2 Migration**: 修復 Gold View Detached 問題，遷移至 `gold.rmv_l5_task_completion_v2`。
 - **Data Backfill**: 完成 `DG3/SMT/ST02` 資料回補。

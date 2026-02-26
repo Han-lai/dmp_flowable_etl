@@ -6,7 +6,7 @@
 -- ==========================================
 -- 2.1 HR Employee Table (Missing in previous Rebuild)
 -- ==========================================
-DROP TABLE IF EXISTS bronze.common_hr_employee;
+-- DROP TABLE IF EXISTS bronze.common_hr_employee;
 CREATE TABLE bronze.common_hr_employee (
     EmpCode String,
     EmpName String,
@@ -25,7 +25,7 @@ TTL UpdateTime + INTERVAL 1 YEAR;
 -- ==========================================
 
 -- 1. common_emp_node_role_mapping
-DROP TABLE IF EXISTS bronze.common_emp_node_role_mapping;
+-- DROP TABLE IF EXISTS bronze.common_emp_node_role_mapping;
 CREATE TABLE bronze.common_emp_node_role_mapping (
     EmpCode String,
     NodeCode String,
@@ -37,7 +37,7 @@ ORDER BY (EmpCode, NodeCode)
 TTL UpdateTime + INTERVAL 1 YEAR;
 
 -- 2. common_emp_org_info_mapping
-DROP TABLE IF EXISTS bronze.common_emp_org_info_mapping;
+-- DROP TABLE IF EXISTS bronze.common_emp_org_info_mapping;
 CREATE TABLE bronze.common_emp_org_info_mapping (
     EmpCode String,
     Plant String,
@@ -50,7 +50,7 @@ ORDER BY (EmpCode, Plant, MFGFactoryId)
 TTL UpdateTime + INTERVAL 1 YEAR;
 
 -- 3. common_emp_user_group_mapping
-DROP TABLE IF EXISTS bronze.common_emp_user_group_mapping;
+-- DROP TABLE IF EXISTS bronze.common_emp_user_group_mapping;
 CREATE TABLE bronze.common_emp_user_group_mapping (
     EmpCode String,
     UserGroupId Int32,
@@ -62,7 +62,7 @@ ORDER BY (EmpCode, UserGroupId)
 TTL UpdateTime + INTERVAL 1 YEAR;
 
 -- 4. common_user_group
-DROP TABLE IF EXISTS bronze.common_user_group;
+-- DROP TABLE IF EXISTS bronze.common_user_group;
 CREATE TABLE bronze.common_user_group (
     UserGroupId Int32,
     UserGroupName String,
@@ -75,7 +75,7 @@ ORDER BY (UserGroupId)
 TTL UpdateTime + INTERVAL 1 YEAR;
 
 -- 5. common_process_role_user_mapping
-DROP TABLE IF EXISTS bronze.common_process_role_user_mapping;
+-- DROP TABLE IF EXISTS bronze.common_process_role_user_mapping;
 CREATE TABLE bronze.common_process_role_user_mapping (
     ID Int32,
     RoleId String,
@@ -97,7 +97,7 @@ ORDER BY (ID)
 -- ==========================================
 
 -- 1. common_mdm_line_desc_master
-DROP TABLE IF EXISTS bronze.common_mdm_line_desc_master;
+-- DROP TABLE IF EXISTS bronze.common_mdm_line_desc_master;
 CREATE TABLE bronze.common_mdm_line_desc_master (
     LINE_NAME String,
     LINE_DESC String,
@@ -108,7 +108,7 @@ ORDER BY LINE_NAME
 TTL toDateTime(_sync_time) + INTERVAL 1 YEAR;
 
 -- 2. common_mdm_prod_area_master
-DROP TABLE IF EXISTS bronze.common_mdm_prod_area_master;
+-- DROP TABLE IF EXISTS bronze.common_mdm_prod_area_master;
 CREATE TABLE bronze.common_mdm_prod_area_master (
     PROD_AREA_ID String,
     PROD_AREA_CODE String,
@@ -120,7 +120,7 @@ ORDER BY PROD_AREA_ID
 TTL toDateTime(_sync_time) + INTERVAL 1 YEAR;
 
 -- 3. common_mdm_factory_area_master
-DROP TABLE IF EXISTS bronze.common_mdm_factory_area_master;
+-- DROP TABLE IF EXISTS bronze.common_mdm_factory_area_master;
 CREATE TABLE bronze.common_mdm_factory_area_master (
     FACTORY String,
     FACTORY_DESC String,
@@ -134,7 +134,7 @@ ORDER BY FACTORY
 TTL toDateTime(_sync_time) + INTERVAL 1 YEAR;
 
 -- 4. common_mdm_mfg_site_master
-DROP TABLE IF EXISTS bronze.common_mdm_mfg_site_master;
+-- DROP TABLE IF EXISTS bronze.common_mdm_mfg_site_master;
 CREATE TABLE bronze.common_mdm_mfg_site_master (
     MFG_SITE String,
     MFG_SITE_DESC String,
@@ -144,7 +144,7 @@ ORDER BY MFG_SITE
 TTL toDateTime(_sync_time) + INTERVAL 1 YEAR;
 
 -- 5. common_mdm_mfg_plant_master (User Request: Use for Plant/Factory info)
-DROP TABLE IF EXISTS bronze.common_mdm_mfg_plant_master;
+-- DROP TABLE IF EXISTS bronze.common_mdm_mfg_plant_master;
 CREATE TABLE bronze.common_mdm_mfg_plant_master (
     MFG_PLANT_ID String,
     MFG_PLANT_CODE String, -- Factory Code

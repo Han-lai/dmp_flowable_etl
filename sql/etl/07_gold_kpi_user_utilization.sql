@@ -6,13 +6,28 @@
 
 SET allow_experimental_refreshable_materialized_view = 1;
 
-DROP TABLE IF EXISTS gold.rmv_user_utilization;
+-- DROP TABLE IF EXISTS gold.rmv_user_utilization;
 
-CREATE MATERIALIZED VIEW gold.rmv_user_utilization
-REFRESH EVERY 1 HOUR
+-- 建立實體表來儲存資料，避免實驗性的 Refreshable MView 在重啟時遺失內部表 (.inner_id_*)
+CREATE TABLE IF NOT EXISTS gold.rmv_user_utilization_data (
+    snapshot_date Date,
+    vx_type String,
+    region_code String,
+    plant_code String,
+    factory_code String,
+    line_name String,
+    config_users UInt64,
+    active_users UInt64,
+    utilization_rate Float64,
+    _refresh_time DateTime64(3)
+)
 ENGINE = ReplacingMergeTree(_refresh_time)
 ORDER BY (snapshot_date, region_code, vx_type, plant_code, factory_code, line_name)
-TTL snapshot_date + INTERVAL 1 YEAR
+TTL snapshot_date + INTERVAL 1 YEAR;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS gold.rmv_user_utilization
+REFRESH EVERY 1 HOUR
+TO gold.rmv_user_utilization_data
 AS
 WITH 
 -- 1. 時間範圍 (過去 365 天)

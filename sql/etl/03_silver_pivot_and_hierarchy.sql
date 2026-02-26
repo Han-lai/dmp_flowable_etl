@@ -10,7 +10,7 @@
 -- 啟用 REFRESHABLE MView 實驗功能
 SET allow_experimental_refreshable_materialized_view = 1;
 
-DROP TABLE IF EXISTS silver.mv_varinst_pivoted;
+-- DROP TABLE IF EXISTS silver.mv_varinst_pivoted;
 
 CREATE MATERIALIZED VIEW silver.mv_varinst_pivoted
 REFRESH EVERY 48 HOUR
@@ -48,7 +48,7 @@ DROP TABLE IF EXISTS silver.mv_dim_mfg_five_level;
 
 CREATE MATERIALIZED VIEW silver.mv_dim_mfg_five_level
 ENGINE = ReplacingMergeTree(_mview_update_time)
-ORDER BY (line_name)
+ORDER BY (plant_code, line_name)
 SETTINGS allow_nullable_key = 1
 POPULATE AS
 SELECT DISTINCT

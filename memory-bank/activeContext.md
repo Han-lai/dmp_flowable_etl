@@ -11,6 +11,8 @@
 - **L7 Logic Discrepancy**: Nov & Dec analysis shows need for strict "5 conditions" validation when resumed.
 
 ### 核心任務
+- **Vx 歸屬邏輯修復 (廠區與特權工單優先規則)**: 【已解決】修正了 `04_silver_fact_tasks` 的 `vx_type` 判斷順序。將 DG3 與 NPE 廠區專屬的特權工單 (如 196, 315) 的判斷層級提升至 `TASK_DEF_KEY_` 之上，成功解決了 V1 資料被誤判為 V3 導致掛零的問題。
+- **異廠同名線段歸屬修復 (MDM Join Bug)**: 【已解決】修復了 DG3 廠區 ST02 等線段被錯誤歸類至 CNE (華東) 的問題。原因為底層 MDM 有多廠 (DG3, WJ5) 共用同一個線體名稱。Silver 層改採 `LineName + PlantCode` 雙主鍵進行轉換與去重，已成功讓資料在 Superset 正確呈現於 CNS。
 - **Cube Model 架構優化**: 已完成 V2 系列模型修正 (ACC Rate Logic Fix) 與文件同步。
 - **L5 資料完整性**: 修復 MView 刷新競態條件 (Race Condition)，確保 Gold 層維度資料完整。
 

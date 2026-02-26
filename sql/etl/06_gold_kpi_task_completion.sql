@@ -7,13 +7,32 @@
 -- 啟用 REFRESHABLE MView 實驗功能 (ClickHouse 24.3 需要)
 SET allow_experimental_refreshable_materialized_view = 1;
 
-DROP TABLE IF EXISTS gold.rmv_l5_task_completion;
+-- DROP TABLE IF EXISTS gold.rmv_l5_task_completion;
 
-CREATE MATERIALIZED VIEW gold.rmv_l5_task_completion
-REFRESH EVERY 48 HOUR
+-- 建立實體表來儲存資料，避免實驗性的 Refreshable MView 在重啟時遺失內部表 (.inner_id_*)
+CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_data (
+    snapshot_date Date,
+    vx_type String,
+    region String,
+    plant String,
+    factory String,
+    line String,
+    total_task UInt64,
+    todo_count UInt64,
+    doing_count UInt64,
+    done_count UInt64,
+    completion_rate Float64,
+    execution_rate Float64,
+    acc_todo_doing UInt64,
+    _refresh_time DateTime64(3)
+)
 ENGINE = ReplacingMergeTree(_refresh_time)
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
-TTL snapshot_date + INTERVAL 1 YEAR
+TTL snapshot_date + INTERVAL 1 YEAR;
+
+CREATE MATERIALIZED VIEW IF NOT EXISTS gold.rmv_l5_task_completion
+REFRESH EVERY 48 HOUR
+TO gold.rmv_l5_task_completion_data
 AS
 WITH 
 -- 1. 基礎 Daily 事件統計 (與原本邏輯一致)
