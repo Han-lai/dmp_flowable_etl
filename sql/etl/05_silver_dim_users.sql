@@ -4,7 +4,7 @@
 -- 前置: 02_bronze_common_dims, 03_silver_pivot_and_hierarchy
 -- ========================================
 
-DROP TABLE IF EXISTS silver.dim_config_users;
+-- DROP TABLE IF EXISTS silver.dim_config_users;
 
 CREATE VIEW silver.dim_config_users AS
 

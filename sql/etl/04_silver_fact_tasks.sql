@@ -4,7 +4,7 @@
 -- 前置: 03_silver_pivot_and_hierarchy
 -- ========================================
 
-DROP TABLE IF EXISTS silver.mv_fact_task_vx;
+-- DROP TABLE IF EXISTS silver.mv_fact_task_vx;
 
 CREATE MATERIALIZED VIEW silver.mv_fact_task_vx
 ENGINE = ReplacingMergeTree(_mview_update_time)
@@ -34,19 +34,26 @@ SELECT
         ELSE 'TODO'
     END AS task_status,
     
-    -- Vx 歸屬（任務定義鍵規則優先，避免 315% 誤判 V3 為 V1）
+    -- Vx 歸屬（廠區特權 > 工單號 > 任務定義鍵）
     CASE 
+        -- 規則 1：DG3 廠區特權工單 -> 強制轉 V1
+        WHEN COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') = 'DG3' 
+             AND substring(COALESCE(mv_varinst_pivoted.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
+        THEN 'V1'
+        
+        -- 規則 2：NPE 廠區特權工單 -> 強制轉 V1
+        WHEN (
+               COALESCE(NULLIF(mv_varinst_pivoted.varinst_factory, ''), mdm.factory_code, '') LIKE '%NPE%' 
+               OR COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') LIKE '%NPE%'
+             )
+             AND substring(COALESCE(mv_varinst_pivoted.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
+        THEN 'V1'
+        
+        -- 規則 3：回歸 TASK_DEF_KEY_
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
         WHEN t.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
         WHEN t.TASK_DEF_KEY_ LIKE 'V3%' THEN 'V3'
-        WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '315%' THEN 'V1'
-        WHEN COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '196%' 
-             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '199%'
-             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '200%'
-             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '210%'
-             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '212%'
-             OR COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE '213%'
-        THEN 'V1'
+        
         ELSE COALESCE(substring(t.TASK_DEF_KEY_, 1, 2), 'Unknown')
     END AS vx_type,
     
@@ -101,7 +108,7 @@ SELECT
 
 FROM bronze.bpm_act_hi_taskinst t
 LEFT JOIN silver.mv_varinst_pivoted ON t.PROC_INST_ID_ = mv_varinst_pivoted.PROC_INST_ID_
-LEFT JOIN silver.mv_dim_mfg_five_level mdm ON mv_varinst_pivoted.varinst_lineName = mdm.line_name
+LEFT JOIN silver.mv_dim_mfg_five_level mdm ON mv_varinst_pivoted.varinst_lineName = mdm.line_name AND mv_varinst_pivoted.varinst_plant = mdm.plant_code
 LEFT JOIN bronze.common_hr_employee he ON t.ASSIGNEE_ = he.EmpCode
 LEFT JOIN bronze.bpm_act_hi_varinst tb ON t.ID_ = tb.TASK_ID_ AND tb.NAME_ = 'autoComplete'
 WHERE t.ID_ IS NOT NULL AND t.ID_ != '';

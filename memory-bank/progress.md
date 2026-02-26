@@ -1,7 +1,20 @@
 # 專案進度 - DMP Flowable
 
 ## 已完成里程碑
- 
+
+### 2026-02-26 (今日進度 - Silver 層業務邏輯與維度修復)
+- ✅ **Vx 歸屬邏輯修復 (特權工單誤判 V3 問題)**:
+    - **問題**: 發現 `V1 / CNE / WJ2 / NPE / NPE3` 與 `V1 / CNS / DG3 / SMT / ST02` 的 V1 任務數量在 金層 (Gold) 完全掛零，且 V3 數據異常膨脹。
+    - **根源調查**: `04_silver_fact_tasks.sql` 在給工單貼 `vx_type` 標籤時，把 `TASK_DEF_KEY_ LIKE 'V3%'` 放在了判斷的最前面。導致原本依據業務規則應該被強制判定為 V1 的特權工單 (如 196, 315 開頭的工單)，因為流程圖自帶 V3 屬性而被誤殺。
+    - **解決方案**: 重構 Silver 層邏輯，實作「廠區與工單號聯合判斷」。為 `DG3` 廠區與包含 `NPE` 的廠區建立白名單，讓符合前綴的工單優先轉換為 V1，其餘量產線體 (如 WJ2/E5) 則繼續回歸流程圖預設標籤。
+    - **結果**: 執行 `verify_final_post_fix.py` 嚴謹比對 ClickHouse 與 SQL Server (QAS) 雙軌資料，確認千筆以上的迷路數據已完美回歸 V1，解決掛零與爆增的雙向異常。
+
+- ✅ **異廠同名線段 (Duplicate Lines in MDM) 歸屬修復**:
+    - **問題**: 發現 DG3 廠區的 `ST01~ST05` 在 Cube.js 查詢時，若選擇 `Region: CNS` 會發生查無資料 (Data Missing) 的異常。
+    - **根源調查**: 追溯發現 MDM 底層主檔 (`bronze.common_mdm_line_desc_master`) 中，`ST02` 這個線名分別存在於兩處：WJ5(CNE) 與 DG3(CNS)。原先 `silver.mv_dim_mfg_five_level` 五階視圖建立時僅以 `LineName` 做 `ORDER BY` 去重，導致 DG3 的單子被錯誤套用成 CNE 的維度。
+    - **解決方案**: 於 `03_silver_pivot_and_hierarchy.sql` 中讓五階視圖保留 `(plant_code, line_name)` 雙主鍵去重。並於 `04_silver_fact_tasks.sql` 的 LEFT JOIN 條件中加入 `mdm.plant_code = varinst_plant` 的雙重驗證。
+    - **結果**: 重建 Silver 與 Gold 層後，DG3/SMT/ST02 等同名線體資料成功回歸 CNS 轄區，Superset 報表呈現正常 (ST02 = 56,640筆)。
+
 ### 2026-02-13 (今日進度 - Gold 修復)
 - ✅ **Gold 層視圖修復 (V2 Migration)**:
     - **問題**: 原本的 `gold.rmv_l5_task_completion` 視圖因 Metadata 錯亂導致 detached 且無法恢復 (需 Experimental Feature)。

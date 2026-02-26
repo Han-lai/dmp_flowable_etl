@@ -2,7 +2,7 @@
 -- 步驟 1: Bronze Layer - Flowable 核心表
 -- 內容: TaskInst, VarInst, ProcInst
 -- ========================================
-DROP TABLE IF EXISTS bronze.bpm_act_hi_taskinst;
+-- DROP TABLE IF EXISTS bronze.bpm_act_hi_taskinst;
 
 CREATE TABLE bronze.bpm_act_hi_taskinst
 (
@@ -47,7 +47,7 @@ SETTINGS allow_nullable_key = 1;
 -- 2. bpm_act_hi_varinst (變數實例歷史)
 -- 來源: APP_SRV_BPM.dbo.ACT_HI_VARINST
 -- ========================================
-DROP TABLE IF EXISTS bronze.bpm_act_hi_varinst;
+-- DROP TABLE IF EXISTS bronze.bpm_act_hi_varinst;
 
 CREATE TABLE bronze.bpm_act_hi_varinst
 (
@@ -81,7 +81,7 @@ SETTINGS allow_nullable_key = 1;
 -- 3. bpm_act_hi_procinst (流程實例歷史)
 -- 來源: APP_SRV_BPM.dbo.ACT_HI_PROCINST
 -- ========================================
-DROP TABLE IF EXISTS bronze.bpm_act_hi_procinst;
+-- DROP TABLE IF EXISTS bronze.bpm_act_hi_procinst;
 
 CREATE TABLE bronze.bpm_act_hi_procinst
 (
@@ -125,7 +125,7 @@ ORDER BY name;
 -- 4. bpm_act_re_procdef (流程定義)
 -- 來源: APP_SRV_BPM.dbo.ACT_RE_PROCDEF
 -- ========================================
-DROP TABLE IF EXISTS bronze.bpm_act_re_procdef;
+-- DROP TABLE IF EXISTS bronze.bpm_act_re_procdef;
 
 CREATE TABLE bronze.bpm_act_re_procdef
 (
@@ -159,7 +159,7 @@ SETTINGS allow_nullable_key = 1;
 -- 5. bpm_act_hi_identitylink (身分連結)
 -- 來源: APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK
 -- ========================================
-DROP TABLE IF EXISTS bronze.bpm_act_hi_identitylink;
+-- DROP TABLE IF EXISTS bronze.bpm_act_hi_identitylink;
 
 CREATE TABLE bronze.bpm_act_hi_identitylink (
     `ID_` String,
