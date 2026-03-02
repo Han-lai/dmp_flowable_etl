@@ -2,7 +2,19 @@
 
 ## 已完成里程碑
 
-### 2026-02-26 (今日進度 - Silver 層業務邏輯與維度修復)
+### 2026-02-26 (今日進度 - 四條件 DONE 驗證完成)
+
+- ✅ **四條件 QAS vs CH Done 數量驗證**:
+    - **驗證範圍**: 四個核心業務條件，2025-12-25 至 12-31 每日數據
+        - V1 / CNS / DG3 / SMT / ST02
+        - V3 / CNS / DG3 / SMT / ST02
+        - V3 / CNE / WJ2 / NBU / E5
+        - V1 / CNE / WJ2 / NPE / NPE3
+    - **工具**: `scripts/validation/l5_l7/verify_4_done.py`
+    - **結果**: 全部 **OK**，QAS 與 ClickHouse Gold 層 (`rmv_l5_task_completion_v2`) Done 數量差異均為 0。
+    - **結論**: 先前修復的兩個 bug（Vx 歸屬順序錯誤、異廠同名線段誤判）已完全生效，Silver / Gold 資料與 QAS 源頭完全同步。
+
+### 2026-02-26 (Silver 層業務邏輯與維度修復)
 - ✅ **Vx 歸屬邏輯修復 (特權工單誤判 V3 問題)**:
     - **問題**: 發現 `V1 / CNE / WJ2 / NPE / NPE3` 與 `V1 / CNS / DG3 / SMT / ST02` 的 V1 任務數量在 金層 (Gold) 完全掛零，且 V3 數據異常膨脹。
     - **根源調查**: `04_silver_fact_tasks.sql` 在給工單貼 `vx_type` 標籤時，把 `TASK_DEF_KEY_ LIKE 'V3%'` 放在了判斷的最前面。導致原本依據業務規則應該被強制判定為 V1 的特權工單 (如 196, 315 開頭的工單)，因為流程圖自帶 V3 屬性而被誤殺。
