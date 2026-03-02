@@ -15,6 +15,10 @@
 .venv/
 venv/
 env/
+*.env
+*.env.local
+*.env.*.local
+!*.env.example
 __pycache__/
 *.pyc
 *.pyo
@@ -29,3 +33,6 @@ logs/
 *.log
 *.txt
 *.csv
+
+# Validation scripts (excluded from Git for deployment)
+scripts/validation/
