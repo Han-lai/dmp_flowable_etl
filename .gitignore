@@ -1,4 +1,4 @@
-# AI / Agent Tools
+# AI / Agent Tools (Excluded per user request)
 .agent/
 .agents/
 .claude/
@@ -15,6 +15,9 @@
 .venv/
 venv/
 env/
+node_modules/
+package.json
+package-lock.json
 *.env
 *.env.local
 *.env.*.local
@@ -33,6 +36,12 @@ logs/
 *.log
 *.txt
 *.csv
+output_*.md
+
+# Documentation Exclusions (Historical/Work-in-progress)
+docs/archive/
+docs/reports/
+docs/pending_vx_logic_fix.md
 
 # Validation scripts (excluded from Git for deployment)
 scripts/validation/
