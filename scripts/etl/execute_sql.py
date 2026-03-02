@@ -4,11 +4,11 @@ import sys
 import os
 
 CLICKHOUSE_CONFIG = {
-    "host": "REDACTED_IP",
-    "port": 8121,
-    "username": "default",
-    "password": "default",
-    "database": "default"
+    "host": os.getenv("CLICKHOUSE_HOST", "REDACTED_IP"),
+    "port": int(os.getenv("CLICKHOUSE_PORT", "8121")),
+    "username": os.getenv("CLICKHOUSE_USERNAME", "default"),
+    "password": os.getenv("CLICKHOUSE_PASSWORD", "default"),
+    "database": os.getenv("CLICKHOUSE_DATABASE", "default")
 }
 
 def execute_sql_file(filepath):

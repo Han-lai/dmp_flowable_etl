@@ -19,8 +19,25 @@ import sys
 import logging
 import time
 import argparse
+import os
 from datetime import datetime, timedelta
 import clickhouse_connect
+
+# Load environment variables if needed (optional: can use python-dotenv if installed)
+# For simplicity with built-in os.getenv, we assume variables are in the shell environment.
+
+# ClickHouse Configuration (with defaults from old hardcoded values)
+CLICKHOUSE_CONFIG = {
+    "host": os.getenv("CLICKHOUSE_HOST", "REDACTED_IP"),
+    "port": int(os.getenv("CLICKHOUSE_PORT", "8121")),
+    "username": os.getenv("CLICKHOUSE_USERNAME", "default"),
+    "password": os.getenv("CLICKHOUSE_PASSWORD", "default"),
+    "database": os.getenv("CLICKHOUSE_DATABASE", "default"),
+    "send_receive_timeout": int(os.getenv("CLICKHOUSE_TIMEOUT", "600"))
+}
+
+# JDBC Bridge Configuration
+JDBC_DATASOURCE_NAME = os.getenv("JDBC_DATASOURCE_NAME", "mssql_master")
 
 # Configure Logging
 logging.basicConfig(
@@ -30,15 +47,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# ClickHouse Configuration
-CLICKHOUSE_CONFIG = {
-    "host": "REDACTED_IP",
-    "port": 8121,
-    "username": "default",
-    "password": "default",
-    "database": "default",
-    "send_receive_timeout": 600
-}
+# (CLICKHOUSE_CONFIG and JDBC_DATASOURCE_NAME are now moved up and use os.getenv)
 
 # ==========================================
 # Table Configurations
@@ -268,7 +277,7 @@ def sync_batch(client, config, start_str, end_str):
            '{batch_id}' as _batch_id,
            now64(3) as _extracted_at,
            1 as _sync_version
-    FROM jdbc('mssql_master', '
+    FROM jdbc('{JDBC_DATASOURCE_NAME}', '
         SELECT {cols} FROM {source}
         WHERE {time_col} >= ''{start_str}'' 
           AND {time_col} < ''{end_str}''
@@ -347,7 +356,7 @@ def sync_full(client, config):
            'full_sync_{datetime.now().strftime("%Y%m%d")}' as _batch_id,
            now64(3) as _extracted_at,
            1 as _sync_version
-    FROM jdbc('mssql_master', 'SELECT {cols} FROM {source}')
+    FROM jdbc('{JDBC_DATASOURCE_NAME}', 'SELECT {cols} FROM {source}')
     """
     
     start_time = time.perf_counter()
