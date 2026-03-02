@@ -7,12 +7,13 @@ import os
 import sys
 from pathlib import Path
 
-# ClickHouse 連線設定
+# ClickHouse 連線設定 (優先使用環境變數)
 CH_CONFIG = {
-    'host': '10.136.218.207',
-    'port': 8121,
-    'username': 'default',
-    'password': 'default'
+    'host': os.getenv('CLICKHOUSE_HOST', '10.136.218.207'),
+    'port': int(os.getenv('CLICKHOUSE_PORT', '8121')),
+    'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
+    'password': os.getenv('CLICKHOUSE_PASSWORD', 'default'),
+    'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 
 # SQL 檔案執行順序
