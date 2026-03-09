@@ -1,6 +1,6 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-02-10 17:28
+**最後更新**: 2026-03-06
 
 ---
 
@@ -15,8 +15,20 @@
 - **異廠同名線段歸屬修復 (MDM Join Bug)**: 【已解決】修復了 DG3 廠區 ST02 等線段被錯誤歸類至 CNE (華東) 的問題。原因為底層 MDM 有多廠 (DG3, WJ5) 共用同一個線體名稱。Silver 層改採 `LineName + PlantCode` 雙主鍵進行轉換與去重，已成功讓資料在 Superset 正確呈現於 CNS。
 - **Cube Model 架構優化**: 已完成 V2 系列模型修正 (ACC Rate Logic Fix) 與文件同步。
 - **L5 資料完整性**: 修復 MView 刷新競態條件 (Race Condition)，確保 Gold 層維度資料完整。
+- **L5 效能全鏈路監控**: 【已完成】完成 Grafana 儀表板建置與進階擴充。新增了延遲分佈、QPS 監控、CPU 與 IO Wait 分解圖、以及表擴充與壓縮監看面板，提供 5 層式的下鑽分析佈局。
+- **L5 ClickHouse 雙產線效能基準測試**: 【已完成】完成 DG3/SMT/ST02 及 WJ2/NBU/E5 之 10 人並發 × 100 次的隨機日期壓力測試。雙線皆達到預期標準 (QPS 10.5~12.4)，找出效能差異 80% 來自 Pivot 重複掃描，引擎能力充足，並產出五份驗收與主管報告文件。
 
 ## 進行中的工作
+
+### ClickHouse 雙產線效能驗證與監控補齊 (2026-03-06) ✅ 已完成
+- **壓測成果**: 兩產線 P50 查詢延遲均 < 0.9s，達成吞吐與延遲指標，壓縮比達 6.6 倍，無記憶體與 CPU 瓶頸。
+- **文件產出**: 新增 `benchmark_result.md` (Raw)、`benchmark_briefing.md` (口語重點)、`benchmark_runbook.md` (操作 SOP) 與 `dashboard_usage_guide.md`。
+- **監控面板**: 新增含 QPS、Latency 分佈與資料壓縮比等 4 組基準測試衍生面板。
+
+### L5 併發效能壓力測試 (2026-03-05) ✅ 已完成
+- **成果**: 使用 `clickhouse-benchmark` 完成三回合壓測，10 人併發 × 100 次查詢。
+- **關鍵數據**: Round 1 QPS=411.8 | Round 2 (Cube.js) QPS=87.4, P95=173ms | Round 3 (全域掃描) QPS=70.0, P95=177ms
+- **腳本**: `stress_test_l5_benchmark.py` (單廠), `stress_test_l5_global.py` (全域)
 
 ### Cube Model 歸檔與簡化 (2026-02-10)
 - **模型精簡**: 將 7 個 Cube 模型精簡至 2 個，歸檔 5 個舊版模型至 `archive/` 目錄
@@ -29,7 +41,11 @@
 - **Data Gap Fixed**: Backfilled `DG3/SMT/ST02` data (176 rows).
 - **Cube Synced**: All active models updated to V2.
 
-### L5 累積指標修正 (2026-02-09)
+## ⚠️ 重要開發規範 (IMPORTANT)
+> [!IMPORTANT]
+> **Git Push**: 禁止在任務中自動執行 `git push`。所有變更應由使用者手動審核後推送。 (No automatic pushing to GitHub.)
+
+## 🎯 專案當前狀態 (2026-02-10 UPDATE)
 - **7天滾動分母實作**: 徹底解決週末 Acc Rate 暴飆問題，達成日、週、月指標邏輯的一致。
 - **V2 模型魯棒性增強**: 通過 Triple-OR 篩選邏輯，解決了 Superset 不同模式（Dashboard vs Chart）下的時間格式轉換錯誤。
 - **V2 模型魯棒性增強**: 通過 Triple-OR 篩選邏輯，解決了 Superset 不同模式（Dashboard vs Chart）下的時間格式轉換錯誤。
@@ -50,6 +66,9 @@
 - **Superset 雙軸圖表整合**: 成功解決混合圖表 (Bar + Line) 的排序與雙軸顯示問題。
 
 
+
+## ⚙️ 開發規範 (Development Rules)
+- **Git Push**: 接下來的任務都不要自動地幫我 push 到 GitHub 當中。 (No automatic pushing to GitHub in subsequent tasks.)
 
 ## 待辦事項
 - [x] 完成 L5 指標三方對齊驗證 (WJ2/E5: 192)

@@ -1,5 +1,8 @@
 # CLAUDE.md - DMP Flowable 快速上手指南 (Quick Start)
 
+> [!IMPORTANT]
+> **Git Push**: 接下來的任務都不要自動地幫我 push 到 GitHub 當中。 (No automatic pushing to GitHub.)
+
 ## 🎯 專案當前狀態 (2026-02-10 UPDATE)
 本專案已完成 **Cube Model 架構優化** 與 **L5 週期報表 V2 全面校正**。
 

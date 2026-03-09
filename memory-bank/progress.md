@@ -2,6 +2,51 @@
 
 ## 已完成里程碑
 
+### 2026-03-06 (今日進度 - L5 雙產線效能基準驗證與進階監控)
+- ✅ **雙產線高併發壓測完成 (DG3/SMT/ST02 & WJ2/NBU/E5)**:
+    - **測試配置**: 模擬 10 人併發 × 100 次隨機日期查詢。
+    - **效能指標**: Pivot SQL (報表複雜結構) QPS 保底 10.5 筆/秒，P50 延遲 < 0.9s；Standard SQL (純聚合) QPS 破 50 筆/秒，P50 延遲 < 0.2s。
+    - **資源證明**: 記憶體峰值 < 405 MiB (遠低於 1 GiB 上限)，資料壓縮比達 6.6 倍。
+    - **瓶頸定位**: 確認約 80% 延遲來自 Cube.js 產生的 Pivot (6段 UNION ALL) 重複掃描結構，ClickHouse 引擎本身運算能力過剩。
+- ✅ **五大交付文件產出與歸檔**:
+    - `benchmark_result.md`: 原始測試輸出數據記錄
+    - `monitoring_architecture_and_status.md`: 完整架構與正式效能驗收報告 (PASS)
+    - `benchmark_briefing.md`: 主管會報專用摘要 (白話重點版)
+    - `benchmark_runbook.md`: 壓測重現標準作業程序 (SOP)
+    - `dashboard_usage_guide.md`: 給管理層的 Dashboard 判讀與情境指南
+- ✅ **Grafana 儀表板補建 (Benchmark-Driven Panels)**:
+    - 新增 **Query Latency Distribution** (分色點狀圖 + 1000ms 閾值線)。
+    - 新增 **Real-time QPS** (每分鐘吞吐量柱狀圖 + 10 QPS 安全線)。
+    - 新增 **Per-Query CPU vs Duration** (CPU/時間/I/O Wait 分解散點圖)。
+    - 新增 **Table Storage Overview** (精準追蹤核心表格的空間與壓縮比)。
+    - 修復並優化了 `node_exporter` CPU stale series 問題，實作 ClickHouse vs Others vs Host 的面積堆疊圖 (Stacked Area)。
+
+### 2026-03-05 (今日進度 - L5 ClickHouse 三回合壓力測試完成)
+- ✅ **三回合遞進式壓測 (clickhouse-benchmark)**:
+    - **Round 1 (基線)**: 簡化 GROUP BY SQL → QPS 411.8, P95 14ms
+    - **Round 2 (真實 Superset)**: 完整 Cube.js CTE+UNION ALL+Window Function SQL → QPS 87.4, P95 173ms
+    - **Round 3 (全域掃描)**: 拔除所有廠區過濾條件 → QPS 70.0, P95 177ms
+    - **結論**: 三回合全數通過效能目標 (QPS > 50, P95 < 1s)，ClickHouse 效能「能力過剩」。
+- ✅ **壓測腳本建立**:
+    - `stress_test_l5_benchmark.py`: 產生真實 Cube.js SQL (單廠區過濾)
+    - `stress_test_l5_global.py`: 產生全域掃描無過濾 SQL
+- ✅ **文件更新**: 將三回合對比數據寫入 `docs/monitoring/monitoring_architecture_and_status.md`
+- ✅ **cAdvisor Port 修正**: `docker-compose.monitor.yml` 中 cAdvisor 映射改為 8085:8080
+
+### 2026-03-05 (早期進度 - L5 效能監控儀表板升級)
+- ✅ **Grafana 儀表板 Storytelling 佈局重構**:
+    - **設計**: 將 8 個面板劃分為 Macro Health (系統大盤)、L5 Query Impact (效能核心)、Deep Dive (深度剖析) 三層次的 12 欄網格佈局。
+    - **優化**: 將資源消耗與 L5 Annotation 精確對接，並移除動態 instance 標籤的干擾，統一採用 `docker-host` 以提高穩定性。
+- ✅ **高保真 (High Fidelity) 記憶體尖峰捕捉**:
+    - **問題**: 發現 Prometheus 的 15 秒採樣頻率會漏掉 L5 亞秒級查詢的瞬時記憶體高峰 (約 300MB+)。
+    - **解決**: 於 Deep Dive 區塊新增直讀 `system.query_log` 的 SQL Panel，確保每一次 0.x 秒的查詢波動皆能被精確點狀呈現。
+- ✅ **查詢來源追蹤 (Query Source Tracking)**:
+    - **實作**: 透過解析 `http_user_agent` 與 `client_name`，於 Expensive Queries 表格中新增 `source` 欄位。
+    - **效益**: 現已能精確區別系統中哪些資源消耗來自 Cube.js (Superset)、DBeaver 手動操作或 Python 測試腳本。
+- ✅ **併發壓力測試腳本開發**:
+    - **產出**: 建立 `scripts/validation/stress_test_l5.py`，模擬 10 人併發隨機維度組合的 L5 查詢，為基準測試做好準備。
+
+
 ### 2026-02-26 (今日進度 - 四條件 DONE 驗證完成)
 
 - ✅ **四條件 QAS vs CH Done 數量驗證**:
