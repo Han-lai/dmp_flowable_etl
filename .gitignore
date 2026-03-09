@@ -37,6 +37,7 @@ logs/
 *.txt
 *.csv
 output_*.md
+tmp_*
 
 # Documentation Exclusions (Historical/Work-in-progress)
 docs/archive/
