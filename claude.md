@@ -3,10 +3,23 @@
 > [!IMPORTANT]
 > **Git Push**: 接下來的任務都不要自動地幫我 push 到 GitHub 當中。 (No automatic pushing to GitHub.)
 
-## 🎯 專案當前狀態 (2026-02-10 UPDATE)
-本專案已完成 **Cube Model 架構優化** 與 **L5 週期報表 V2 全面校正**。
+## 專案當前狀態 (2026-03-10 UPDATE)
+本專案已完成 **L5 Insight API (FastAPI)** 之開發與部署，並實現了 **Split-Stack (服務拆分)** 架構。
 
-### 最新修復 (2026-02-26)
+### 最新完成 (2026-03-10)
+- **L5 Insight API (FastAPI) 正式上線**:
+  - 實作 `/api/l5/task-report` 終點，支援 GET/POST 複雜報表格式。
+  - 整合 Pydantic 模型進行結構化驗證，提供月/週/日三位一體之數據產出。
+- **服務架構分離 (Split-Stack)**:
+  - 將 ClickHouse 與 API 拆分為獨立 Docker Compose 堆疊 (`docker-compose-api.yml`)。
+  - 支援獨立管理與維護。
+- **動態掛載部署 (Dynamic Runtime)**:
+  - 採用 Volume-mount 模式掛載 `main.py` 與 `requirements.txt`。
+  - 啟動時自動安裝依賴，支援透過 FileBrowser 即修即用。
+- **全域文件去標籤化 (De-versioning)**:
+  - 移除所有文檔與 API 終點中的 `v2` 標記，完成正式生產命名過度。
+
+### 先前修復 (2026-02-26)
 - **Vx 歸屬邏輯修復 (解決 V1 掛零異常)**:
   - **問題**: NPE 與 DG3 廠區的 V1 資料短少 (甚至為 0)，且全部湧入 V3 造成數量膨脹。
   - **根源**: Silver 層 `vx_type` 判斷序列將 `TASK_DEF_KEY_` 優先級置於頂層，導致本該由工單號 (MO) 強制轉為 V1 的特權工單被 `V3_` 開頭的自身屬性騎劫。
@@ -45,7 +58,7 @@
 
 ---
 
-## 🛠️ 開發常用指令
+## 開發常用指令
 
 ### 1. 數據同步 (Bronze)
 ```powershell
@@ -54,12 +67,21 @@ python scripts/etl/sync_batches_consolidated.py
 ```
 
 ### 2. 重建管線 (Silver / Gold)
-```powershell
+```bash
 # 完整重建 Bronze → Silver → Gold
 python scripts/etl/execute_etl.py
 
 # 不中斷更新 MView
 python scripts/etl/update_mviews_no_data_loss.py
+```
+
+### 3. API 服務部署 (FastAPI)
+```bash
+# 啟動 API 堆疊 (埠位 7088)
+docker-compose -f infra/docker-compose-api.yml up -d
+
+# 重啟 API 以加載新代碼
+docker restart flowable_pipeline_api
 ```
 
 ### 3. 驗證 (scripts/validation/ 下各子目錄)
@@ -70,26 +92,28 @@ python scripts/validation/data_explore/quick_stats.py
 
 ---
 
-## 📂 核心目錄結構
+## 核心目錄結構
 - `sql/etl/`: Bronze → Silver → Gold 完整管線 SQL。
-- `docs/`: 核心技術手冊 (01~06 序號排列)。
+- `docs/`: 📂 系統化技術文件 (分 Architecture, Deployment, Metrics, API, Monitoring, Reports)。
 - `scripts/`:
   - `etl/`: 生產同步與重建腳本 (7 個)。
-  - `setup/`: 一次性設定腳本。
-  - `validation/`: 驗證腳本 (分 7 個子類：date_audit, infra_check, data_explore, logic_verify, gold_layer, l5_l7, debug)。
-- `docker/`: ClickHouse + JDBC Bridge 部署設定。
+  - `setup/`: 一稱性設定腳本。
+  - `validation/`: 驗證腳本 (與其子類及 debug 目錄)。
+- `infra/`: ClickHouse + JDBC Bridge + API + Monitoring 部署設定。
 - `cube/`: Cube.js 語意層模型。
+- `api/`: FastAPI 原始碼。
 
 ---
 
-## 📝 待辦事項 (Backlog)
+## 待辦事項 (Backlog)
 
 ### 已完成修正
-- **2026-02-11**: QAS Verification (WJ2/DG3 V1 checking) & Spec Compliance (Vx Priority).
-- **2026-02-11**: Documentation Overhaul (Audit Report) & L7 Removal.
+- **2026-03-10**: L5 Insight API (FastAPI) Deployment & Split-Stack Architecture.
+- **2026-03-10**: Production Naming Transition (V2 Removal) Across Docs & Code.
+- **2026-02-26**: Vx Attribution Logic Fix (DG3/NPE V1 vs V3 Correction).
 
 ### 其他待辦
-- [ ] **1 筆差異排除**: 將 12/25 的 ACC 數據從 41 修正為 40 (篩選器細調)。
-- [ ] **任務二**: 驗證 **L7 人員使用率 (User Utilization)** 指標 (目前暫緩，已從文件移除)。
+- [ ] **VM 驗證**: 確認 API 在正式 VM 環境中的效能與 Portainer 通訊穩定度。
+- [ ] **任務二**: 驗證 **L7 人員使用率 (User Utilization)** 指標 (目前仍暫緩)。
 - [ ] 監控背景 REFRESH 任務的效能負擔。
 

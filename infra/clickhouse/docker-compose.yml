@@ -6,9 +6,10 @@ services:
     ports:
       - "8121:8123"
       - "9001:9000"
+      - "9363:9363"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
-      - ./clickhouse/config:/var/lib/clickhouse/server/config.d
+      - ./config:/var/lib/clickhouse/server/config.d
     environment:
       - CLICKHOUSE_DB=bronze
       - CLICKHOUSE_USER=default
@@ -28,6 +29,13 @@ services:
           <host>jdbc-bridge</host>
           <port>9019</port>
         </jdbc_bridge>
+        <prometheus>
+          <endpoint>/metrics</endpoint>
+          <port>9363</port>
+          <metrics>true</metrics>
+          <events>true</events>
+          <asynchronous_metrics>true</asynchronous_metrics>
+        </prometheus>
       </clickhouse>' > /etc/clickhouse-server/config.d/config.xml &&
       /entrypoint.sh
       "

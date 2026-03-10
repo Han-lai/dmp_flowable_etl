@@ -10,13 +10,13 @@
 - **邏輯**: 排除 Bypass=Y, 排除 E/C 開頭任務, 排除 Q/R 工單
 - **ACC 邏輯**: **Cube 層**採用 7天滾動計算 (解決週末分母過小問題)；**SQL 層**維持每日快照。
 
-## Cube 模型架構 (V2)
-- **標準版 (V2 Standard)**: `cube_l5_task_periodic_v2.js`
+## Cube 模型架構
+- **標準版 (Standard)**: `cube_l5_task_periodic_v2.js`
     - 用途: 趨勢分析 (Trend Analysis), 寬表結構
     - ACC 邏輯: Month/Week 採用週期總量, Day 採用 7天滾動總量
-- **轉置版 (V2 Pivot)**: `cube_l5_task_periodic_v2_pivot.js`
+- **轉置版 (Pivot)**: `cube_l5_task_periodic_v2_pivot.js`
     - 用途: 狀態比較 (Status Comparison), 長表結構 (Unpivot)
-    - 特點: 支援 V2 Time Machine 回溯, 用以取代舊版 `cube_l5_task_completion.js`
+    - 特點: 支援時光機 (Time Machine) 回溯, 用以取代舊版 `cube_l5_task_completion.js`
 
 ## 驗證狀態
 - **E5 線驗證 (WJ2/NBU)**: QAS 驗證結果 184 筆 (V3 Only). 該區無 V1 任務。

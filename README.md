@@ -17,7 +17,7 @@
 
 本系統採用現代化數據倉儲架構，將數據分為 Bronze、Silver、Gold 三層進行轉化。
 
-### 🔗 系統架構圖 (Architecture Overview)
+### 系統架構圖 (Architecture Overview)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
@@ -66,7 +66,8 @@
                                   ▼
 ┌─────────────────────────────────────────────────────────────────────┐
 │  應用層                                                             │
-│  • Cube.js 語意層 API                                               │
+│  • Cube.js 語意層 API (Superset 介接)                               │
+│  • FastAPI L5 Insight API (自定義進階報表)                          │
 │  • Apache Superset 視覺化面板                                       │
 └─────────────────────────────────────────────────────────────────────┘
 ```
@@ -121,16 +122,17 @@ python scripts/etl/sync_unified.py
 | :--- | :--- |
 | **[PROJECT_AUDIT_REPORT.md](PROJECT_AUDIT_REPORT.md)** | **[核心]** 專案全審核報告，包含詳細架構圖與 SQL 邏輯清單。 |
 | **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** | **[目錄]** 專案目錄結構說明與詳細檔案用途索引。 |
+| **[docs/DEPLOYMENT_GUIDE.md](docs/DEPLOYMENT_GUIDE.md)** | **[部署]** L5 Insight API 與 ClickHouse 之 VM 部署指南。 |
 | **[docs/02_E2E_Implementation_Guide.md](docs/02_E2E_Implementation_Guide.md)** | **[指南]** 端到端技術實作手冊，包含環境建置細節。 |
 | **[docs/refrence_sql/](docs/refrence_sql/)** | **[參考]** 包含 L5 Procedure 快照與歷史 DDL 備份。 |
 
 ---
 
-## ✨ 5. 關鍵功能 (Key Features)
+## 5. 關鍵功能 (Key Features)
 
 - **自動化維度補齊**：整合 VARINST 與 MDM 來源，自動映射製造五階組織維度。
 - **高彈性 Vx 歸屬**：優先採用工單號 (moNumber) 前綴進行歸類，解決特殊流程的 V1/V3 歸屬衝突。
-- **V2 Time Machine 邏輯**：Cube.js 模型支援回溯任意歷史時間點的系統積壓狀態。
+- **精階 Time Machine 邏輯**：Cube.js 模型支援回溯任意歷史時間點的系統積壓狀態。
 - **冪等性寫入 (Idempotent)**：Sync 機制確保區間重跑時不會產生重複數據。
 
 ---
@@ -139,19 +141,21 @@ python scripts/etl/sync_unified.py
 
 ```
 dmp_flowable/
-├── config/environments/        # 環境設定 (dev/prod)
-├── docker/                     # ClickHouse + JDBC Bridge 部署配置
-├── docs/                       # 技術文檔與指標規格定義
-├── memory-bank/                # AI 助手脈絡記憶 (進度、架構)
-├── scripts/
-│   ├── etl/                    # 🔄 核心生產同步腳本
-│   └── setup/                  # 🔧 資料庫初始化工具
-├── sql/
-│   ├── etl/                    # 🏗️ Bronze → Silver → Gold 轉換邏輯
-│   ├── setup/                  # ⚙️ 資料庫初始化 SQL
-│   └── verification/           # ✅ 數據查核 SQL
+├── api/                        # FastAPI L5 Insight API 實作
+├── config/                     # 各項環境設定 (JDBC, Environments)
 ├── cube/                       # Cube.js 語意層定義
-└── README.md                   # 專案說明文件 (目前讀取中)
+├── docs/                       # 系統化技術文件
+│   ├── 01_architecture/        # 架構圖與系統流轉
+│   ├── 02_deployment/          # 部署與維護手冊
+│   ├── 03_metrics/             # 指標定義與資料映射
+│   ├── 04_serving/             # 應用服務層 (API & Superset)
+│   ├── 05_monitoring/          # 效能壓測與監控
+│   └── 06_reports/             # 數據差異稽核報告
+├── infra/                      # 基礎設施 (ClickHouse, API, Monitoring 堆疊)
+├── scripts/                    # Python 腳本 (ETL, Validation, Debug)
+├── sql/                        # Bronze → Silver → Gold 轉換邏輯
+├── memory-bank/                # AI 助手脈絡記憶
+└── README.md                   # 專案入口文件
 ```
 
 ---
