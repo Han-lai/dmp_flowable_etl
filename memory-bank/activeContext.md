@@ -1,6 +1,6 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-03-06
+**最後更新**: 2026-03-10
 
 ---
 
@@ -13,12 +13,15 @@
 ### 核心任務
 - **Vx 歸屬邏輯修復 (廠區與特權工單優先規則)**: 【已解決】修正了 `04_silver_fact_tasks` 的 `vx_type` 判斷順序。將 DG3 與 NPE 廠區專屬的特權工單 (如 196, 315) 的判斷層級提升至 `TASK_DEF_KEY_` 之上，成功解決了 V1 資料被誤判為 V3 導致掛零的問題。
 - **異廠同名線段歸屬修復 (MDM Join Bug)**: 【已解決】修復了 DG3 廠區 ST02 等線段被錯誤歸類至 CNE (華東) 的問題。原因為底層 MDM 有多廠 (DG3, WJ5) 共用同一個線體名稱。Silver 層改採 `LineName + PlantCode` 雙主鍵進行轉換與去重，已成功讓資料在 Superset 正確呈現於 CNS。
-- **Cube Model 架構優化**: 已完成 V2 系列模型修正 (ACC Rate Logic Fix) 與文件同步。
-- **L5 資料完整性**: 修復 MView 刷新競態條件 (Race Condition)，確保 Gold 層維度資料完整。
-- **L5 效能全鏈路監控**: 【已完成】完成 Grafana 儀表板建置與進階擴充。新增了延遲分佈、QPS 監控、CPU 與 IO Wait 分解圖、以及表擴充與壓縮監看面板，提供 5 層式的下鑽分析佈局。
-- **L5 ClickHouse 雙產線效能基準測試**: 【已完成】完成 DG3/SMT/ST02 及 WJ2/NBU/E5 之 10 人並發 × 100 次的隨機日期壓力測試。雙線皆達到預期標準 (QPS 10.5~12.4)，找出效能差異 80% 來自 Pivot 重複掃描，引擎能力充足，並產出五份驗收與主管報告文件。
+- **Cube Model 架構優化**: 已完成高品質系列模型修正 (ACC Rate Logic Fix) 與文件同步。
+- **L5 Insight API (FastAPI) 正式版**: 【已完成】實作了 `/api/l5/task-report` 並移除所有 `v2` 標記。支援 GET/POST 複雜報表格式，並完成 Docker 全域文件同步。
+- **服務架構分離 (Split-Stack)**: 【已完成】將 ClickHouse 與 API 拆分為獨立堆疊，支援獨立生命週期管理。
+- **動態掛載部署 (Dynamic Runtime)**: 【已完成】API 採用 Volume-mount 模式掛載 `main.py`，支援透過 FileBrowser 即修即用，大幅優化運維效率。
 
-## 進行中的工作
+## 進行中的工作 (2026-03-10)
+
+- **VM 部署驗證 (Port 7088)**: 使用者正在 VM 環境中測試新版 `docker-compose-api.yml` 與 FileBrowser 代碼修改機制。
+- **Swagger UI 功能與數據查核**: 驗證 `/api/l5/task-report` 在真實數據下的產出準確性。
 
 ### ClickHouse 雙產線效能驗證與監控補齊 (2026-03-06) ✅ 已完成
 - **壓測成果**: 兩產線 P50 查詢延遲均 < 0.9s，達成吞吐與延遲指標，壓縮比達 6.6 倍，無記憶體與 CPU 瓶頸。
@@ -32,14 +35,14 @@
 
 ### Cube Model 歸檔與簡化 (2026-02-10)
 - **模型精簡**: 將 7 個 Cube 模型精簡至 2 個，歸檔 5 個舊版模型至 `archive/` 目錄
-- **保留模型**: 僅保留 V2 系列 (`cube_l5_task_periodic_v2.js` 和 `cube_l5_task_periodic_v2_pivot.js`)
+- **保留模型**: 僅保留高品質系列 (`cube_l5_task_periodic_v2.js` 和 `cube_l5_task_periodic_v2_pivot.js`)
 - **文件更新**: 更新 README 說明當前使用的模型與歸檔狀態
-- **效益**: 減少 71% 維護負擔，統一使用 V2 進階邏輯
+- **效益**: 減少 71% 維護負擔，統一使用標準進階邏輯
 
 ### Gold Layer Recovery (2026-02-13)
 - **View Migration**: `gold.rmv_l5_task_completion` -> `gold.rmv_l5_task_completion_v2`.
 - **Data Gap Fixed**: Backfilled `DG3/SMT/ST02` data (176 rows).
-- **Cube Synced**: All active models updated to V2.
+- **Cube Synced**: All active models updated to standard.
 
 ## ⚠️ 重要開發規範 (IMPORTANT)
 > [!IMPORTANT]
@@ -52,7 +55,9 @@
 - **資料核對**: 完成 CNS DG3 SV (SMT) S06 線體的資料路徑驗證與核實。
 
 ### Logic Fixes
-- [x] L5 V2 Pivot Cube Model (Implemented & Documented)
+- [x] L5 Insight API (GET/POST Implementation)
+- [x] API Service Separation (Split-Stack Architecture)
+- [x] L5 Standard Pivot Cube Model (Implemented & Documented)
 - [x] ACC Rate Calculation (Cube-only Rolling Logic approved)
 - [x] Vx Attribution Priority (Updated Spec to match Code: Key > Mo)
 - [x] Gold MView Rebuild Logic (Added Sleep for Consistency)

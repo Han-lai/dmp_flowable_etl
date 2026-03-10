@@ -2,7 +2,36 @@
 
 ## 已完成里程碑
 
-### 2026-03-06 (今日進度 - L5 雙產線效能基準驗證與進階監控)
+### 2026-03-10 (今日進度 - L5 Insight API 正式上線與架構分離)
+ - ✅ **L5 Insight API (FastAPI) 正式版**:
+    - **終點**: 實作 `/api/l5/task-report`，同時支援 `GET` 與 `POST` (JSON Body)。
+    - **功能**: 提供複雜的月、週 (ISO)、日報表格式，自動計算各狀態之 Qty 與 Percentage，並支援多維度過濾。
+    - **規範**: 移除所有 `v2` 標記，完成生產環境命名過渡。
+- ✅ **服務架構分離 (Split-Stack)**:
+    - **配置**: 將 ClickHouse 與 API 拆分為獨立的 Docker Compose 堆疊 (`docker-compose-api.yml`)，實現解耦管理。
+    - **連線**: 透過 VM 正式 IP (`REDACTED_IP`) 進行容器間通訊，並更新 `.env` 配置。
+- ✅ **動態掛載部署模式 (Dynamic Runtime)**:
+    - **實作**: 採用 `python:3.10-slim` 基礎映像檔，透過 Volume 掛載 `main.py` 與 `requirements.txt`。
+    - **自動化**: 容器啟動時自動執行 `pip install`，支援透過 FileBrowser 即時更新程式碼而無需重新 Build Image。
+- ✅ **部署手冊與 Walkthrough**: 產出 `DEPLOYMENT_GUIDE.md` 與 `walkthrough.md`，詳述 Port 7088 之存取與維護 SOP。
+
+### 2026-03-09 (先前進度 - Cube Pivot 與 Enhanced L5 API 實作)
+- ✅ **Cube.js V3 Pivot 模型升級**:
+    - **問題**: 在 Superset 的 Pivot 報表中，若 User 不點選特定的 `factory` 或是 `line`，Cube.js 預設無法將全部的資料向上加總（會因為依賴而報錯，或是造成百分比採取「平均的平均」算錯）。
+    - **解決方案**: 捨棄在容器內直接修改唯讀檔案，新建 `cube_l5_task_periodic_v3_pivot.js`。利用 `FILTER_PARAMS.isSet()` 的特性，當未捕捉到前端過濾器時，強迫賦值字串 `'ALL'`；同時把百分比 (`task_pct`) 計算從 SQL 中拔除，改在 Measure 階段進行真正的 `sum() / sum()` 運算。
+    - **成果**: 完美達成報表未過濾狀態下的全盤加總檢視。
+- ✅ **Enhanced L5 Task Completion API (FastAPI)**:
+    - **需求**: 使用者需要一個能同時呈現「月、週、日」數據，並包含多種狀態百分比（Doing+Done, Acc）的複雜報表結構。
+    - **實作**: 於 `api/main.py` 新增 `/api/l5/task-report` 終點。支援動態計算月份結尾、ISO 週次與最後 7 天的數據，並自動計算各狀態之 Qty 與 Percentage。
+    - **數據驗證**: 成功驗證 CNE WJ2 於 12/25~12/31 的數據與使用者提供之基準完全一致。
+    - **部署模式**: 完成 Docker 化部署配置，包含 `Dockerfile`, `requirements.txt` 及 `docker-compose.yml` 服務掛載。支援透過 `.env` 變數 `VOLUMES_ROOT` 指定統一存儲路徑（如 `/home/docker-data/flowable_pipeline_api`）。
+    - **指南**: 產出 `docs/DEPLOYMENT_GUIDE.md` 提供完整 VM 部署 SOP。
+- ✅ **產出 L5 任務完成率報告**:
+    - **背景**: 為了向管理層說明 ClickHouse V3 (排除 `Recycle Plan` 等特殊任務) 與舊有 Baseline 之間的數字鴻溝。
+    - **產出**: 針對 `CNE WJ2` 與 `CNS DG3` 分別產出了純淨的數據比較矩陣報告。
+    - **歸檔**: 正式將整合後的報表歸檔於 `docs/reports/L5_Data_Discrepancy_Report_202612.md` 中留存。
+
+### 2026-03-06 (先前進度 - L5 雙產線效能基準驗證與進階監控)
 - ✅ **雙產線高併發壓測完成 (DG3/SMT/ST02 & WJ2/NBU/E5)**:
     - **測試配置**: 模擬 10 人併發 × 100 次隨機日期查詢。
     - **效能指標**: Pivot SQL (報表複雜結構) QPS 保底 10.5 筆/秒，P50 延遲 < 0.9s；Standard SQL (純聚合) QPS 破 50 筆/秒，P50 延遲 < 0.2s。

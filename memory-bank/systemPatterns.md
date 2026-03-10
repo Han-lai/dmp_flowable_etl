@@ -25,8 +25,13 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
     └────┬────┘  - rmv_user_utilization (人員使用率)
          │
          ▼
-    ┌────┴────┐
-    │ Cube.js │  語意層 API
+    ┌─────────┐
+    │ Cube.js │  語意層 API (與 Superset 整合)
+    └─────────┘
+          │
+          ▼
+    ┌─────────┐
+    │ FastAPI │  進階報表 API (自定義複雜格式)
     └─────────┘
 ```
 
@@ -69,6 +74,22 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 ### 3. Filter List Exposure (過濾器清單擴張)
 *   **技術**: 在 SQL 加入 `UNION ALL SELECT DISTINCT snapshot_date`。
 *   **用途**: 讓下拉選單能顯示所有可用日期，而非僅限於目前計算出的 Anchor Date。
+
+## FastAPI 設計模式 (API Design Patterns)
+
+### 1. Dynamic Period Aggregation (動態週期聚合)
+*   **模式**: 在 API 層動態計算報表所需的時間軸（如最後 7 天、最後 3 個 ISO 週、月結尾）。
+*   **實作**: 利用 Python `datetime` 與 `calendar` 模組產生日期清單，並使用 SQL `UNION ALL` 一次性從 ClickHouse 撈取多個維度的聚合數據。
+
+### 2. Status Breakdown Mapping (狀態分解映射)
+*   **模式**: 將資料庫中的基本 Status (Todo, Doing, Done) 在 API 層組合成業務所需的進階指標（如 Doing+Done, Acc）。
+*   **實作**: 提供 Qty 與 Percentage 的雙重映射結構，方便前端直接渲染。
+
+### 3. Containerized Deployment (容器化部署: Split-Stack)
+*   **模式**: 將 ClickHouse 與 API 服務解耦，統一整合於 `infra/` 目錄下進行管理。
+*   **管理網域 (Infra Center)**: 使用 `infra/docker-compose.yml` 管理資料倉儲，`infra/docker-compose-api.yml` 管理 API。
+*   **動態掛載 (Dynamic Runtime)**: API 採用 `python:3.10-slim` 為基底，透過 Volume 掛載 `main.py` 與 `requirements.txt`。
+*   **優點**: 環境隔離、目錄結構清晰、支援透過 FileBrowser 即時更新代碼而無需重新構建映像檔。
 
 ## 🚨 關鍵安全規則 (Critical Safety Rules)
 
