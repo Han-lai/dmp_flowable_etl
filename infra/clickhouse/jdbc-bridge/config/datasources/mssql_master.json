@@ -1,10 +1,10 @@
 {
   "mssql_master": {
     "driverUrls": [
-      "https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/7.4.1.jre8/mssql-jdbc-7.4.1.jre8.jar"
+      "file:///etc/clickhouse-jdbc-bridge/drivers/mssql-jdbc-11.2.3.jre8.jar"
     ],
     "driverClassName": "com.microsoft.sqlserver.jdbc.SQLServerDriver",
-    "jdbcUrl": "jdbc:sqlserver://WJOAUATDB01S.delta.corp:65000;databaseName=master;encrypt=false;trustServerCertificate=true",
+    "jdbcUrl": "jdbc:sqlserver://WJOAUATDB01S.delta.corp:65000;database=APP_SRV_BPM;encrypt=true;trustServerCertificate=true",
     "username": "APP_SRV_BPM",
     "password": "APP_SRV_BPM"
   }
