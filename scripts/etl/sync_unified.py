@@ -249,6 +249,34 @@ def get_last_watermark(client, table_name):
         logger.warning(f"Could not fetch watermark for {table_name}: {e}")
     return None
 
+def get_source_min_time(client, config):
+    """
+    Queries the source MSSQL (via JDBC Bridge) to find the earliest record.
+    Acts as a fail-safe start date.
+    """
+    source = config['source']
+    time_col = config['time_col']
+    
+    logger.info(f"  Detecting earliest record for {source}...")
+    
+    # We use a subquery to get the min time via JDBC
+    sql = f"""
+    SELECT min({time_col}) 
+    FROM jdbc('{JDBC_DATASOURCE_NAME}', 'SELECT min({time_col}) as {time_col} FROM {source}')
+    """
+    try:
+        result = client.query(sql)
+        if result.result_rows and result.result_rows[0][0]:
+            dt = result.result_rows[0][0]
+            # Handle if it is a datetime object or a string
+            if hasattr(dt, 'strftime'):
+                return dt.strftime("%Y-%m-%d %H:%M:%S")
+            return str(dt)
+    except Exception as e:
+        logger.warning(f"  Failed to detect min time from source: {e}")
+    
+    return "2023-01-01" # Ultimate fallback if detection fails
+
 # =================================================================
 # 4. Core Sync Logic
 # =================================================================
@@ -434,8 +462,8 @@ def main():
                     start_date = last_wm
                     logger.info(f"  Resuming from watermark: {start_date}")
                 else:
-                    start_date = "2023-01-01"
-                    logger.info(f"  No watermark, default: {start_date}")
+                    start_date = get_source_min_time(client, config)
+                    logger.info(f"  No watermark. Automatically detected start date from source: {start_date}")
             
             batches = generate_batches(start_date, args.end, args.step_days, args.step_hours)
             logger.info(f"Generated {len(batches)} batches from {start_date} to {args.end}")

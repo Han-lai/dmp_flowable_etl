@@ -66,6 +66,7 @@ CREATE TABLE bronze.bpm_act_hi_varinst
     `LONG_` Nullable(Int64),
     `TEXT_` Nullable(String),
     `TEXT2_` Nullable(String),
+    `META_INFO_` Nullable(String),
     `CREATE_TIME_` Nullable(DateTime64(3)),
     `LAST_UPDATED_TIME_` Nullable(DateTime64(3)),
     `_batch_id` String DEFAULT '',
@@ -74,7 +75,7 @@ CREATE TABLE bronze.bpm_act_hi_varinst
 )
 ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY ID_
-TTL toDate(CREATE_TIME_) + toIntervalYear(1)
+TTL toDate(_extracted_at) + toIntervalYear(1)
 SETTINGS allow_nullable_key = 1;
 
 -- ========================================
@@ -178,6 +179,6 @@ CREATE TABLE bronze.bpm_act_hi_identitylink (
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY ID_
-TTL toDate(CREATE_TIME_) + INTERVAL 1 YEAR
+TTL toDate(_extracted_at) + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1;
 

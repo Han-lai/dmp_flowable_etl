@@ -42,7 +42,5 @@ tmp_*
 # Documentation Exclusions (Historical/Work-in-progress)
 docs/archive/
 docs/reports/
-docs/pending_vx_logic_fix.md
-
 # Validation scripts (excluded from Git for deployment)
 scripts/validation/

@@ -9,7 +9,7 @@ services:
       - "9363:9363"
     volumes:
       - clickhouse-data:/var/lib/clickhouse
-      - ./config:/var/lib/clickhouse/server/config.d
+      - ${VOLUMES_ROOT}/clickhouse/config:/var/lib/clickhouse/server/config.d
     environment:
       - CLICKHOUSE_DB=bronze
       - CLICKHOUSE_USER=default
@@ -47,9 +47,9 @@ services:
     ports:
       - "9019:9019"
     volumes:
-      - ./jdbc-bridge/config/datasources:/etc/clickhouse-jdbc-bridge/config/datasources
-      - ./jdbc-bridge/drivers:/etc/clickhouse-jdbc-bridge/drivers
-      - ./jdbc-bridge/drivers:/app/drivers
+      - ${VOLUMES_ROOT}/clickhouse/jdbc-bridge/config/datasources:/etc/clickhouse-jdbc-bridge/config/datasources
+      - ${VOLUMES_ROOT}/clickhouse/jdbc-bridge/drivers:/etc/clickhouse-jdbc-bridge/drivers
+      - ${VOLUMES_ROOT}/clickhouse/jdbc-bridge/drivers:/app/drivers
     environment:
       - CONFIG_PATH=/app/config
     depends_on:
