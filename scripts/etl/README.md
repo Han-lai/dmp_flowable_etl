@@ -31,7 +31,7 @@
 | APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108 | bronze.bpm_act_hi_procinst | batch |
 | APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK | bronze.bpm_act_hi_identitylink | batch |
 | APP_SRV_BPM.dbo.ACT_RE_PROCDEF_0108 | bronze.bpm_act_re_procdef | full |
-| APP_SRV_COMMON.dbo.HREmployee | bronze.common_hr_employee | full |
+| APP_SRV_COMMON.dbo.HR_Employee | bronze.common_hr_employee | full |
 | APP_SRV_COMMON.dbo.EmpNodeRoleMapping | bronze.common_emp_node_role_mapping | full |
 | APP_SRV_COMMON.dbo.EmpOrgInfoMapping | bronze.common_emp_org_info_mapping | full |
 | APP_SRV_COMMON.dbo.EmpUserGroupMapping | bronze.common_emp_user_group_mapping | full |
