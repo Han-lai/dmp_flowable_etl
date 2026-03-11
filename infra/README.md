@@ -1,91 +1,48 @@
-# ClickHouse + JDBC Bridge 部署指南
+# 基礎設施中心 (Infrastructure Center - Split-Stack)
 
-## 目錄結構
+本目錄為系統所有基礎設施的集中管理中心，採用服務拆分 (Split-Stack) 架構，確保各模組獨立部署與維護。
 
-```
-docker/
-├── docker-compose.yml              # Docker Compose 部署設定
-├── clickhouse/
-│   ├── config/
-│   │   ├── jdbc_bridge.xml         # JDBC Bridge 連線設定
-│   │   └── merge_settings.xml      # MergeTree 效能調校
-│   └── users/                      # 使用者設定（可選）
-└── jdbc-bridge/
-    ├── config/
-    │   └── datasources/
-    │       ├── mssql_bpm.json      # APP_SRV_BPM 連線設定
-    │       └── mssql_common.json   # APP_SRV_COMMON 連線設定
-    └── drivers/
-        └── mssql-jdbc-12.4.2.jre11.jar
+---
+
+## 1. 目錄結構 (Directory Structure)
+
+```text
+infra/
+├── clickhouse/             # 數據倉儲堆疊 (ClickHouse + JDBC Bridge)
+│   └── README.md           # [詳細安裝手冊] 包含 JDBC 與 Driver 設定
+├── api/                    # 應用服務堆疊 (FastAPI L5 API)
+└── monitoring/             # 監控預警堆疊 (Prometheus + Grafana + cAdvisor)
 ```
 
-## 服務元件
+---
 
-| 服務 | Image | Port | 用途 |
-|------|-------|------|------|
-| ClickHouse | `clickhouse/clickhouse-server:24.3` | `8121` (HTTP), `9001` (TCP) | 資料倉儲 |
-| JDBC Bridge | `clickhouse/jdbc-bridge:2.1.0` | `9019` | MSSQL 連線橋接 |
+## 2. 三大堆疊啟動流程 (Service Setup)
 
-## 前置準備
+### A. 數據倉儲 (ClickHouse Stack)
+負責核心資料存儲與 MSSQL 橋接。
+1. 進入目錄: `cd infra/clickhouse`
+2. 設定 `jdbc-bridge/config/datasources/mssql_master.json`
+3. 啟動服務: `docker-compose up -d`
+*詳細 Driver 與 Error 86 排除請見 [clickhouse/README.md](./clickhouse/README.md)。*
 
-### 下載 MSSQL JDBC Driver
+### B. 應用服務 (API Stack)
+負責提供 L5 Insight 數據接口。
+1. 進入目錄: `cd infra/api`
+2. 啟動服務: `docker-compose up -d`
+3. 預設存取: `http://localhost:7088/docs` (Swagger UI)
 
-```powershell
-# 從 Maven 下載 JDBC Driver
-curl -L -o docker/jdbc-bridge/drivers/mssql-jdbc-12.4.2.jre11.jar ^
-  "https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/12.4.2.jre11/mssql-jdbc-12.4.2.jre11.jar"
-```
+### C. 監控系統 (Monitoring Stack)
+負責效能觀測與自動化預警。
+1. 進入目錄: `cd infra/monitoring`
+2. 啟動服務: `docker-compose up -d`
+3. 預設存取: 
+    - Grafana: `http://localhost:3000` (帳密預設 admin/admin)
+    - Prometheus: `http://localhost:9090`
 
-## 啟動服務
+---
 
-```powershell
-cd docker
+## 3. 關鍵維運指令 (Quick Ops)
 
-# 啟動所有服務
-docker compose up -d
-
-# 查看服務狀態
-docker compose ps
-
-# 查看 logs
-docker compose logs -f
-```
-
-## 驗證連線
-
-### 1. 測試 ClickHouse
-
-```powershell
-curl "http://localhost:8121/?query=SELECT%201"
-```
-
-### 2. 測試 JDBC Bridge → MSSQL
-
-```sql
--- 在 ClickHouse 中執行
-SELECT * FROM jdbc('mssql_bpm', 'SELECT 1 as test');
-
--- 查詢 MSSQL 資料表
-SELECT * FROM jdbc('mssql_bpm', 'SELECT TOP 5 * FROM ACT_HI_PROCINST');
-```
-
-## 停止服務
-
-```powershell
-docker compose down        # 停止服務
-docker compose down -v     # 停止並刪除資料
-```
-
-## 常見問題
-
-### JDBC Bridge 無法連線到 MSSQL
-1. 確認 MSSQL Server 允許遠端連線
-2. 確認防火牆開放對應 port
-3. 檢查 `jdbc-bridge/config/datasources/*.json` 連線資訊
-
-### ClickHouse 無法連線到 JDBC Bridge
-1. 確認 `jdbc-bridge` container 正常運行
-2. 確認兩個 container 在同一個 `clickhouse-net` network
-
-### 找不到 JDBC Driver
-確認 `mssql-jdbc-12.4.2.jre11.jar` 已放置在 `jdbc-bridge/drivers/`
+- **檢查所有容器**: `docker ps --filter "name=flowable"`
+- **重啟連線橋接**: `docker-compose -f infra/clickhouse/docker-compose.yml restart jdbc-bridge`
+- **查看 API 日誌**: `docker-compose -f infra/api/docker-compose.yml logs -f`

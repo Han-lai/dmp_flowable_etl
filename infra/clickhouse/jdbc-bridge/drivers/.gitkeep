@@ -1,3 +1,3 @@
 # MSSQL JDBC Driver 放置目錄
-# 請下載 mssql-jdbc-12.4.2.jre11.jar 並放到此目錄
-# 下載連結: https://learn.microsoft.com/en-us/sql/connect/jdbc/download-microsoft-jdbc-driver-for-sql-server
+# 強烈建議使用 mssql-jdbc-8.2.2.jre8.jar 並放到此目錄
+# 下載連結: https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/8.2.2.jre8/mssql-jdbc-8.2.2.jre8.jar
