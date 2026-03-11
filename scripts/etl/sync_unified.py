@@ -29,7 +29,7 @@ import clickhouse_connect
 # ClickHouse Configuration (with defaults from old hardcoded values)
 CLICKHOUSE_CONFIG = {
     "host": os.getenv("CLICKHOUSE_HOST", "REDACTED_IP"),
-    "port": int(os.getenv("CLICKHOUSE_PORT", "8121")),
+    "port": int(os.environ.get("CLICKHOUSE_PORT", "8121")),
     "username": os.getenv("CLICKHOUSE_USERNAME", "default"),
     "password": os.getenv("CLICKHOUSE_PASSWORD", "default"),
     "database": os.getenv("CLICKHOUSE_DATABASE", "default"),
@@ -93,11 +93,11 @@ TABLE_CONFIGS = {
 
     # --- HR & Common (Small/Medium Tables - Full Sync) ---
     "hr_employee": {
-        "source": "APP_SRV_COMMON.dbo.HREmployee", # Assuming source, please verify if different
+        "source": "APP_SRV_COMMON.dbo.HR_Employee",
         "target": "bronze.common_hr_employee",
         "strategy": "full",
-        # Columns based on 02_bronze_common_dims.sql
-        "columns": "EmpCode, EmpName, DeptCode, DeptName, Email, IsActive, UpdateTime"
+        # Mapping: DeptCodeLname, UpdateTime -> ModifyDate, IsActive derived from TerminateDate
+        "columns": "EmpCode, EmpName, DeptCode, DeptCodeLname, Email, (CASE WHEN TerminateDate IS NULL THEN 1 ELSE 0 END) AS IsActive, ModifyDate AS UpdateTime"
     },
     "emp_node_role": {
         "source": "APP_SRV_COMMON.dbo.EmpNodeRoleMapping",

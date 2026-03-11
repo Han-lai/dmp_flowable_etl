@@ -11,7 +11,7 @@ CREATE TABLE bronze.common_hr_employee (
     EmpCode String,
     EmpName String,
     DeptCode Nullable(String),
-    DeptName Nullable(String),
+    DeptCodeLname Nullable(String),
     Email Nullable(String),
     IsActive Nullable(Int32),
     UpdateTime DateTime,
