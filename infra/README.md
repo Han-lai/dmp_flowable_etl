@@ -11,6 +11,7 @@ infra/
 ├── clickhouse/             # 數據倉儲堆疊 (ClickHouse + JDBC Bridge)
 │   └── README.md           # [詳細安裝手冊] 包含 JDBC 與 Driver 設定
 ├── api/                    # 應用服務堆疊 (FastAPI L5 API)
+├── cube/                   # 語義層堆疊 (Cube.js)
 └── monitoring/             # 監控預警堆疊 (Prometheus + Grafana + cAdvisor)
 ```
 
@@ -31,7 +32,13 @@ infra/
 2. 啟動服務: `docker-compose up -d`
 3. 預設存取: `http://localhost:7088/docs` (Swagger UI)
 
-### C. 監控系統 (Monitoring Stack)
+### C. 語義層服務 (Cube Stack)
+負責提供 Headless BI 語義建模與 API。
+1. 進入目錄: `cd infra/cube`
+2. 啟動服務: `docker-compose up -d`
+3. 預設存取: `http://localhost:4002` (API), `http://localhost:4003` (Playground)
+
+### D. 監控系統 (Monitoring Stack)
 負責效能觀測與自動化預警。
 1. 進入目錄: `cd infra/monitoring`
 2. 啟動服務: `docker-compose up -d`

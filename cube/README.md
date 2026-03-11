@@ -18,22 +18,21 @@ ClickHouse (Gold Layer)
     Superset Dashboard
 ```
 
-## 目錄結構
+## 目錄結構 (Logical Structure)
 
-```
+```text
 cube/
-├── docker-compose.yml           # Cube.js 部署設定
-├── .env.example                 # 環境變數範本
-├── README.md                    # 本檔案
-└── model/
-    ├── cubes/
-    │   ├── cube_l5_task_periodic_v2.js        # ✅ L5 週期報表 (Active)
+├── README.md                    # 本檔案 (建模邏輯說明)
+└── model/                       # Cube.js 語義模型定義 (核心零件)
+    ├── cubes/                   # 資料立方體定義
+    │   ├── cube_l5_task_periodic_v2.js         # ✅ L5 週期報表 (Active)
     │   ├── cube_l5_task_periodic_v2_pivot.js   # ✅ L5 狀態比較 (Active)
-    │   ├── README_L5_DASHBOARD_CUBE.md        # 模型說明
-    │   └── archive/                            # 舊版模型 (5 個, 已棄用)
-    └── views/
-        └── view_historical_trends.js           # 歷史趨勢 View
+    │   └── ...
+    └── views/                   # 預定義視圖
 ```
+
+> [!NOTE]
+> **部署檔案 (Infrastructure)** 已移至 `infra/cube/` 目錄下管理。
 
 ## Active Models
 
