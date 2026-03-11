@@ -21,8 +21,7 @@ dmp_flowable/
 │   ├── main.py                      # API 核心邏輯
 │   └── requirements.txt             # API 依賴清單
 │
-├── config/                          # 核心配置 (JDBC, Env 範本)
-│
+
 ├── docs/                            # 系統化技術文件 (中心化手冊)
 │   ├── 01_architecture/        # 系統架構、資料流程、技術深鑽
 │   ├── 02_deployment/          # 部署手冊 (DEPLOY_GUIDE)、系統啟動
@@ -42,14 +41,11 @@ dmp_flowable/
 │   └── etl/                         # 核心管線 (Bronze → Silver → Gold)
 │
 ├── scripts/                         # Python 執行腳本
-│   ├── etl/                         # 生產同步 (核心主力)
-│   ├── setup/                       # 一次性初始化腳本
+│   ├── etl/                         # 生產同步 (核心主力: execute_etl.py, sync_unified.py)
 │   └── validation/                  # 多維度驗證腳本
-│       └── debug/                   # 散落測試檔案、臨時紀錄回收箱
 │
 ├── cube/                            # 語意層建模 (Cube.js)
-├── logs/                            # 各階段執行紀錄
-└── memory-bank/                     # AI 助手上下文記憶庫
+└── logs/                            # 各階段執行紀錄
 ```
 
 ---
@@ -70,11 +66,10 @@ dmp_flowable/
 
 | 模組 | 路徑 | 用途 |
 |------|------|------|
-| Docker 部署 | `docker/` | ClickHouse + JDBC Bridge 基礎設施 |
+| Infra 部署 | `infra/` | ClickHouse + jdbc_bridge + API + Monitoring 基礎設施 |
 | SQL 管線 | `sql/etl/` | Bronze → Silver → Gold 三層資料轉換 |
 | 同步腳本 | `scripts/etl/` | 生產環境資料同步與重建 |
 | Cube.js | `cube/` | 語意層模型，驅動 Superset 儀表板 |
-| 環境設定 | `config/environments/` | 開發 / 正式環境參數 |
 | 技術文檔 | `docs/` | 架構、指標定義、操作指南 |
 
 ---
@@ -82,7 +77,7 @@ dmp_flowable/
 ## 目錄分類
 
 ###  生產必要 (~45 檔案)
-`docker/`, `sql/`, `scripts/etl/`, `cube/`, `config/`, 核心文件
+`infra/`, `sql/`, `scripts/etl/`, `cube/`, 核心文件
 
 ###  開發過程產物 (~86 檔案)
 `scripts/validation/` 全部子目錄 — 驗證邏輯正確性的一次性腳本

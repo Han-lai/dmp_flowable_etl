@@ -31,7 +31,7 @@ services:
       
     volumes:
       # 官方標準：model 目錄掛載到 /cube/conf/model
-      - ./model:/cube/conf/model:ro
+      - ../../cube/model:/cube/conf/model
     restart: unless-stopped
     networks:
       - cube-network
