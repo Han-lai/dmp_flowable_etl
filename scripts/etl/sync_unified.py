@@ -156,14 +156,7 @@ TABLE_CONFIGS = {
         "strategy": "full",
         "columns": "MFG_SITE, MFG_SITE_DESC"
     },
-    "mdm_mfg_plant": {
-        "source": "APP_SRV_COMMON.dbo.MDM_MFG_PLANT_MASTER_0202",
-        "target": "bronze.common_mdm_mfg_plant_master",
-        "strategy": "full",
-        "columns": "MFG_PLANT_ID, MFG_PLANT_CODE, MFG_PLANT_DESC, FACTORY, VALIDITY"
-    },
-    
-    # --- DMP Function Configuration ---
+    # --- DMP Function Config (Full Sync) ---
     "dmp_func_config": {
         "source": "APP_SRV_COMMON.dbo.DMPFunctionConfig_0202",
         "target": "bronze.common_dmp_function_config",
@@ -213,6 +206,11 @@ def generate_batches(start_str, end_date_str, step_days=7, step_hours=0):
     return batches
 
 def setup_watermark_table(client):
+    """
+    Creates the watermark tracking table if it doesn't exist.
+    This table records the last successful sync time for each table
+    to prevent fetching duplicate data in subsequent runs.
+    """
     sql = """
     CREATE TABLE IF NOT EXISTS bronze._sync_watermark (
         table_name String,
@@ -235,11 +233,12 @@ def update_watermark(client, table_name, last_sync_time_str, row_count):
         VALUES ('{table_name}', toDateTime64('{ts_val}', 3), now64(3), {row_count})
         """
         client.command(sql)
-        logger.info(f"  💧 Watermark updated for {table_name}: {last_sync_time_str}")
+        logger.info(f"  Watermark updated for {table_name}: {last_sync_time_str}")
     except Exception as e:
-        logger.warning(f"  ⚠️ Failed to update watermark: {e}")
+        logger.warning(f"  Failed to update watermark: {e}")
 
 def get_last_watermark(client, table_name):
+    """Fetches the last successful sync date for a given table."""
     try:
         sql = f"SELECT max(last_sync_time) FROM bronze._sync_watermark WHERE table_name = '{table_name}'"
         result = client.query(sql)
@@ -250,7 +249,15 @@ def get_last_watermark(client, table_name):
         logger.warning(f"Could not fetch watermark for {table_name}: {e}")
     return None
 
+# =================================================================
+# 4. Core Sync Logic
+# =================================================================
+
 def sync_batch(client, config, start_str, end_str):
+    """
+    Executes a single batch sync for a specific time range.
+    Workflow: 1. Delete overlapping data in target -> 2. Insert new data from JDBC.
+    """
     source = config['source']
     target = config['target']
     time_col = config['time_col']
@@ -299,42 +306,53 @@ def sync_batch(client, config, start_str, end_str):
             WHERE {time_col} >= '{start_str}' AND {time_col} < '{end_str}'
             """
             count = client.command(count_sql)
-            logger.info(f"  ✅ Synced {count:,} rows in {duration:.2f}s")
+            logger.info(f"  Synced {count:,} rows in {duration:.2f}s")
             
             # 4. Update Watermark
             update_watermark(client, target, end_str, count)
             return count
             
         except Exception as e:
-            logger.warning(f"  ⚠️ Batch failed (Attempt {attempt + 1}/{max_retries}): {e}")
+            logger.warning(f"  Batch failed (Attempt {attempt + 1}/{max_retries}): {e}")
             if attempt < max_retries - 1:
                 time.sleep(retry_delay)
             else:
-                logger.error(f"  ❌ All retries failed for batch {batch_id}")
+                logger.error(f"  All retries failed for batch {batch_id}")
                 raise e
 
 def sync_batch_adaptive(client, config, start_str, end_str):
+    """
+    Adaptive sync mode.
+    If a large batch fails (usually due to MSSQL query timeout),
+    this function will automatically split the range in half and retry.
+    """
     try:
         return sync_batch(client, config, start_str, end_str)
     except Exception as e:
-        logger.warning(f"  ⚠️ Batch {start_str} to {end_str} failed. Checking if we can split...")
+        logger.warning(f"Batch {start_str} to {end_str} failed. Checking if we can split...")
         start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
         end_dt = datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S")
         diff = end_dt - start_dt
         
+        # Do not split if the interval is already less than 30 minutes
         if diff < timedelta(minutes=30):
-            logger.error(f"  ❌ Range too small to split ({diff}). Aborting this block.")
+            logger.error(f"  Range too small to split ({diff}). Aborting this block.")
             raise e
             
+        # Split and recurse
         mid_dt = start_dt + (diff / 2)
         mid_str = mid_dt.strftime("%Y-%m-%d %H:%M:%S")
-        logger.info(f"  🔄 Splitting: {start_str} -> {mid_str} AND {mid_str} -> {end_str}")
+        logger.info(f"  Splitting: {start_str} -> {mid_str} AND {mid_str} -> {end_str}")
         
         count1 = sync_batch_adaptive(client, config, start_str, mid_str)
         count2 = sync_batch_adaptive(client, config, mid_str, end_str)
         return count1 + count2
 
 def sync_full(client, config):
+    """
+    Executes full sync logic.
+    Truncates the target table first, then fetches all data from JDBC source at once.
+    """
     source = config['source']
     target = config['target']
     cols = config['columns']
@@ -364,11 +382,14 @@ def sync_full(client, config):
         client.command(insert_sql)
         duration = time.perf_counter() - start_time
         count = client.command(f"SELECT count() FROM {target}")
-        logger.info(f"  ✅ Synced {count:,} rows in {duration:.2f}s")
+        logger.info(f"  Synced {count:,} rows in {duration:.2f}s")
         update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), count)
     except Exception as e:
-        logger.error(f"  ❌ Full sync failed: {e}")
-        # raise e # Don't crash entire script if one small table fails, just log error
+        logger.error(f"  Full sync failed: {e}")
+
+# =================================================================
+# 5. Main Entry Point
+# =================================================================
 
 def main():
     parser = argparse.ArgumentParser(description="Unified Batch Sync for All Bronze Tables")
@@ -411,10 +432,10 @@ def main():
                 last_wm = get_last_watermark(client, target_table)
                 if last_wm:
                     start_date = last_wm
-                    logger.info(f"  🌊 Resuming from watermark: {start_date}")
+                    logger.info(f"  Resuming from watermark: {start_date}")
                 else:
                     start_date = "2023-01-01"
-                    logger.info(f"  🌊 No watermark, default: {start_date}")
+                    logger.info(f"  No watermark, default: {start_date}")
             
             batches = generate_batches(start_date, args.end, args.step_days, args.step_hours)
             logger.info(f"Generated {len(batches)} batches from {start_date} to {args.end}")
