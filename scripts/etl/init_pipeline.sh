@@ -21,7 +21,8 @@ fi
 
 # --- 設定工作目錄為專案根目錄 ---
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
+# 腳本在 scripts/etl，因此需要往上跳兩層到專案根目錄
+PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
 cd "$PROJECT_ROOT"
 echo "專案根目錄: $PROJECT_ROOT"
 
@@ -40,7 +41,7 @@ echo "(此步驟會互動式確認已存在的表格，請依提示輸入 y 確�
 echo ""
 
 if [ "$DRY_RUN" = false ]; then
-    python scripts/etl/execute_etl.py
+    python scripts/etl/execute_etl.py --skip-existing
     if [ $? -ne 0 ]; then
         echo "錯誤: execute_etl.py 執行失敗，請檢查 ClickHouse 連線。"
         exit 1
