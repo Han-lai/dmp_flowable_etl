@@ -15,9 +15,9 @@ logger = logging.getLogger("L5_API")
 # ClickHouse 連線設定 (直接讀取或設定預設值)
 CLICKHOUSE_CONFIG = {
     'host': os.getenv('CLICKHOUSE_HOST', 'REDACTED_IP'),
-    'port': int(os.getenv('CLICKHOUSE_PORT', 8121)),
+    'port': int(os.getenv('CLICKHOUSE_PORT', 8123)),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
-    'password': os.getenv('CLICKHOUSE_PASSWORD', 'default')
+    'password': os.getenv('CLICKHOUSE_PASSWORD', 'REDACTED_PASSWORD')
 }
 
 def get_clickhouse_client():
@@ -168,16 +168,26 @@ async def _generate_l5_report(month, vxtype="ALL", region="ALL", plant="ALL", fa
             SELECT
                 'Monthly' as period_type,
                 'Total' as label,
-                sum(total_task) as total,
-                sum(todo_count) as todo,
-                sum(doing_count) as doing,
-                sum(done_count) as done,
-                max(acc_todo_doing) as acc
-            FROM gold.rmv_l5_task_completion
-            WHERE {where_clause} AND toStartOfMonth(snapshot_date) = '{month}-01'
-            
+                sum(total) as total,
+                sum(todo) as todo,
+                sum(doing) as doing,
+                sum(done) as done,
+                sum(acc) as acc
+            FROM (
+                SELECT
+                    plant, factory, line, vx_type,
+                    sum(total_task) as total,
+                    sum(todo_count) as todo,
+                    sum(doing_count) as doing,
+                    sum(done_count) as done,
+                    argMax(acc_todo_doing, snapshot_date) as acc
+                FROM gold.rmv_l5_task_completion
+                WHERE {where_clause} AND toStartOfMonth(snapshot_date) = '{month}-01'
+                GROUP BY plant, factory, line, vx_type
+            )
+
             UNION ALL
-            
+
             SELECT
                 'Daily' as period_type,
                 toString(snapshot_date) as label,
@@ -185,29 +195,37 @@ async def _generate_l5_report(month, vxtype="ALL", region="ALL", plant="ALL", fa
                 sum(todo_count) as todo,
                 sum(doing_count) as doing,
                 sum(done_count) as done,
-                max(acc_todo_doing) as acc
+                sum(acc_todo_doing) as acc
             FROM gold.rmv_l5_task_completion
             WHERE {where_clause} AND snapshot_date IN ({days_str})
             GROUP BY snapshot_date
-            
+
             UNION ALL
-            
+
             SELECT
-                'Weekly' as period_type,
-                concat('W', toString(toWeek(snapshot_date, 3))) as label,
-                sum(total_task) as total,
-                sum(todo_count) as todo,
-                sum(doing_count) as doing,
-                sum(done_count) as done,
-                max(acc_todo_doing) as acc
-            FROM gold.rmv_l5_task_completion
-            WHERE {where_clause} 
-              AND snapshot_date >= subtractDays(toDate('{month}-01'), 30)
-              AND snapshot_date <= addDays(toDate('{month}-01'), 40)
-              AND label IN ({", ".join([f"'{w}'" for w in date_info['weeks']])})
-            GROUP BY label
+                period_type, label, sum(total), sum(todo), sum(doing), sum(done), sum(acc)
+            FROM (
+                SELECT
+                    'Weekly' as period_type,
+                    concat('W', toString(toWeek(snapshot_date, 1))) as label,
+                    plant, factory, line, vx_type,
+                    sum(total_task) as total,
+                    sum(todo_count) as todo,
+                    sum(doing_count) as doing,
+                    sum(done_count) as done,
+                    argMax(acc_todo_doing, snapshot_date) as acc
+                FROM gold.rmv_l5_task_completion
+                WHERE {where_clause} 
+                  AND snapshot_date >= subtractDays(toDate('{month}-01'), 30)
+                  AND snapshot_date <= addDays(toDate('{month}-01'), 40)
+                  AND label IN ({", ".join([f"'{w}'" for w in date_info['weeks']])})
+                GROUP BY label, plant, factory, line, vx_type
+            )
+            GROUP BY period_type, label
         """
         
+        logger.info(f"Date Info: {date_info}")
+        logger.info(f"Where Clause: {where_clause}")
         logger.info(f"Executing L5 Query: {query}")
         client = get_db()
         result = client.query(query)
