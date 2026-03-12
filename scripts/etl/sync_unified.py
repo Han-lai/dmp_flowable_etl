@@ -240,7 +240,7 @@ def update_watermark(client, table_name, last_sync_time_str, row_count):
 def get_last_watermark(client, table_name):
     """Fetches the last successful sync date for a given table."""
     try:
-        sql = f"SELECT max(last_sync_time) FROM bronze._sync_watermark WHERE table_name = '{table_name}'"
+        sql = f"SELECT maxOrNull(last_sync_time) FROM bronze._sync_watermark FINAL WHERE table_name = '{table_name}'"
         result = client.query(sql)
         if result.result_rows and result.result_rows[0][0]:
             dt = result.result_rows[0][0]
@@ -275,6 +275,7 @@ def get_source_min_time(client, config):
     except Exception as e:
         logger.warning(f"  Failed to detect min time from source: {e}")
     
+    logger.info("  Detection failed, using ultimate fallback 2023-01-01")
     return "2023-01-01" # Ultimate fallback if detection fails
 
 # =================================================================

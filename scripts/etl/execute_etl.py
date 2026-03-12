@@ -45,6 +45,16 @@ SQL_FILES = [
 def get_client():
     return clickhouse_connect.get_client(**CH_CONFIG)
 
+def initialize_databases(client):
+    """Ensures all required databases exist."""
+    print("\n[DB Init] Initializing Databases...")
+    for db in ['bronze', 'silver', 'gold']:
+        try:
+            client.command(f"CREATE DATABASE IF NOT EXISTS {db}")
+            print(f" - {db:10}: OK")
+        except Exception as e:
+            print(f" - {db:10}: Failed - {e}")
+
 def show_status(client):
     """Displays sync progress and row counts."""
     print("\n" + "=" * 60)
@@ -124,6 +134,7 @@ def execute_sql_file(client, sql_file: Path, description: str, args):
                 statements.append(stmt)
             current = []
     
+    failures = 0
     for i, stmt in enumerate(statements, 1):
         if not stmt.strip() or stmt.strip().upper().startswith('SELECT'):
             continue
@@ -131,9 +142,13 @@ def execute_sql_file(client, sql_file: Path, description: str, args):
             client.command(stmt)
         except Exception as e:
             print(f"[{i}/{len(statements)}] Error: {e}")
+            failures += 1
             continue
     
-    print(f"Completed: {sql_file.name} executed successfully.")
+    if failures == 0:
+        print(f"Completed: {sql_file.name} executed successfully.")
+    else:
+        print(f"Completed: {sql_file.name} executed with {failures} errors.")
 
 def main():
     parser = argparse.ArgumentParser(description="DMP Flowable Data Pipeline Execution Tool")
@@ -157,6 +172,9 @@ def main():
     if args.status:
         show_status(client)
         return
+
+    # Ensure Databases exist first
+    initialize_databases(client)
 
     # Dynamic path resolution for sql directory
     script_dir = Path(__file__).resolve().parent
