@@ -4,14 +4,18 @@
 -- 前置: 03_silver_pivot_and_hierarchy
 -- ========================================
 
+-- 啟用 REFRESHABLE MView 實驗功能
+SET allow_experimental_refreshable_materialized_view = 1;
+
 -- DROP TABLE IF EXISTS silver.mv_fact_task_vx;
 
 CREATE MATERIALIZED VIEW silver.mv_fact_task_vx
+REFRESH EVERY 24 HOUR
 ENGINE = ReplacingMergeTree(_mview_update_time)
 ORDER BY (task_id)
 TTL task_primary_date + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1
-POPULATE AS
+AS
 SELECT
     t.ID_ AS task_id,
     
