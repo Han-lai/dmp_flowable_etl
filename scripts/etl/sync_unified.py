@@ -53,44 +53,6 @@ logger = logging.getLogger(__name__)
 # Table Configurations
 # ==========================================
 TABLE_CONFIGS = {
-    # --- Flowable Core (Large Tables - Batch Sync) ---
-    "taskinst": {
-        "source": "APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108",
-        "target": "bronze.bpm_act_hi_taskinst",
-        "time_col": "START_TIME_",
-        "strategy": "batch",
-        "columns": "*"
-    },
-    "varinst": {
-        "source": "APP_SRV_BPM.dbo.ACT_HI_VARINST_0108",
-        "target": "bronze.bpm_act_hi_varinst",
-        "time_col": "CREATE_TIME_",
-        "strategy": "batch",
-        "columns": "*"
-    },
-    "procinst": {
-        "source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108",
-        "target": "bronze.bpm_act_hi_procinst",
-        "time_col": "START_TIME_",
-        "strategy": "batch",
-        "columns": "*"
-    },
-    "identitylink": {
-        "source": "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK",
-        "target": "bronze.bpm_act_hi_identitylink",
-        "time_col": "CREATE_TIME_",
-        "strategy": "batch",  # Can be large, safer to batch if time col exists
-        "columns": "*"
-    },
-
-    # --- Flowable Core (Small Tables - Full Sync) ---
-    "procdef": {
-        "source": "APP_SRV_BPM.dbo.ACT_RE_PROCDEF_0108",
-        "target": "bronze.bpm_act_re_procdef",
-        "strategy": "full",
-        "columns": "*"
-    },
-
     # --- HR & Common (Small/Medium Tables - Full Sync) ---
     "hr_employee": {
         "source": "APP_SRV_COMMON.dbo.HR_Employee",
@@ -167,6 +129,45 @@ TABLE_CONFIGS = {
         "source": "APP_SRV_COMMON.dbo.DMPFunctionClientMapping_0202",
         "target": "bronze.common_dmp_function_client_mapping",
         "strategy": "full",
+        "columns": "*"
+    },
+
+    # --- Flowable Core (Small Tables - Full Sync) ---
+    "procdef": {
+        "source": "APP_SRV_BPM.dbo.ACT_RE_PROCDEF_0108",
+        "target": "bronze.bpm_act_re_procdef",
+        "strategy": "full",
+        "columns": "*"
+    },
+
+    # --- Flowable Core (Large Tables - Batch Sync) ---
+    # Priority: Syncing Large tables last to ensure Dimensions are ready
+    "taskinst": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108",
+        "target": "bronze.bpm_act_hi_taskinst",
+        "time_col": "START_TIME_",
+        "strategy": "batch",
+        "columns": "*"
+    },
+    "varinst": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_VARINST_0108",
+        "target": "bronze.bpm_act_hi_varinst",
+        "time_col": "CREATE_TIME_",
+        "strategy": "batch",
+        "columns": "*"
+    },
+    "procinst": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108",
+        "target": "bronze.bpm_act_hi_procinst",
+        "time_col": "START_TIME_",
+        "strategy": "batch",
+        "columns": "*"
+    },
+    "identitylink": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK",
+        "target": "bronze.bpm_act_hi_identitylink",
+        "time_col": "CREATE_TIME_",
+        "strategy": "batch",  # Can be large, safer to batch if time col exists
         "columns": "*"
     }
 }
