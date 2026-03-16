@@ -26,7 +26,7 @@ ORDER BY (snapshot_date, region_code, vx_type, plant_code, factory_code, line_na
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS gold.rmv_user_utilization
-REFRESH EVERY 1 HOUR
+REFRESH EVERY 1 DAY OFFSET 5 HOUR
 TO gold.rmv_user_utilization_data
 AS
 WITH 
