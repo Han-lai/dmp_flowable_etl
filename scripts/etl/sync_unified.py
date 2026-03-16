@@ -55,38 +55,38 @@ logger = logging.getLogger(__name__)
 TABLE_CONFIGS = {
     # --- HR & Common (Small/Medium Tables - Full Sync) ---
     "hr_employee": {
-        "source": "APP_SRV_COMMON.dbo.HR_Employee",
+        "source": "APP_SRV_COMMON.dbo.HR_Employee_0202",
         "target": "bronze.common_hr_employee",
         "strategy": "full",
         # Mapping: DeptCodeLname, UpdateTime -> ModifyDate, IsActive derived from TerminateDate
-        "columns": "EmpCode, EmpName, DeptCode, DeptCodeLname, Email, (CASE WHEN TerminateDate IS NULL THEN 1 ELSE 0 END) AS IsActive, ModifyDate AS UpdateTime"
+        "columns": "EmpCode, EmpName, DeptCode, DeptCodeLname, Email, (CASE WHEN TerminateDate IS NULL THEN 1 ELSE 0 END) AS IsActive, UpdateTime"
     },
     "emp_node_role": {
-        "source": "APP_SRV_COMMON.dbo.EmpNodeRoleMapping",
+        "source": "APP_SRV_COMMON.dbo.EmpNodeRoleMapping_0202",
         "target": "bronze.common_emp_node_role_mapping",
         "strategy": "full",
         "columns": "EmpCode, NodeCode, UpdateTime, UpdateEmp"
     },
     "emp_org_info": {
-        "source": "APP_SRV_COMMON.dbo.EmpOrgInfoMapping",
+        "source": "APP_SRV_COMMON.dbo.EmpOrgInfoMapping_0202",
         "target": "bronze.common_emp_org_info_mapping",
         "strategy": "full",
         "columns": "EmpCode, Plant, MFGFactoryId, UpdateTime, UpdateEmp"
     },
     "emp_user_group": {
-        "source": "APP_SRV_COMMON.dbo.EmpUserGroupMapping",
+        "source": "APP_SRV_COMMON.dbo.EmpUserGroupMapping_0202",
         "target": "bronze.common_emp_user_group_mapping",
         "strategy": "full",
         "columns": "EmpCode, UserGroupId, UpdateTime, UpdateEmp"
     },
     "user_group": {
-        "source": "APP_SRV_COMMON.dbo.UserGroup",
+        "source": "APP_SRV_COMMON.dbo.UserGroup_0202",
         "target": "bronze.common_user_group",
         "strategy": "full",
         "columns": "UserGroupId, UserGroupName, UserGroupDesc, UpdateTime, UpdateEmp"
     },
     "process_role_user": {
-        "source": "APP_SRV_COMMON.dbo.ProcessRoleUserMapping",
+        "source": "APP_SRV_COMMON.dbo.ProcessRoleUserMapping_0202",
         "target": "bronze.common_process_role_user_mapping",
         "strategy": "full",
         "columns": "ID, RoleId, Plant, Factory, ProductionArea, LineName, EmpCode, Updater, UpdateDatetime, UpdateCount, Creator, CreateDatetime"
