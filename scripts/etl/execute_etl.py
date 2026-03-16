@@ -35,7 +35,7 @@ SQL_FILES = [
     ('04_silver_fact_tasks.sql', 'Silver Layer 2 (Core Fact Table)'),
     ('05_silver_dim_users.sql', 'Silver Layer 3 (User Dimension)'),
     ('06_gold_kpi_task_completion.sql', 'Gold Layer 1 (L5 Completion API)'),
-    ('07_gold_kpi_user_utilization.sql', 'Gold Layer 2 (L7 User Utilization)'),
+    # ('07_gold_kpi_user_utilization.sql', 'Gold Layer 2 (L7 User Utilization)'),
 ]
 
 # =================================================================

@@ -31,7 +31,7 @@ ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS gold.rmv_l5_task_completion
-REFRESH EVERY 48 HOUR
+REFRESH EVERY 1 DAY OFFSET 4 HOUR
 TO gold.rmv_l5_task_completion_data
 AS
 WITH 
@@ -51,26 +51,34 @@ daily_base AS (
     GROUP BY snapshot_date, vx_type, region, plant, factory, line
 ),
 -- 2. Rolling Acc 統計 (計算 D-6 ~ D 的在途任務去重)
+-- 優化：由 CROSS JOIN 改為 ARRAY JOIN，將 7.5 億次運算降為 1000 萬次，防止 OOM
 acc_stats AS (
     SELECT
-        dates.snapshot_date,
-        tasks.vx_type,
-        tasks.region, tasks.plant, tasks.factory, tasks.line,
-        uniqExact(tasks.task_id) AS acc_todo_doing
+        snapshot_date,
+        vx_type,
+        region, plant, factory, line,
+        uniqExact(task_id) AS acc_todo_doing
     FROM (
-        SELECT DISTINCT snapshot_date FROM silver.mv_fact_task_vx 
-        ARRAY JOIN arrayDistinct(arrayFilter(d -> d IS NOT NULL, [task_start_date, task_claim_date, task_end_date])) AS snapshot_date
+        SELECT
+            task_id,
+            vx_type,
+            region, plant, factory, line,
+            -- 計算 7 天滑動視窗日期陣列
+            -- 邏輯：從 task_start_date 開始，直到 (task_end_date 或 建立+7天 或 認領+7天) 之中最早的一個
+            arrayMap(d -> toDate(d), 
+                range(
+                    toUInt32(task_start_date), 
+                    toUInt32(least(
+                        COALESCE(task_end_date, today() + 2), 
+                        greatest(task_start_date, COALESCE(task_claim_date, task_start_date)) + 7
+                    ))
+                )
+            ) AS dates
+        FROM silver.mv_fact_task_vx FINAL
         WHERE is_excluded = 0
-    ) AS dates
-    CROSS JOIN silver.mv_fact_task_vx AS tasks 
-    WHERE tasks.is_excluded = 0
-      AND tasks.task_start_date <= dates.snapshot_date
-      AND (tasks.task_end_date IS NULL OR tasks.task_end_date > dates.snapshot_date)
-      AND (
-          tasks.task_start_date >= subtractDays(dates.snapshot_date, 6)
-          OR (tasks.task_claim_date IS NOT NULL AND tasks.task_claim_date >= subtractDays(dates.snapshot_date, 6))
-      )
-    GROUP BY dates.snapshot_date, tasks.vx_type, tasks.region, tasks.plant, tasks.factory, tasks.line
+    )
+    ARRAY JOIN dates AS snapshot_date
+    GROUP BY snapshot_date, vx_type, region, plant, factory, line
 )
 SELECT
     COALESCE(base.snapshot_date, acc.snapshot_date) AS snapshot_date,

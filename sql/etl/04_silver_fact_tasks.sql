@@ -10,7 +10,7 @@ SET allow_experimental_refreshable_materialized_view = 1;
 -- DROP TABLE IF EXISTS silver.mv_fact_task_vx;
 
 CREATE MATERIALIZED VIEW silver.mv_fact_task_vx
-REFRESH EVERY 24 HOUR
+REFRESH EVERY 1 DAY OFFSET 3 HOUR
 ENGINE = ReplacingMergeTree(_mview_update_time)
 ORDER BY (task_id)
 TTL task_primary_date + INTERVAL 1 YEAR
