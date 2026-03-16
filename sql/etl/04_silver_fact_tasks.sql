@@ -61,8 +61,13 @@ SELECT
         ELSE COALESCE(substring(t.TASK_DEF_KEY_, 1, 2), 'Unknown')
     END AS vx_type,
     
-    -- 維度（VARINST 優先，MDM 補齊）
-    COALESCE(NULLIF(mv_varinst_pivoted.varinst_region, ''), mdm.region_code, 'UNKNOWN') AS region,
+    -- 維度（VARINST 優先，MDM 線別優先，最後以 MDM 廠區保底）
+    COALESCE(
+        NULLIF(mv_varinst_pivoted.varinst_region, ''), 
+        mdm.region_code, 
+        plant_mdm.region_code,
+        'UNKNOWN'
+    ) AS region,
     COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, 'UNKNOWN') AS plant,
     COALESCE(NULLIF(mv_varinst_pivoted.varinst_factory, ''), mdm.factory_code, 'UNKNOWN') AS factory,
     COALESCE(NULLIF(mv_varinst_pivoted.varinst_lineName, ''), mdm.line_name, 'UNKNOWN') AS line,
@@ -113,6 +118,12 @@ SELECT
 FROM bronze.bpm_act_hi_taskinst t
 LEFT JOIN silver.mv_varinst_pivoted ON t.PROC_INST_ID_ = mv_varinst_pivoted.PROC_INST_ID_
 LEFT JOIN silver.mv_dim_mfg_five_level mdm ON mv_varinst_pivoted.varinst_lineName = mdm.line_name AND mv_varinst_pivoted.varinst_plant = mdm.plant_code
+-- 廠區保底維度 (處理 140 萬筆缺失線別的資料)
+LEFT JOIN (
+    SELECT DISTINCT plant_code, region_code 
+    FROM silver.mv_dim_mfg_five_level 
+    WHERE plant_code != '' AND region_code IS NOT NULL
+) plant_mdm ON COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') = plant_mdm.plant_code
 LEFT JOIN bronze.common_hr_employee he ON t.ASSIGNEE_ = he.EmpCode
 LEFT JOIN bronze.bpm_act_hi_varinst tb ON t.ID_ = tb.TASK_ID_ AND tb.NAME_ = 'autoComplete'
 WHERE t.ID_ IS NOT NULL AND t.ID_ != '';
