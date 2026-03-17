@@ -33,7 +33,7 @@ graph TD
         end
         
         subgraph DB_Common [APP_SRV_COMMON]
-            MDM_Emp["HREmployee<br>員工主檔"]
+            MDM_Emp["HR_Employee_0202<br>員工主檔"]
             MDM_Masters["MDM_*_MASTER_0202<br>五階維度主檔"]
         end
     end
@@ -218,9 +218,9 @@ graph TD
 | `ACT_HI_VARINST_0108` | `CREATE_TIME_` (Batch) | `bpm_act_hi_varinst` | 同上。 |
 | `ACT_HI_PROCINST_0108` | `START_TIME_` (Batch) | `bpm_act_hi_procinst` | 同上。 |
 | `MDM_*_MASTER_0202` | 全量 (Full) | `common_mdm_*_master` | **Truncate Load**: 每次清空重寫，確保主檔一致。 |
-| `HREmployee` | 全量 (Full) | `common_hr_employee` | 同上。 |
-| `DMPFunctionConfig` | 全量 (Full) | `common_dmp_function_config` | **[NEW] L7 指標用**: DMP 功能配置表。 |
-| `DMPFunctionClientMapping` | 全量 (Full) | `common_dmp_function_client_mapping` | **[NEW] L7 指標用**: DMP 功能對應表。 |
+| `HR_Employee_0202` | 全量 (Full) | `common_hr_employee` | 同上。 |
+| `DMPFunctionConfig_0202` | 全量 (Full) | `common_dmp_function_config` | **[NEW] L7 指標用**: DMP 功能配置表。 |
+| `DMPFunctionClientMapping_0202` | 全量 (Full) | `common_dmp_function_client_mapping` | **[NEW] L7 指備用**: DMP 功能對應表。 |
 
 ### B. Silver 層 (轉換與清洗)
 | 來源表 (Bronze) | 轉換邏輯 (Transform) | 目標表 (Silver) | 目的 |
@@ -302,7 +302,7 @@ graph TD
 | `ACT_HI_VARINST_0108` | `bpm_act_hi_varinst` | 1:1 Mapping + Metadata |
 | `ACT_HI_PROCINST_0108` | `bpm_act_hi_procinst` | 1:1 Mapping + Metadata |
 | `MDM_*_MASTER_0202` | `common_mdm_*_master` | 1:1 Mapping |
-| `HREmployee` | `common_hr_employee` | 選取關鍵欄位 (`EmpCode`, `EmpName`...) |
+| `HR_Employee_0202` | `common_hr_employee` | 選取關鍵欄位 (`EmpCode`, `EmpName`...) |
 
 ### D. 增量 vs 全量策略 (Sync Strategy)
 
