@@ -2,6 +2,21 @@
 
 ## 已完成里程碑
 
+### 2026-03-16 (今日進度 - SQL 邏輯優化與自動刷新機制完善)
+- ✅ **L5 指標運算效能優化 (ARRAY JOIN)**:
+    - **改動**: 將 `06_gold_kpi_task_completion.sql` 原本負荷重擔的 `CROSS JOIN` 改寫為 `ARRAY JOIN`。
+    - **成效**: 運算中間層數據從 7.5 億筆降至 1000 萬筆級別，效能提升 98%，徹底根除 OOM (記憶體溢出) 風險。
+- ✅ **全量區域修復 (Multi-Level Region Mapping)**:
+    - **邏輯**: 於 `04_silver_fact_tasks.sql` 實作多接層關聯，若線別缺失則自動降級透過「廠區」映射 Region。
+    - **結果**: 成功將 Silver 與 Gold 層原本 147 萬筆的 `UNKNOWN` 區域數據清零。
+- ✅ **階層式錯開刷新排程 (Staggered Refreshes)**:
+    - **配置**: 設定每日凌晨 02:00 ~ 05:00 依序啟動 Silver 與 Gold 各層刷新。
+    - **目的**: 確保資料處理流程 (Bronze -> Silver -> Gold) 具配順序性，並避開系統負擔高峰。
+- ✅ **人員資料版本一致性**:
+    - **變更**: 確認所有人員關聯 Table (如 `common_mdm_employee_master`) 已全數改用 `0202` 快照版本，避免數據遺漏。
+- ✅ **Git 提交結構整理**:
+    - **操作**: 將優化 (Perf)、文件 (Docs)、修正 (Fix) 拆分為三個清晰的 Commit 並完成 GitLab 推送。
+
 ### 2026-03-10 (今日進度 - L5 Insight API 正式上線與架構分離)
  - ✅ **L5 Insight API (FastAPI) 正式版**:
     - **終點**: 實作 `/api/l5/task-report`，同時支援 `GET` 與 `POST` (JSON Body)。

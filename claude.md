@@ -6,18 +6,14 @@
 ## 專案當前狀態 (2026-03-10 UPDATE)
 本專案已完成 **L5 Insight API (FastAPI)** 之開發與部署，並實現了 **Split-Stack (服務拆分)** 架構。
 
-### 最新完成 (2026-03-10)
-- **L5 Insight API (FastAPI) 正式上線**:
-  - 實作 `/api/l5/task-report` 終點，支援 GET/POST 複雜報表格式。
-  - 整合 Pydantic 模型進行結構化驗證，提供月/週/日三位一體之數據產出。
-- **服務架構分離 (Split-Stack)**:
-  - 將 ClickHouse 與 API 拆分為獨立 Docker Compose 堆疊 (`docker-compose-api.yml`)。
-  - 支援獨立管理與維護。
-- **動態掛載部署 (Dynamic Runtime)**:
-  - 採用 Volume-mount 模式掛載 `main.py` 與 `requirements.txt`。
-  - 啟動時自動安裝依賴，支援透過 FileBrowser 即修即用。
-- **全域文件去標籤化 (De-versioning)**:
-  - 移除所有文檔與 API 終點中的 `v2` 標記，完成正式生產命名過度。
+### 最新完成 (2026-03-16)
+- **L5 效能與區域修復**:
+  - 優化 `ARRAY JOIN` 邏輯，大幅降低查詢負載與 OOM 風險。
+  - 實作多階層區域關聯，將全量報表中的 `UNKNOWN` 降至 0。
+- **自動化刷新機制定時**:
+  - Silver & Gold 層 MView 設定為每日凌晨 02:00 ~ 05:00 依序刷新。
+- **Git 結構化 Commit**:
+  - 將 Perf、Docs、Fix 拆分推行至 GitLab。
 
 ### 先前修復 (2026-02-26)
 - **Vx 歸屬邏輯修復 (解決 V1 掛零異常)**:

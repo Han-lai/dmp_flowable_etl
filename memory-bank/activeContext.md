@@ -6,22 +6,14 @@
 
 ## 🎯 當前焦點 (Current Focus)
 
-### ⏸️ 待處理問題 (Pending)
-- **L7 User Utilization (Deferred)**: User requested to defer the fix for `gold.rmv_user_utilization` (currently empty/dropped) and its validation.
-- **L7 Logic Discrepancy**: Nov & Dec analysis shows need for strict "5 conditions" validation when resumed.
+### ⏸️ 待處理項目 (Next Steps)
+- **L7 User Utilization (On-hold)**: 雖然已更新為每日 05:00 刷新，但具體數據邏輯與驗證仍依 User 要求推遲執行。
+- **持續監控**: 觀察每日凌晨 02:00-05:00 的 Materialized View 自動刷新穩定度。
 
-### 核心任務
-- **Vx 歸屬邏輯修復 (廠區與特權工單優先規則)**: 【已解決】修正了 `04_silver_fact_tasks` 的 `vx_type` 判斷順序。將 DG3 與 NPE 廠區專屬的特權工單 (如 196, 315) 的判斷層級提升至 `TASK_DEF_KEY_` 之上，成功解決了 V1 資料被誤判為 V3 導致掛零的問題。
-- **異廠同名線段歸屬修復 (MDM Join Bug)**: 【已解決】修復了 DG3 廠區 ST02 等線段被錯誤歸類至 CNE (華東) 的問題。原因為底層 MDM 有多廠 (DG3, WJ5) 共用同一個線體名稱。Silver 層改採 `LineName + PlantCode` 雙主鍵進行轉換與去重，已成功讓資料在 Superset 正確呈現於 CNS。
-- **Cube Model 架構優化**: 已完成高品質系列模型修正 (ACC Rate Logic Fix) 與文件同步。
-- **L5 Insight API (FastAPI) 正式版**: 【已完成】實作了 `/api/l5/task-report` 並移除所有 `v2` 標記。支援 GET/POST 複雜報表格式，並完成 Docker 全域文件同步。
-- **服務架構分離 (Split-Stack)**: 【已完成】將 ClickHouse 與 API 拆分為獨立堆疊，支援獨立生命週期管理。
-- **動態掛載部署 (Dynamic Runtime)**: 【已完成】API 採用 Volume-mount 模式掛載 `main.py`，支援透過 FileBrowser 即修即用，大幅優化運維效率。
-
-## 進行中的工作 (2026-03-10)
-
-- **VM 部署驗證 (Port 7088)**: 使用者正在 VM 環境中測試新版 `docker-compose-api.yml` 與 FileBrowser 代碼修改機制。
-- **Swagger UI 功能與數據查核**: 驗證 `/api/l5/task-report` 在真實數據下的產出準確性。
+### ✅ 近期已解決
+- **L5 運算 OOM 危機**: 已透過 `ARRAY JOIN` 優化解決。
+- **UNKNOWN 區域問題**: 已透過多階層關聯邏輯修復。
+- **刷新時間衝突**: 已透過 `OFFSET` 參數實現階層式錯開刷新。
 
 ### ClickHouse 雙產線效能驗證與監控補齊 (2026-03-06) ✅ 已完成
 - **壓測成果**: 兩產線 P50 查詢延遲均 < 0.9s，達成吞吐與延遲指標，壓縮比達 6.6 倍，無記憶體與 CPU 瓶頸。
