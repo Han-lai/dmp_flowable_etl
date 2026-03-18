@@ -16,7 +16,7 @@ CREATE TABLE bronze.common_hr_employee (
     IsActive Nullable(Int32),
     UpdateTime DateTime,
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY EmpCode
@@ -34,7 +34,7 @@ CREATE TABLE bronze.common_emp_node_role_mapping (
     UpdateTime DateTime,
     UpdateEmp String,
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY (EmpCode, NodeCode)
@@ -49,7 +49,7 @@ CREATE TABLE bronze.common_emp_org_info_mapping (
     UpdateTime DateTime,
     UpdateEmp String,
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY (EmpCode, Plant, MFGFactoryId)
@@ -63,7 +63,7 @@ CREATE TABLE bronze.common_emp_user_group_mapping (
     UpdateTime DateTime,
     UpdateEmp String,
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY (EmpCode, UserGroupId)
@@ -78,7 +78,7 @@ CREATE TABLE bronze.common_user_group (
     UpdateTime DateTime,
     UpdateEmp String,
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY (UserGroupId)
@@ -100,7 +100,7 @@ CREATE TABLE bronze.common_process_role_user_mapping (
     Creator Nullable(String),
     CreateDatetime Nullable(DateTime),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY (ID);
@@ -115,7 +115,7 @@ CREATE TABLE bronze.common_mdm_line_desc_master (
     LINE_DESC String,
     PROD_AREA_ID String,
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY LINE_NAME
@@ -129,7 +129,7 @@ CREATE TABLE bronze.common_mdm_prod_area_master (
     FACTORY String,
     MFG_PLANT_ID Nullable(String),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY PROD_AREA_ID
@@ -145,7 +145,7 @@ CREATE TABLE bronze.common_mdm_factory_area_master (
     REGION String,
     MFG_SITE Nullable(String),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY FACTORY
@@ -157,7 +157,7 @@ CREATE TABLE bronze.common_mdm_mfg_site_master (
     MFG_SITE String,
     MFG_SITE_DESC String,
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY MFG_SITE
@@ -172,7 +172,7 @@ CREATE TABLE bronze.common_mdm_mfg_plant_master (
     FACTORY String,        -- Plant Code
     VALIDITY Nullable(String),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY MFG_PLANT_ID
@@ -203,7 +203,7 @@ CREATE TABLE bronze.common_dmp_function_config
     `EffectiveEndDate` Nullable(DateTime64(3)),
     `EffectiveStartDate` Nullable(DateTime64(3)),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)
@@ -223,7 +223,7 @@ CREATE TABLE bronze.common_dmp_function_client_mapping
     `CreateDatetime` Nullable(DateTime64(3)),
     `UpdateDatetime` Nullable(DateTime64(3)),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)

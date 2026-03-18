@@ -26,7 +26,7 @@ SELECT
     argMaxIf(TEXT_, REV_, NAME_ = 'factory') AS varinst_factory,
     argMaxIf(TEXT_, REV_, NAME_ = 'lineName') AS varinst_lineName,
     argMaxIf(TEXT_, REV_, NAME_ = 'moNumber') AS varinst_moNumber,
-    now64(3) AS _refresh_time
+    now() AS _refresh_time
 FROM bronze.bpm_act_hi_varinst
 WHERE PROC_INST_ID_ IS NOT NULL AND PROC_INST_ID_ != ''
   AND NAME_ IN ('region', 'plant', 'factory', 'lineName', 'moNumber')

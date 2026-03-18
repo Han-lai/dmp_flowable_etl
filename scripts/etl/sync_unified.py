@@ -237,7 +237,7 @@ def update_watermark(client, table_name, last_sync_time_str, row_count):
             
         sql = f"""
         INSERT INTO bronze._sync_watermark (table_name, last_sync_time, sync_time, row_count)
-        VALUES ('{table_name}', toDateTime64('{ts_val}', 3), now64(3), {row_count})
+        VALUES ('{table_name}', CAST('{ts_val}', 'DateTime64(3)'), now(), {row_count})
         """
         client.command(sql)
         logger.info(f"  Watermark updated for {table_name}: {last_sync_time_str}")
@@ -318,7 +318,7 @@ def sync_batch(client, config, start_str, end_str):
     INSERT INTO {target}
     SELECT *, 
            '{batch_id}' as _batch_id,
-           now64(3) as _extracted_at,
+           now() as _extracted_at,
            1 as _sync_version
     FROM jdbc('{JDBC_DATASOURCE_NAME}', '
         SELECT {cols} FROM {source}
@@ -408,7 +408,7 @@ def sync_full(client, config):
     INSERT INTO {target}
     SELECT *, 
            'full_sync_{datetime.now().strftime("%Y%m%d")}' as _batch_id,
-           now64(3) as _extracted_at,
+           now() as _extracted_at,
            1 as _sync_version
     FROM jdbc('{JDBC_DATASOURCE_NAME}', 'SELECT {cols} FROM {source}')
     """
