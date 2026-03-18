@@ -118,6 +118,12 @@ TABLE_CONFIGS = {
         "strategy": "full",
         "columns": "MFG_SITE, MFG_SITE_DESC"
     },
+    "mdm_mfg_plant": {
+        "source": "APP_SRV_COMMON.dbo.MDM_MFG_PLANT_MASTER_0202",
+        "target": "bronze.common_mdm_mfg_plant_master",
+        "strategy": "full",
+        "columns": "MFG_PLANT_ID, MFG_PLANT_CODE, MFG_PLANT_DESC, FACTORY, VALIDITY"
+    },
     # --- DMP Function Config (Full Sync) ---
     "dmp_func_config": {
         "source": "APP_SRV_COMMON.dbo.DMPFunctionConfig_0202",
