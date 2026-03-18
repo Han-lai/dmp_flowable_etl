@@ -101,7 +101,7 @@ SELECT
     -- 累積指標 (Acc)
     COALESCE(acc.acc_todo_doing, 0) AS acc_todo_doing,
 
-    now64(3) AS _refresh_time
+    now() AS _refresh_time
 FROM daily_base AS base
 FULL OUTER JOIN acc_stats AS acc USING (snapshot_date, vx_type, region, plant, factory, line);
 

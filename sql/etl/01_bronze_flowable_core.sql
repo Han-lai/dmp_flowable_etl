@@ -35,7 +35,7 @@ CREATE TABLE bronze.bpm_act_hi_taskinst
     `TENANT_ID_` Nullable(String),
     `LAST_UPDATED_TIME_` Nullable(DateTime64(3)),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)
@@ -70,7 +70,7 @@ CREATE TABLE bronze.bpm_act_hi_varinst
     `CREATE_TIME_` Nullable(DateTime64(3)),
     `LAST_UPDATED_TIME_` Nullable(DateTime64(3)),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)
@@ -108,7 +108,7 @@ CREATE TABLE bronze.bpm_act_hi_procinst
     `PROPAGATED_STAGE_INST_ID_` Nullable(String),
     `BUSINESS_STATUS_` Nullable(String),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)
@@ -149,7 +149,7 @@ CREATE TABLE bronze.bpm_act_re_procdef
     `DERIVED_FROM_ROOT_` Nullable(String),
     `DERIVED_VERSION_` Nullable(Int32),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)
@@ -175,7 +175,7 @@ CREATE TABLE bronze.bpm_act_hi_identitylink (
     `SCOPE_DEFINITION_ID_` Nullable(String),
     `CREATE_TIME_` Nullable(DateTime64(3)),
     `_batch_id` String DEFAULT '',
-    `_extracted_at` DateTime64(3) DEFAULT now64(3),
+    `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY ID_

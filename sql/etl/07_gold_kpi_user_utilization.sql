@@ -69,7 +69,7 @@ SELECT
     round(count(DISTINCT CASE WHEN a.emp_code IS NOT NULL THEN u.emp_code ELSE NULL END) * 100.0 
           / nullIf(count(DISTINCT u.emp_code), 0), 2) as utilization_rate,
           
-    now64(3) as _refresh_time
+    now() as _refresh_time
 
 FROM silver.dim_config_users u
 CROSS JOIN DateRange d -- 每一天

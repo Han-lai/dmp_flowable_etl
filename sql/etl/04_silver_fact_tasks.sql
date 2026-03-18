@@ -113,7 +113,7 @@ SELECT
     mv_varinst_pivoted.varinst_moNumber AS mo_number,
     t.PROC_INST_ID_ AS proc_inst_id,
     
-    now64(3) AS _mview_update_time
+    now() AS _mview_update_time
 
 FROM bronze.bpm_act_hi_taskinst t
 LEFT JOIN silver.mv_varinst_pivoted ON t.PROC_INST_ID_ = mv_varinst_pivoted.PROC_INST_ID_
