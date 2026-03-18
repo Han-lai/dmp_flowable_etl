@@ -59,7 +59,7 @@ TABLE_CONFIGS = {
         "target": "bronze.common_hr_employee",
         "strategy": "full",
         # Mapping: DeptCodeLname, UpdateTime -> ModifyDate, IsActive derived from TerminateDate
-        "columns": "EmpCode, EmpName, DeptCode, DeptCodeLname, Email, (CASE WHEN TerminateDate IS NULL THEN 1 ELSE 0 END) AS IsActive, UpdateTime"
+        "columns": "EmpCode, EmpName, DeptCode, DeptCodeLname, Email, (CASE WHEN TerminateDate IS NULL THEN 1 ELSE 0 END) AS IsActive, ModifyDate AS UpdateTime"
     },
     "emp_node_role": {
         "source": "APP_SRV_COMMON.dbo.EmpNodeRoleMapping_0202",
