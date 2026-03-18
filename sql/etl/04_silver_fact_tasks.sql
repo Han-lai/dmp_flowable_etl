@@ -125,7 +125,12 @@ LEFT JOIN (
     WHERE plant_code != '' AND region_code IS NOT NULL
 ) plant_mdm ON COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') = plant_mdm.plant_code
 LEFT JOIN bronze.common_hr_employee he ON t.ASSIGNEE_ = he.EmpCode
-LEFT JOIN bronze.bpm_act_hi_varinst tb ON t.ID_ = tb.TASK_ID_ AND tb.NAME_ = 'autoComplete'
+LEFT JOIN (
+    -- 優化：僅預先篩選 autoComplete 變數，避免載入 1,700 萬筆原始資料進入 JOIN Hash Table
+    SELECT TASK_ID_, LONG_ 
+    FROM bronze.bpm_act_hi_varinst 
+    WHERE NAME_ = 'autoComplete' AND TASK_ID_ IS NOT NULL AND TASK_ID_ != ''
+) tb ON t.ID_ = tb.TASK_ID_
 WHERE t.ID_ IS NOT NULL AND t.ID_ != '';
 
 -- 驗證資料量
