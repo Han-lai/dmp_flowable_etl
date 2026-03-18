@@ -64,7 +64,7 @@ SELECT DISTINCT
     -- Region Level (Use MFG_SITE as region_code per user request 2026-02-04)
     fa.MFG_SITE AS region_code,
     sm.MFG_SITE_DESC AS region_name,
-    now64(3) AS _mview_update_time
+    now() AS _mview_update_time
 FROM bronze.common_mdm_line_desc_master ld
 LEFT JOIN bronze.common_mdm_prod_area_master pa ON ld.PROD_AREA_ID = pa.PROD_AREA_ID
 -- FIX: Join to mfg_plant_master for correct Plant/Factory info (2026-02-03)
