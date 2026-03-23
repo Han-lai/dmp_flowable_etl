@@ -203,11 +203,11 @@ def execute_unified_computation_pipeline(client, args):
     print("\n[Phase 3/4] Truncating Downstream Analytical Tables (Silver/Gold)...")
     try:
         client.command("TRUNCATE TABLE IF EXISTS silver.mv_fact_task_vx")
-        client.command("TRUNCATE TABLE IF EXISTS gold.rmv_l5_task_completion_data_phys")
+        client.command("TRUNCATE TABLE IF EXISTS gold.rmv_l5_task_completion_phys")
     except Exception as e:
         print(f"   ️ TRUNCATE failed (fallback to DROP): {e}")
         client.command("DROP TABLE IF EXISTS silver.mv_fact_task_vx")
-        client.command("DROP TABLE IF EXISTS gold.rmv_l5_task_completion_data_phys")
+        client.command("DROP TABLE IF EXISTS gold.rmv_l5_task_completion_phys")
 
     print("    Silver and Gold tables are now ready (Truncated/Dropped).")
 
@@ -244,7 +244,7 @@ def execute_unified_computation_pipeline(client, args):
         insert_silver_sql = silver_template.replace('{start_date}', start_str).replace('{end_date}', end_str)
         try:
             client.command(insert_silver_sql)
-            print(f"   ► (Silver) Data successfully computed and isolated.")
+            print(f"   > (Silver) Data successfully computed and isolated.")
         except Exception as e:
             print(f"    Silver Compute FAILED: {str(e)[:100]}")
             sys.exit(1)
@@ -260,7 +260,7 @@ def execute_unified_computation_pipeline(client, args):
         gold_sql = gold_template.replace('{start_date}', start_str).replace('{end_date}', end_str)
         try:
             client.command(gold_sql)
-            print(f"   ► (Gold) L5 KPIs successfully aggregated and appended.")
+            print(f"   > (Gold) L5 KPIs successfully aggregated and appended.")
         except Exception as e:
             print(f"    Gold Compute FAILED: {str(e)[:100]}")
             sys.exit(1)
