@@ -6,9 +6,9 @@
 
 -- 1. 建立實體儲存表 (SummingMergeTree)
 -- 使用 SummingMergeTree 以支援多路徑併發寫入並自動加總
--- DROP TABLE IF EXISTS gold.rmv_l5_task_completion_data_phys;
+-- DROP TABLE IF EXISTS gold.rmv_l5_task_completion_phys;
 
-CREATE TABLE gold.rmv_l5_task_completion_data_phys (
+CREATE TABLE gold.rmv_l5_task_completion_phys (
     snapshot_date Date,
     vx_type String,
     region String,
@@ -26,11 +26,11 @@ ENGINE = SummingMergeTree()
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
--- 2. 建立外部對接視圖 (Seamless View for Superset/API/Cube)
--- 移除 Rate 計算，由前端或 Cube.js 處理。僅提供原始加總。
--- DROP VIEW IF EXISTS gold.rmv_l5_task_completion_data;
+-- 2. 建立最終對接視圖 (The "Original Name" View for Cube.js/Superset)
+-- 此視圖確保查詢時資料已完全聚合。
+-- DROP VIEW IF EXISTS gold.rmv_l5_task_completion;
 
-CREATE VIEW gold.rmv_l5_task_completion_data AS
+CREATE VIEW gold.rmv_l5_task_completion AS
 SELECT
     snapshot_date,
     vx_type,
@@ -41,15 +41,11 @@ SELECT
     sum(done_count) AS done_count,
     sum(acc_todo_doing) AS acc_todo_doing,
     max(_refresh_time) AS _refresh_time
-FROM gold.rmv_l5_task_completion_data_phys
+FROM gold.rmv_l5_task_completion_phys
 GROUP BY snapshot_date, vx_type, region, plant, factory, line;
 
--- 3. 建立相容視圖
--- DROP VIEW IF EXISTS gold.rmv_l5_task_completion;
-CREATE VIEW gold.rmv_l5_task_completion AS SELECT * FROM gold.rmv_l5_task_completion_data;
-
 -- [核心邏輯 A] 基礎 Daily 統計 (恢復 V2 原始算法)
-INSERT INTO gold.rmv_l5_task_completion_data_phys 
+INSERT INTO gold.rmv_l5_task_completion_phys 
 SELECT
     snapshot_date, vx_type, region, plant, factory, line,
     count() AS total_task,
@@ -65,7 +61,7 @@ GROUP BY snapshot_date, vx_type, region, plant, factory, line;
 
 -- [核心邏輯 B] 累積在途統計 (恢復 V2 原始精度 - 移除 7 天限制)
 -- 透過獨立 INSERT 執行以降低記憶體壓力
-INSERT INTO gold.rmv_l5_task_completion_data_phys
+INSERT INTO gold.rmv_l5_task_completion_phys
 SELECT
     snapshot_date, vx_type, region, plant, factory, line,
     toUInt64(0) AS total_task,
