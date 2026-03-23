@@ -165,7 +165,7 @@ def load_sql_template(template_name):
 def execute_unified_computation_pipeline(client, args):
     """Core Engine for Safe Low-RAM Time-Bounded Computing."""
     print("\n" + "="*80)
-    print(f"🚀 [ Unified Computation Engine ] Initiating Native Analytical Pipeline")
+    print(f" [ Unified Computation Engine ] Initiating Native Analytical Pipeline")
     print("="*80)
     
     if args.low_ram:
@@ -173,7 +173,7 @@ def execute_unified_computation_pipeline(client, args):
         client.command("SET max_memory_usage = 6000000000")
         client.command("SET max_bytes_before_external_group_by = 3000000000")
         client.command("SET join_algorithm = 'auto'")
-        print("💡 Enabled Strict Mem-Bounds (max_memory_usage=6GB, auto join_algorithm)")
+        print(" Enabled Strict Mem-Bounds (max_memory_usage=6GB, auto join_algorithm)")
 
     # -------------------------------------------------------------------
     # Phase 1: Dimension Pivot (100% preparation before Tasks)
@@ -182,20 +182,20 @@ def execute_unified_computation_pipeline(client, args):
     try:
         client.command("TRUNCATE TABLE IF EXISTS silver.mv_varinst_pivoted")
     except Exception as e:
-        print(f"   ⚠️ TRUNCATE failed (fallback to DROP): {e}")
+        print(f"   ️ TRUNCATE failed (fallback to DROP): {e}")
         client.command("DROP TABLE IF EXISTS silver.mv_varinst_pivoted")
     
     pivot_sql = load_sql_template('backfill_pivot.sql')
     try:
         client.command(pivot_sql)
-        print("   ✅ Populated successfully from Bronze.")
+        print("    Populated successfully from Bronze.")
     except Exception as e:
-        print(f"   ❌ Pivot population failed: {e}")
+        print(f"    Pivot population failed: {e}")
         sys.exit(1)
 
     print("\n[Phase 2/4] Optimizing Dimensions (Eliminating Cartesian Product Risks)...")
     client.command("OPTIMIZE TABLE silver.mv_varinst_pivoted FINAL")
-    print("   ✅ Optimization complete.")
+    print("    Optimization complete.")
 
     # -------------------------------------------------------------------
     # Phase 3: Prepare Fact Tables
@@ -205,11 +205,11 @@ def execute_unified_computation_pipeline(client, args):
         client.command("TRUNCATE TABLE IF EXISTS silver.mv_fact_task_vx")
         client.command("TRUNCATE TABLE IF EXISTS gold.rmv_l5_task_completion_data_phys")
     except Exception as e:
-        print(f"   ⚠️ TRUNCATE failed (fallback to DROP): {e}")
+        print(f"   ️ TRUNCATE failed (fallback to DROP): {e}")
         client.command("DROP TABLE IF EXISTS silver.mv_fact_task_vx")
         client.command("DROP TABLE IF EXISTS gold.rmv_l5_task_completion_data_phys")
 
-    print("   ✅ Silver and Gold tables are now ready (Truncated/Dropped).")
+    print("    Silver and Gold tables are now ready (Truncated/Dropped).")
 
     # -------------------------------------------------------------------
     # Phase 4: Time-Chunked Loop Calculation
@@ -246,7 +246,7 @@ def execute_unified_computation_pipeline(client, args):
             client.command(insert_silver_sql)
             print(f"   ► (Silver) Data successfully computed and isolated.")
         except Exception as e:
-            print(f"   ❌ Silver Compute FAILED: {str(e)[:100]}")
+            print(f"    Silver Compute FAILED: {str(e)[:100]}")
             sys.exit(1)
 
         # B. Mutate Exclusions
@@ -262,10 +262,10 @@ def execute_unified_computation_pipeline(client, args):
             client.command(gold_sql)
             print(f"   ► (Gold) L5 KPIs successfully aggregated and appended.")
         except Exception as e:
-            print(f"   ❌ Gold Compute FAILED: {str(e)[:100]}")
+            print(f"    Gold Compute FAILED: {str(e)[:100]}")
             sys.exit(1)
             
-    print("\n🎉 The entire Unified Pipe computed flawlessly!")
+    print("\n The entire Unified Pipe computed flawlessly!")
 
 def main():
     parser = argparse.ArgumentParser(description="DMP Flowable Data Pipeline Execution Tool")

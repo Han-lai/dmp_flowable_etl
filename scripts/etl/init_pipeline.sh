@@ -19,11 +19,11 @@ LOW_RAM_FLAG=""
 if [[ "$MODE" == "--low-ram" ]]; then
     LOW_RAM_FLAG="--low-ram"
     echo "=============================================="
-    echo " 🛡️ 啟動低記憶體防重載模式 (Low-RAM Safe Mode)"
+    echo "️ 啟動低記憶體防重載模式 (Low-RAM Safe Mode)"
     echo "=============================================="
 else
     echo "=============================================="
-    echo " ⚡ 啟動高規格極速模式 (High-RAM Fast Mode)"
+    echo " 啟動高規格極速模式 (High-RAM Fast Mode)"
     echo "=============================================="
 fi
 
@@ -53,6 +53,6 @@ fi
 
 echo ""
 echo "=============================================="
-echo " ✅ 初始化管線全部完成!"
-echo " 下一步: 檢查應用端 API (curl http://${CLICKHOUSE_HOST}:7088/docs)"
+echo " 初始化管線全部完成!"
+echo "下一步: 檢查應用端 API (curl http://${CLICKHOUSE_HOST}:7088/docs)"
 echo "=============================================="
