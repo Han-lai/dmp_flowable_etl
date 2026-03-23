@@ -118,7 +118,7 @@ CREATE TABLE bronze.common_mdm_line_desc_master (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY LINE_NAME
+ORDER BY (PROD_AREA_ID, LINE_NAME)
 TTL toDateTime(_extracted_at) + INTERVAL 1 YEAR;
 
 -- 2. common_mdm_prod_area_master

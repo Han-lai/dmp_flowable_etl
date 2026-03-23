@@ -7,34 +7,26 @@
 -- ========================================
 -- 2.1 VARINST 透視表
 -- ========================================
--- 啟用 REFRESHABLE MView 實驗功能
-SET allow_experimental_refreshable_materialized_view = 1;
+-- ========================================
+-- 2.1 VARINST 透視表 (改為實體表以支援 Batch 寫入)
+-- ========================================
 
 -- DROP TABLE IF EXISTS silver.mv_varinst_pivoted;
 
-CREATE MATERIALIZED VIEW silver.mv_varinst_pivoted
-REFRESH EVERY 1 DAY OFFSET 2 HOUR
+CREATE TABLE silver.mv_varinst_pivoted (
+    PROC_INST_ID_ String,
+    varinst_region String,
+    varinst_plant String,
+    varinst_factory String,
+    varinst_lineName String,
+    varinst_moNumber String,
+    varinst_autoComplete String,
+    _refresh_time DateTime64(3)
+)
 ENGINE = ReplacingMergeTree(_refresh_time)
 ORDER BY (PROC_INST_ID_)
 TTL toDate(_refresh_time) + INTERVAL 1 YEAR
-SETTINGS allow_nullable_key = 1
-AS
-SELECT
-    PROC_INST_ID_,
-    argMaxIf(TEXT_, REV_, NAME_ = 'region') AS varinst_region,
-    argMaxIf(TEXT_, REV_, NAME_ = 'plant') AS varinst_plant,
-    argMaxIf(TEXT_, REV_, NAME_ = 'factory') AS varinst_factory,
-    argMaxIf(TEXT_, REV_, NAME_ = 'lineName') AS varinst_lineName,
-    argMaxIf(TEXT_, REV_, NAME_ = 'moNumber') AS varinst_moNumber,
-    now() AS _refresh_time
-FROM bronze.bpm_act_hi_varinst
-WHERE PROC_INST_ID_ IS NOT NULL AND PROC_INST_ID_ != ''
-  AND NAME_ IN ('region', 'plant', 'factory', 'lineName', 'moNumber')
-GROUP BY PROC_INST_ID_;
-
--- 手動觸發首次刷新
-SYSTEM REFRESH VIEW silver.mv_varinst_pivoted;
-
+SETTINGS allow_nullable_key = 1;
 
 -- 驗證
 SELECT 'mv_varinst_pivoted' AS table_name, count() AS row_count 
@@ -44,13 +36,26 @@ FROM silver.mv_varinst_pivoted;
 -- 2.2 五階維度主檔 (修正 JOIN 邏輯)
 -- 正確路徑: line_desc → prod_area → factory_area → mfg_site
 -- ========================================
-DROP TABLE IF EXISTS silver.mv_dim_mfg_five_level;
+-- DROP TABLE IF EXISTS silver.mv_dim_mfg_five_level;
 
-CREATE MATERIALIZED VIEW silver.mv_dim_mfg_five_level
+CREATE TABLE silver.mv_dim_mfg_five_level (
+    line_name String,
+    line_desc String,
+    prod_area_code String,
+    factory_code String,
+    factory_name String,
+    plant_code String,
+    plant_name String,
+    region_code String,
+    region_name String,
+    _mview_update_time DateTime64(3)
+)
 ENGINE = ReplacingMergeTree(_mview_update_time)
 ORDER BY (plant_code, line_name)
-SETTINGS allow_nullable_key = 1
-POPULATE AS
+SETTINGS allow_nullable_key = 1;
+
+-- 首次建立時，手動從來源生成資料
+INSERT INTO silver.mv_dim_mfg_five_level
 SELECT DISTINCT
     ld.LINE_NAME AS line_name,
     ld.LINE_DESC AS line_desc,
