@@ -170,11 +170,12 @@ TABLE_CONFIGS = {
         "columns": "*"
     },
     "identitylink": {
-        "source": "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK",
+        "source": "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK_0108",
         "target": "bronze.bpm_act_hi_identitylink",
         "time_col": "CREATE_TIME_",
-        "strategy": "batch",  # Can be large, safer to batch if time col exists
-        "columns": "*"
+        "strategy": "batch",
+        "step_days": 1,      # 此表資料量大，每次只同步 1 天避免 OOM
+        "columns": "USER_ID_, TYPE_, TASK_ID_, CREATE_TIME_"
     }
 }
 
@@ -344,8 +345,6 @@ def sync_batch(client, config, start_str, end_str):
             count = client.command(count_sql)
             logger.info(f"  Synced {count:,} rows in {duration:.2f}s")
             
-            # 4. Update Watermark
-            update_watermark(client, target, end_str, count)
             return count
             
         except Exception as e:
@@ -473,16 +472,23 @@ def main():
                     start_date = get_source_min_time(client, config)
                     logger.info(f"  No watermark. Automatically detected start date from source: {start_date}")
             
-            batches = generate_batches(start_date, args.end, args.step_days, args.step_hours)
+            # 若 table config 有自訂 step_days，優先使用；否則使用 CLI 參數
+            effective_step_days = config.get('step_days', args.step_days)
+            effective_step_hours = config.get('step_hours', args.step_hours)
+            batches = generate_batches(start_date, args.end, effective_step_days, effective_step_hours)
             logger.info(f"Generated {len(batches)} batches from {start_date} to {args.end}")
             
+            session_total = 0
             for i, (start, end) in enumerate(batches, 1):
                 logger.info(f"Batch {i}/{len(batches)}: {start} -> {end}")
                 if not args.dry_run:
                     try:
-                        sync_batch_adaptive(client, config, start, end)
-                    except Exception:
-                        logger.error(f"Stopping sync for {table_key} due to error.")
+                        batch_count = sync_batch_adaptive(client, config, start, end)
+                        session_total += batch_count
+                        # Update Watermark per batch with the accumulated session total
+                        update_watermark(client, target_table, end, session_total)
+                    except Exception as e:
+                        logger.error(f"Stopping sync for {table_key} due to error: {e}")
                         break
                 else:
                     logger.info("  [DRY RUN] Would execute batch sync")
