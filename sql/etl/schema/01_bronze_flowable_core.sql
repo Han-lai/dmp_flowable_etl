@@ -159,26 +159,20 @@ SETTINGS allow_nullable_key = 1;
 -- ========================================
 -- 5. bpm_act_hi_identitylink (身分連結)
 -- 來源: APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK
+-- 保留 USER_ID_, TYPE_, TASK_ID_, CREATE_TIME_ 四個欄位
 -- ========================================
 -- DROP TABLE IF EXISTS bronze.bpm_act_hi_identitylink;
 
 CREATE TABLE bronze.bpm_act_hi_identitylink (
-    `ID_` String,
-    `GROUP_ID_` Nullable(String),
-    `TYPE_` Nullable(String),
     `USER_ID_` Nullable(String),
+    `TYPE_` Nullable(String),
     `TASK_ID_` Nullable(String),
-    `PROC_INST_ID_` Nullable(String),
-    `SCOPE_ID_` Nullable(String),
-    `SUB_SCOPE_ID_` Nullable(String),
-    `SCOPE_TYPE_` Nullable(String),
-    `SCOPE_DEFINITION_ID_` Nullable(String),
     `CREATE_TIME_` Nullable(DateTime64(3)),
     `_batch_id` String DEFAULT '',
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY ID_
+ORDER BY (TASK_ID_, USER_ID_, TYPE_)
 TTL toDate(_extracted_at) + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1;
 
