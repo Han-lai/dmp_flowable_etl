@@ -1,7 +1,7 @@
 -- Phase 4: Gold Layer Aggregation (Time-Bounded)
 -- Variables: {start_date}, {end_date}
--- Target: gold.rmv_l5_task_completion_data_phys (Physical SummingMergeTree)
-INSERT INTO gold.rmv_l5_task_completion_data_phys
+-- Target: gold.rmv_l5_task_completion_phys (Physical SummingMergeTree)
+INSERT INTO gold.rmv_l5_task_completion_phys
 WITH 
 daily_base AS (
     SELECT
