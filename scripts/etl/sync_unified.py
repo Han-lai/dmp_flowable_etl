@@ -151,7 +151,7 @@ TABLE_CONFIGS = {
     "taskinst": {
         "source": "APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108",
         "target": "bronze.bpm_act_hi_taskinst",
-        "time_col": "START_TIME_",
+        "time_col": "LAST_UPDATED_TIME_",
         "strategy": "batch",
         "columns": "*"
     },
