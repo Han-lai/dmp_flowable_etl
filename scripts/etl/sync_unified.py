@@ -153,14 +153,16 @@ TABLE_CONFIGS = {
         "target": "bronze.bpm_act_hi_taskinst",
         "time_col": "LAST_UPDATED_TIME_",
         "strategy": "batch",
-        "columns": "*"
+        "step_days": 2,      # 限制步長與欄位以優化記憶體
+        "columns": "ID_, REV_, PROC_DEF_ID_, TASK_DEF_KEY_, PROC_INST_ID_, EXECUTION_ID_, NAME_, ASSIGNEE_, START_TIME_, CLAIM_TIME_, END_TIME_, DURATION_, DELETE_REASON_, LAST_UPDATED_TIME_"
     },
     "varinst": {
         "source": "APP_SRV_BPM.dbo.ACT_HI_VARINST_0108",
         "target": "bronze.bpm_act_hi_varinst",
         "time_col": "CREATE_TIME_",
         "strategy": "batch",
-        "columns": "*"
+        "step_days": 1,      # 此表資料量大，限制同步範圍避免 OOM
+        "columns": "PROC_INST_ID_, NAME_, TEXT_, REV_, LONG_, CREATE_TIME_"
     },
     "procinst": {
         "source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108",
@@ -293,7 +295,7 @@ def get_source_min_time(client, config):
 def sync_batch(client, config, start_str, end_str):
     """
     Executes a single batch sync for a specific time range.
-    Workflow: 1. Delete overlapping data in target -> 2. Insert new data from JDBC.
+    Workflow: Insert new data from JDBC (ReplacingMergeTree handles deduplication).
     """
     source = config['source']
     target = config['target']
@@ -303,18 +305,8 @@ def sync_batch(client, config, start_str, end_str):
     batch_id = f"{start_str}_{end_str}"
     
     logger.info(f"Processing Batch: {start_str} to {end_str}")
-    
-    # 1. Cleanup Target Range
-    delete_sql = f"""
-    ALTER TABLE {target} DELETE 
-    WHERE {time_col} >= '{start_str}' AND {time_col} < '{end_str}'
-    """
-    try:
-        client.command(delete_sql)
-    except Exception as e:
-        logger.warning(f"  Cleanup warning: {e}")
 
-    # 2. Insert Data
+    # Insert Data (ReplacingMergeTree will handle deduplication automatically)
     insert_sql = f"""
     INSERT INTO {target}
     SELECT *, 
@@ -337,7 +329,7 @@ def sync_batch(client, config, start_str, end_str):
             client.command(insert_sql)
             duration = time.perf_counter() - start_time
             
-            # 3. Verify
+            # Verify row count
             count_sql = f"""
             SELECT count() FROM {target} 
             WHERE {time_col} >= '{start_str}' AND {time_col} < '{end_str}'
