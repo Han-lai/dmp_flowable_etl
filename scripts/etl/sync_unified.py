@@ -162,7 +162,7 @@ TABLE_CONFIGS = {
         "time_col": "CREATE_TIME_",
         "strategy": "batch",
         "step_days": 1,      # 此表資料量大，限制同步範圍避免 OOM
-        "columns": "PROC_INST_ID_, NAME_, TEXT_, REV_, LONG_, CREATE_TIME_"
+        "columns": "PROC_INST_ID_, TASK_ID_, NAME_, TEXT_, REV_, LONG_, CREATE_TIME_"
     },
     "procinst": {
         "source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108",
