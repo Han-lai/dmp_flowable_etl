@@ -1,5 +1,5 @@
--- Phase 1: Dimension Pivot
--- Table: silver.mv_varinst_pivoted (PROC_INST_ID_, varinst_region, varinst_plant, varinst_factory, varinst_lineName, varinst_moNumber, varinst_autoComplete, _refresh_time)
+-- Phase 1: Dimension Pivot (Time-Bounded)
+-- Table: silver.mv_varinst_pivoted
 INSERT INTO silver.mv_varinst_pivoted
 SELECT
     PROC_INST_ID_,
@@ -13,4 +13,6 @@ SELECT
 FROM bronze.bpm_act_hi_varinst
 WHERE PROC_INST_ID_ IS NOT NULL AND PROC_INST_ID_ != ''
   AND NAME_ IN ('region', 'plant', 'factory', 'lineName', 'moNumber', 'autoComplete')
+  AND toDate(CREATE_TIME_) >= toDate('{start_date}') - INTERVAL 180 DAY
+  AND toDate(CREATE_TIME_) <= toDate('{end_date}')
 GROUP BY PROC_INST_ID_

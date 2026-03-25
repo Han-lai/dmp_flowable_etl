@@ -6,20 +6,18 @@
 
 -- 1. 建立實體儲存表 (SummingMergeTree)
 -- 使用 SummingMergeTree 以支援多路徑併發寫入並自動加總
--- DROP TABLE IF EXISTS gold.rmv_l5_task_completion_phys;
-
-CREATE TABLE gold.rmv_l5_task_completion_phys (
+CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     snapshot_date Date,
     vx_type String,
     region String,
     plant String,
     factory String,
     line String,
-    total_task UInt64,
-    todo_count UInt64,
-    doing_count UInt64,
-    done_count UInt64,
-    acc_todo_doing UInt64,
+    total_task Int64,
+    todo_count Int64,
+    doing_count Int64,
+    done_count Int64,
+    acc_todo_doing Int64,
     _refresh_time DateTime64(3) DEFAULT now()
 )
 ENGINE = SummingMergeTree()
@@ -28,9 +26,7 @@ TTL snapshot_date + INTERVAL 1 YEAR;
 
 -- 2. 建立最終對接視圖 (The "Original Name" View for Cube.js/Superset)
 -- 此視圖確保查詢時資料已完全聚合。
--- DROP VIEW IF EXISTS gold.rmv_l5_task_completion;
-
-CREATE VIEW gold.rmv_l5_task_completion AS
+CREATE VIEW IF NOT EXISTS gold.rmv_l5_task_completion AS
 SELECT
     snapshot_date,
     vx_type,
@@ -44,47 +40,4 @@ SELECT
 FROM gold.rmv_l5_task_completion_phys
 GROUP BY snapshot_date, vx_type, region, plant, factory, line;
 
--- [核心邏輯 A] 基礎 Daily 統計 (恢復 V2 原始算法)
-INSERT INTO gold.rmv_l5_task_completion_phys 
-SELECT
-    snapshot_date, vx_type, region, plant, factory, line,
-    count() AS total_task,
-    countIf(snapshot_date < toDate(task_claim_date) OR (snapshot_date < toDate(task_end_date) AND task_claim_date IS NULL)) AS todo_count,
-    countIf(snapshot_date >= toDate(task_claim_date) AND (snapshot_date < toDate(task_end_date) OR task_end_date IS NULL)) AS doing_count,
-    countIf(snapshot_date >= toDate(task_end_date) AND task_end_date IS NULL = 0) AS done_count,
-    toUInt64(0) AS acc_todo_doing,
-    now() as _refresh_time
-FROM silver.mv_fact_task_vx
-ARRAY JOIN arrayDistinct(arrayFilter(d -> d IS NOT NULL, [task_start_date, task_claim_date, task_end_date])) AS snapshot_date
-WHERE is_excluded = 0
-GROUP BY snapshot_date, vx_type, region, plant, factory, line;
-
--- [核心邏輯 B] 累積在途統計 (恢復 V2 原始精度 - 移除 7 天限制)
--- 透過獨立 INSERT 執行以降低記憶體壓力
-INSERT INTO gold.rmv_l5_task_completion_phys
-SELECT
-    snapshot_date, vx_type, region, plant, factory, line,
-    toUInt64(0) AS total_task,
-    toUInt64(0) AS todo_count,
-    toUInt64(0) AS doing_count,
-    toUInt64(0) AS done_count,
-    uniqExact(task_id) AS acc_todo_doing,
-    now() as _refresh_time
-FROM (
-    SELECT
-        task_id, vx_type, region, plant, factory, line,
-        -- 恢復 V2 原始原始 7 天滑動視窗邏輯
-        arrayMap(d -> toDate(d), 
-            range(
-                toUInt32(task_start_date), 
-                toUInt32(least(
-                    COALESCE(task_end_date, today() + 2), 
-                    greatest(task_start_date, COALESCE(task_claim_date, task_start_date)) + 7
-                ))
-            )
-        ) AS dates
-    FROM silver.mv_fact_task_vx FINAL
-    WHERE is_excluded = 0
-)
-ARRAY JOIN dates AS snapshot_date
-GROUP BY snapshot_date, vx_type, region, plant, factory, line;
+-- Schema End (INSERT logic is handled by execute_etl.py)

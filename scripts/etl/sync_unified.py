@@ -386,9 +386,10 @@ def sync_full(client, config):
     
     logger.info(f"Full Syncing: {target}")
     
-    # Truncate
-    logger.info("  Truncating target table...")
-    client.command(f"TRUNCATE TABLE {target}")
+    # [Safety Update 2026-03-24] TRUNCATE is dangerous for production sync.
+    # We now rely on ReplacingMergeTree to handle deduplication during INSERT.
+    # logger.info("  Truncating target table...")
+    # client.command(f"TRUNCATE TABLE {target}")
     
     # Insert
     # Check if target table has extra sync columns

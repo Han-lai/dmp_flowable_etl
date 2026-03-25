@@ -6,7 +6,7 @@
 
 -- DROP TABLE IF EXISTS silver.mv_fact_task_vx;
 
-CREATE TABLE silver.mv_fact_task_vx (
+CREATE TABLE IF NOT EXISTS silver.mv_fact_task_vx (
     task_id String,
     task_start_date Date,
     task_claim_date Nullable(Date),
@@ -38,23 +38,23 @@ ORDER BY (task_id)
 TTL task_primary_date + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1;
 
--- 驗證資料量
-SELECT 'mv_fact_task_vx' AS table_name, count() AS row_count 
-FROM silver.mv_fact_task_vx;
+-- -- 驗證資料量
+-- SELECT 'mv_fact_task_vx' AS table_name, count() AS row_count 
+-- FROM silver.mv_fact_task_vx;
 
--- 驗證新增的時間維度欄位
-SELECT 
-    'time_dimensions' AS check_name,
-    count() AS total,
-    countIf(task_start_date IS NOT NULL) AS with_start_date,
-    countIf(task_claim_date IS NOT NULL) AS with_claim_date,
-    countIf(task_end_date IS NOT NULL) AS with_end_date
-FROM silver.mv_fact_task_vx FINAL;
+-- -- 驗證新增的時間維度欄位
+-- SELECT 
+--     'time_dimensions' AS check_name,
+--     count() AS total,
+--     countIf(task_start_date IS NOT NULL) AS with_start_date,
+--     countIf(task_claim_date IS NOT NULL) AS with_claim_date,
+--     countIf(task_end_date IS NOT NULL) AS with_end_date
+-- FROM silver.mv_fact_task_vx FINAL;
 
--- 驗證 Vx 分布
-SELECT vx_type, count() AS cnt 
-FROM silver.mv_fact_task_vx FINAL
-GROUP BY vx_type 
-ORDER BY cnt DESC;
+-- -- 驗證 Vx 分布
+-- SELECT vx_type, count() AS cnt 
+-- FROM silver.mv_fact_task_vx FINAL
+-- GROUP BY vx_type 
+-- ORDER BY cnt DESC;
 
-SELECT 'Silver Layer 2 (v2 多時間維度) 完成' AS status;
+-- SELECT 'Silver Layer 2 (v2 多時間維度) 完成' AS status;

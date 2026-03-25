@@ -17,8 +17,8 @@ echo "[$(date '+%Y-%m-%d %H:%M:%S')] 開始執行每日 ETL 同步..."
 echo "-> [Step 1] Syncing Bronze from MSSQL..."
 python scripts/etl/sync_unified.py --table all
 
-# 2. 觸發 Silver/Gold 事實表與指標更新 (針對 207 最佳化架構)
+# 2. 觸發 Silver/Gold 事實表與指標更新 (Unified Engine)
 echo "-> [Step 2] Executing Silver/Gold Daily Compute..."
-python scripts/etl/execute_etl.py --daily
+python scripts/etl/execute_etl.py --daily --low-ram
 
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] ETL 全流程同步與計算完成。"
