@@ -14,7 +14,7 @@ cube(`L5TaskPeriodicV2Pivot`, {
             SELECT 
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
-            FROM gold.rmv_l5_task_completion_v2
+            FROM gold.rmv_l5_task_completion_v2 -- 原 _v2 來源
             WHERE (
                 ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.snapshotDate.filter('toString(snapshot_date)')}
                 OR ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
