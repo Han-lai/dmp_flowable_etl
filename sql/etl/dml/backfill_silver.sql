@@ -82,5 +82,8 @@ LEFT JOIN (
     WHERE NAME_ = 'autoComplete' AND TASK_ID_ IS NOT NULL AND TASK_ID_ != ''
 ) AS tb ON t.ID_ = tb.TASK_ID_
 WHERE (t.ID_ IS NOT NULL) AND (t.ID_ != '')
-  AND toDate(t.START_TIME_) >= '{start_date}'
-  AND toDate(t.START_TIME_) <= '{end_date}'
+  AND (
+      (toDate(t.START_TIME_) >= '{start_date}' AND toDate(t.START_TIME_) <= '{end_date}') OR
+      (toDate(t.CLAIM_TIME_) >= '{start_date}' AND toDate(t.CLAIM_TIME_) <= '{end_date}') OR
+      (toDate(t.END_TIME_) >= '{start_date}' AND toDate(t.END_TIME_) <= '{end_date}')
+  )

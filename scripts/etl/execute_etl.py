@@ -1,14 +1,8 @@
 #!/usr/bin/env python3
 """
-DMP Flowable Data Pipeline Execution Script
-Purpose: Sequentially execute SQL files to rebuild the Bronze/Silver/Gold architecture.
-
-Features:
-1. --skip-existing: Automatically skips if the target table already exists (safe mode).
-2. --force: Automatically confirms all rebuild prompts (destructive mode).
-3. --status: Displays current sync status and row counts.
-4. --backfill: Computes the entire Silver and Gold historical data using safe 10-day time-chunked batching.
-5. --low-ram: Enhances timeout and memory limits for low-end VMs during heavy operations.
+DMP Flowable Data Pipeline Execution Tool
+Purpose: Focused, window-based data transformation (Bronze -> Silver -> Gold).
+Provides: Backfill, Daily, Reset, and Status monitoring.
 """
 import clickhouse_connect
 import os
@@ -17,7 +11,6 @@ import argparse
 import time
 import datetime
 from pathlib import Path
-import re
 import pandas as pd
 
 # =================================================================
@@ -26,21 +19,11 @@ import pandas as pd
 
 CH_CONFIG = {
     'host': os.getenv('CLICKHOUSE_HOST', 'REDACTED_IP'),
-    'port': int(os.getenv('CLICKHOUSE_PORT', '8121')), # Optional override
+    'port': int(os.getenv('CLICKHOUSE_PORT', '8121')),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
     'password': os.getenv('CLICKHOUSE_PASSWORD', 'default'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
-
-SQL_FILES = [
-    ('01_bronze_flowable_core.sql', 'Bronze Layer 1 (Flowable Core)'),
-    ('02_bronze_common_dims.sql', 'Bronze Layer 2 (Common Dimensions)'),
-    ('03_silver_pivot_and_hierarchy.sql', 'Silver Layer 1 (Pivot + Hierarchy)'),
-    ('04_silver_fact_tasks.sql', 'Silver Layer 2 (Core Fact Table)'),
-    ('05_silver_dim_users.sql', 'Silver Layer 3 (User Dimension)'),
-    ('06_gold_kpi_task_completion.sql', 'Gold Layer 1 (L5 Completion API)'),
-    # ('07_gold_kpi_user_utilization.sql', 'Gold Layer 2 (L7 User Utilization)'),
-]
 
 # =================================================================
 # 2. Core Functions
@@ -52,22 +35,32 @@ def get_client(is_low_ram=False):
         config['send_receive_timeout'] = 300
     return clickhouse_connect.get_client(**config)
 
-def initialize_databases(client):
-    """Ensures all required databases exist."""
-    print("\n[DB Init] Initializing Databases...")
-    for db in ['bronze', 'silver', 'gold']:
-        try:
-            client.command(f"CREATE DATABASE IF NOT EXISTS {db}")
-            print(f" - {db:10}: OK")
-        except Exception as e:
-            print(f" - {db:10}: Failed - {e}")
+def get_checkpoint(client, phase, start, end):
+    try:
+        res = client.query(f"SELECT status FROM bronze.etl_checkpoint FINAL WHERE phase = '{phase}' AND window_start = '{start}' AND window_end = '{end}'")
+        if res.result_rows:
+            return res.result_rows[0][0]
+    except: pass
+    return None
+
+def update_checkpoint(client, phase, start, end, status, error=""):
+    try:
+        client.command(f"INSERT INTO bronze.etl_checkpoint (phase, window_start, window_end, status, error_msg) VALUES ('{phase}', '{start}', '{end}', '{status}', '{error[:500]}')")
+    except Exception as e:
+        print(f"Warning: Failed to update checkpoint: {e}")
+
+def load_sql_template(template_name):
+    script_dir = Path(__file__).resolve().parent
+    template_path = script_dir.parent.parent / 'sql' / 'etl' / 'dml' / template_name
+    return template_path.read_text(encoding='utf-8')
 
 def show_status(client):
-    """Displays sync progress and row counts."""
+    """Displays sync progress, row counts, and checkpoints."""
     print("\n" + "=" * 60)
-    print("Current Sync Status")
+    print("DMP Pipeline Status Dashboard")
     print("=" * 60)
     
+    # 1. Watermark Tracking
     try:
         wm_sql = "SELECT table_name, last_sync_time, sync_time, row_count FROM bronze._sync_watermark FINAL ORDER BY table_name"
         res = client.query(wm_sql)
@@ -75,97 +68,31 @@ def show_status(client):
             df = pd.DataFrame(res.result_rows, columns=['Table', 'Last Source TS', 'Sync At', 'Rows'])
             print("\n[Watermark Tracking]")
             print(df.to_string(index=False))
-        else:
-            print("\n[Watermark] No sync records found.")
-    except Exception as e:
-        print(f"\n[Watermark] Failed to read: {e}")
+    except: pass
 
+    # 2. ETL Checkpoints
+    try:
+        cp_sql = "SELECT phase, window_start, window_end, status, update_time FROM bronze.etl_checkpoint FINAL ORDER BY phase, window_start"
+        res = client.query(cp_sql)
+        if res.result_rows:
+            df = pd.DataFrame(res.result_rows, columns=['Phase', 'Start', 'End', 'Status', 'Updated At'])
+            print("\n[ETL Checkpoints (Computation Progress)]")
+            print(df.to_string(index=False))
+    except: pass
+
+    # 3. Key Table Counts
     print("\n[Key Table Row Counts]")
-    tables = [
-        "bronze.bpm_act_hi_taskinst", 
-        "silver.mv_varinst_pivoted",
-        "silver.mv_fact_task_vx", 
-        "gold.rmv_l5_task_completion_data_phys"
-    ]
-    for t in tables:
+    for t in ["bronze.bpm_act_hi_taskinst", "silver.mv_varinst_pivoted", "silver.mv_fact_task_vx", "gold.rmv_l5_task_completion_phys"]:
         try:
             count = client.command(f"SELECT count() FROM {t}")
             print(f" - {t:35}: {count:,} rows")
         except:
-            print(f" - {t:35}: (Not created yet)")
+            print(f" - {t:35}: (Not created)")
 
-def execute_sql_file(client, sql_file: Path, description: str, args):
-    """Executes a single SQL file with support for auto-skip or force mode."""
-    print(f"\n{'-'*60}")
-    print(f"Preparing to execute: {sql_file.name} ({description})")
-    
-    sql_content = sql_file.read_text(encoding='utf-8')
-    
-    pattern = re.compile(r'CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|MATERIALIZED\s+VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.]+)', re.IGNORECASE)
-    tables = pattern.findall(sql_content)
-    
-    existing_tables = []
-    for table in tables:
-        try:
-            if client.command(f"EXISTS TABLE {table}"):
-                count = client.command(f"SELECT count() FROM {table}")
-                existing_tables.append((table, count))
-        except: pass
-            
-    if existing_tables:
-        if args.skip_existing:
-            print(f"Tables exist. Skipping due to --skip-existing flag.")
-            return
-        
-        if not args.force:
-            print(f"WARNING: The following tables already exist:")
-            for table, count in existing_tables:
-                print(f"   - {table}: {count:,} rows")
-            response = input("\nAre you sure you want to recreate? (y/N): ").lower().strip()
-            if response != 'y':
-                print(f"Skipped: {sql_file.name}")
-                return
-        else:
-            print(f"Tables exist. Recreating due to --force flag.")
-
-    statements = []
-    current = []
-    for line in sql_content.split('\n'):
-        stripped = line.strip()
-        if stripped.startswith('--'): continue
-        current.append(line)
-        if stripped.endswith(';'):
-            stmt = '\n'.join(current).strip()
-            if stmt and stmt != ';':
-                statements.append(stmt)
-            current = []
-    
-    failures = 0
-    for i, stmt in enumerate(statements, 1):
-        if not stmt.strip() or stmt.strip().upper().startswith('SELECT'):
-            continue
-        try:
-            client.command(stmt)
-        except Exception as e:
-            print(f"[{i}/{len(statements)}] Error: {e}")
-            failures += 1
-            continue
-    
-    if failures == 0:
-        print(f"Completed: {sql_file.name} executed successfully.")
-    else:
-        print(f"Completed: {sql_file.name} executed with {failures} errors.")
-
-def load_sql_template(template_name):
-    """Load SQL template from sql_templates directory."""
-    script_dir = Path(__file__).resolve().parent
-    template_path = script_dir.parent.parent / 'sql' / 'etl' / 'dml' / template_name
-    return template_path.read_text(encoding='utf-8')
-
-def execute_unified_computation_pipeline(client, args):
+def execute_computation_pipeline(client, args):
     """Core Engine for Safe Low-RAM Time-Bounded Computing."""
     print("\n" + "="*80)
-    print(f" [ Unified Computation Engine ] Initiating Native Analytical Pipeline")
+    print(f" [ Computation Engine ] Initiating Native Analytical Pipeline")
     print("="*80)
     
     if args.low_ram:
@@ -173,56 +100,21 @@ def execute_unified_computation_pipeline(client, args):
         client.command("SET max_memory_usage = 6000000000")
         client.command("SET max_bytes_before_external_group_by = 3000000000")
         client.command("SET join_algorithm = 'auto'")
-        print(" Enabled Strict Mem-Bounds (max_memory_usage=6GB, auto join_algorithm)")
+        print(" Using Mem-Optimized Settings (1 Thread, 6GB Limit)")
 
-    # -------------------------------------------------------------------
-    # Phase 1: Dimension Pivot (100% preparation before Tasks)
-    # -------------------------------------------------------------------
-    print("\n[Phase 1/4] Preparing Dimension Table: silver.mv_varinst_pivoted")
-    try:
-        client.command("TRUNCATE TABLE IF EXISTS silver.mv_varinst_pivoted")
-    except Exception as e:
-        print(f"   ️ TRUNCATE failed (fallback to DROP): {e}")
-        client.command("DROP TABLE IF EXISTS silver.mv_varinst_pivoted")
-    
-    pivot_sql = load_sql_template('backfill_pivot.sql')
-    try:
-        client.command(pivot_sql)
-        print("    Populated successfully from Bronze.")
-    except Exception as e:
-        print(f"    Pivot population failed: {e}")
-        sys.exit(1)
+    # Safety: Reset Logic
+    if getattr(args, 'reset', False):
+        print("\n[Safety] Global Reset Initiated (--reset)...")
+        for t in ["silver.mv_varinst_pivoted", "silver.mv_fact_task_vx", "gold.rmv_l5_task_completion_phys"]:
+            client.command(f"TRUNCATE TABLE IF EXISTS {t}")
+        client.command("TRUNCATE TABLE IF EXISTS bronze.etl_checkpoint")
+        print("    Tables and checkpoints cleared.")
 
-    print("\n[Phase 2/4] Optimizing Dimensions (Eliminating Cartesian Product Risks)...")
-    client.command("OPTIMIZE TABLE silver.mv_varinst_pivoted FINAL")
-    print("    Optimization complete.")
-
-    # -------------------------------------------------------------------
-    # Phase 3: Prepare Fact Tables
-    # -------------------------------------------------------------------
-    print("\n[Phase 3/4] Truncating Downstream Analytical Tables (Silver/Gold)...")
-    try:
-        client.command("TRUNCATE TABLE IF EXISTS silver.mv_fact_task_vx")
-        client.command("TRUNCATE TABLE IF EXISTS gold.rmv_l5_task_completion_phys")
-    except Exception as e:
-        print(f"   ️ TRUNCATE failed (fallback to DROP): {e}")
-        client.command("DROP TABLE IF EXISTS silver.mv_fact_task_vx")
-        client.command("DROP TABLE IF EXISTS gold.rmv_l5_task_completion_phys")
-
-    print("    Silver and Gold tables are now ready (Truncated/Dropped).")
-
-    # -------------------------------------------------------------------
-    # Phase 4: Time-Chunked Loop Calculation
-    # -------------------------------------------------------------------
+    # Window Generation
     start_dateobj = datetime.datetime.strptime(args.start, "%Y-%m-%d").date()
     end_dateobj = datetime.datetime.strptime(args.end, "%Y-%m-%d").date()
     
     windows = []
-    # Add an Ancient Catch-all to make sure we don't drop tasks with empty or historical start times
-    ancient_bound = start_dateobj - datetime.timedelta(days=1)
-    windows.append(("1970-01-01", ancient_bound.strftime("%Y-%m-%d")))
-    
-    # Generate the iterative windows
     curr = start_dateobj
     while curr <= end_dateobj:
         next_curr = curr + datetime.timedelta(days=args.step_days)
@@ -230,97 +122,109 @@ def execute_unified_computation_pipeline(client, args):
         windows.append((curr.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d")))
         curr = next_curr
 
-    print("\n[Phase 4/4] Starting Bounded Chunk Execution Loop...")
-    
-    # Load SQL templates once
-    silver_template = load_sql_template('backfill_silver.sql')
+    # Load Templates
+    pivot_template = load_sql_template('backfill_pivot.sql')
+    silver_tpl = load_sql_template('backfill_silver.sql')
     exclusion_sql = load_sql_template('backfill_exclusion.sql')
-    gold_template = load_sql_template('backfill_gold.sql')
-    
-    for (start_str, end_str) in windows:
-        print(f"\n---- [Time Window: {start_str} ~ {end_str}] ----")
+    gold_tpl = load_sql_template('backfill_gold.sql')
+
+    def run_safe(phase_name, sql_tpl, start_dt, end_dt):
+        """Recursive function to process windows with auto-split on OOM."""
+        start_str = start_dt.strftime("%Y-%m-%d")
+        end_str = end_dt.strftime("%Y-%m-%d")
         
-        # A. Ingest Silver
-        insert_silver_sql = silver_template.replace('{start_date}', start_str).replace('{end_date}', end_str)
-        try:
-            client.command(insert_silver_sql)
-            print(f"   > (Silver) Data successfully computed and isolated.")
-        except Exception as e:
-            print(f"    Silver Compute FAILED: {str(e)[:100]}")
-            sys.exit(1)
+        if get_checkpoint(client, phase_name, start_str, end_str) == 'SUCCESS' and not args.reset:
+            return
 
-        # B. Mutate Exclusions
-        client.command(exclusion_sql)
-        for i in range(15):
-            time.sleep(1)
-            count = client.command("SELECT count() FROM system.mutations WHERE is_done = 0 AND table = 'mv_fact_task_vx'")
-            if count == 0: break
-
-        # C. Aggregate to Gold
-        gold_sql = gold_template.replace('{start_date}', start_str).replace('{end_date}', end_str)
         try:
-            client.command(gold_sql)
-            print(f"   > (Gold) L5 KPIs successfully aggregated and appended.")
-        except Exception as e:
-            print(f"    Gold Compute FAILED: {str(e)[:100]}")
-            sys.exit(1)
+            print(f"   > Processing {phase_name}: {start_str} ~ {end_str} ...")
             
-    print("\n The entire Unified Pipe computed flawlessly!")
+            # Special case for exclusions which doesn't use dates
+            if sql_tpl == exclusion_sql:
+                client.command(sql_tpl)
+            else:
+                client.command(sql_tpl.replace('{start_date}', start_str).replace('{end_date}', end_str))
+            
+            # Additional wait for mutations if needed
+            if phase_name == 'silver_exclusions':
+                for _ in range(15):
+                    time.sleep(1)
+                    if client.command("SELECT count() FROM system.mutations WHERE is_done = 0 AND table = 'mv_fact_task_vx'") == 0: break
+            
+            update_checkpoint(client, phase_name, start_str, end_str, 'SUCCESS')
+        except Exception as e:
+            err_msg = str(e)
+            # Check for memory limit exceeded (ClickHouse Code 241 or similar keywords)
+            if ("Memory limit exceeded" in err_msg or "Code: 241" in err_msg) and (end_dt - start_dt).days >= 1:
+                mid_days = (end_dt - start_dt).days // 2
+                mid_dt = start_dt + datetime.timedelta(days=mid_days)
+                print(f"   [OOM Alert] Memory Limit hit at {start_str} ~ {end_str}. Splitting window into halves...")
+                run_safe(phase_name, sql_tpl, start_dt, mid_dt)
+                run_safe(phase_name, sql_tpl, mid_dt + datetime.timedelta(days=1), end_dt)
+            else:
+                update_checkpoint(client, phase_name, start_str, end_str, 'FAILED', err_msg)
+                print(f"    CRITICAL FAILED at {start_str}: {err_msg}")
+                sys.exit(1)
+
+    # Loop 1: Dimension Pivot
+    print("\n[Stage 1/2] Computing silver_varinst_pivoted (Self-Adaptive)")
+    for (s_str, e_str) in windows:
+        s_dt = datetime.datetime.strptime(s_str, "%Y-%m-%d").date()
+        e_dt = datetime.datetime.strptime(e_str, "%Y-%m-%d").date()
+        run_safe('silver_varinst_pivoted', pivot_template, s_dt, e_dt)
+
+    # Loop 2: Fact & Gold Aggregation
+    print("\n[Stage 2/2] Computing gold_task_completion (Self-Adaptive)")
+    for (s_str, e_str) in windows:
+        s_dt = datetime.datetime.strptime(s_str, "%Y-%m-%d").date()
+        e_dt = datetime.datetime.strptime(e_str, "%Y-%m-%d").date()
+        
+        print(f"\n---- [Time Window: {s_str} ~ {e_str}] ----")
+        run_safe('silver_facts', silver_tpl, s_dt, e_dt)
+        run_safe('silver_exclusions', exclusion_sql, s_dt, e_dt)
+        run_safe('gold_task_completion', gold_tpl, s_dt, e_dt)
+
+    print("\n All calculation phases completed successfully!")
 
 def main():
-    parser = argparse.ArgumentParser(description="DMP Flowable Data Pipeline Execution Tool")
-    parser.add_argument("--skip-existing", action="store_true", help="Automatically skip if table exists (safe mode)")
-    parser.add_argument("--force", action="store_true", help="Automatically confirm all rebuilds (destructive)")
-    parser.add_argument("--status", action="store_true", help="Display sync progress and row counts only")
-    parser.add_argument("--backfill", action="store_true", help="Launch the Safe Unified Calculation Pipeline (Phase 3+4 chunks)")
-    parser.add_argument("--daily", action="store_true", help="Daily incremental compute mode")
+    parser = argparse.ArgumentParser(description="DMP Flowable Execution Tool")
+    parser.add_argument("--backfill", action="store_true", help="Launch the Safe Calculation Pipeline")
+    parser.add_argument("--daily", action="store_true", help="Auto-process last 7 days")
+    parser.add_argument("--status", action="store_true", help="Display progress and row counts")
+    parser.add_argument("--reset", action="store_true", help="Truncate tables and clear checkpoints")
     parser.add_argument("--start", type=str, default="2025-10-01", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=datetime.date.today().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
-    parser.add_argument("--step-days", type=int, default=10, help="Window size for bounded memory computing")
-    parser.add_argument("--low-ram", action="store_true", help="Enable strict memory/timeout limits for Server 76 environments")
+    parser.add_argument("--step-days", type=int, default=10, help="Window size for memory safety")
+    parser.add_argument("--low-ram", action="store_true", help="Enable 6GB RAM optimization")
     
     args = parser.parse_args()
     
-    print("="*60)
-    print("DMP Flowable Execution Tool")
-    print("="*60)
-    
-    try:
-        client = get_client(is_low_ram=args.low_ram)
-        client.query("SELECT 1")
-    except Exception as e:
-        print(f"ClickHouse connection failed: {e}")
-        sys.exit(1)
-
+    # 1. Dashboard Mode
     if args.status:
-        show_status(client)
-        return
-        
+        try:
+            client = get_client(is_low_ram=args.low_ram)
+            show_status(client)
+            return
+        except Exception as e:
+            print(f"Error reading status: {e}")
+            sys.exit(1)
+
+    # 2. Daily Mode Logic
     if args.daily:
         args.backfill = True
         args.start = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+        print(f"Daily Mode: Focus on last 7 days from {args.start}")
 
+    # 3. Computation Mode
     if args.backfill:
-        execute_unified_computation_pipeline(client, args)
-        return
-
-    # Ensure Databases exist first (only when normal DDL mode)
-    initialize_databases(client)
-
-    # Dynamic path resolution for sql directory
-    script_dir = Path(__file__).resolve().parent
-    sql_dir = script_dir.parent.parent / 'sql' / 'etl' / 'schema'
-    
-    for sql_file_name, description in SQL_FILES:
-        sql_file = sql_dir / sql_file_name
-        if sql_file.exists():
-            execute_sql_file(client, sql_file, description, args)
-        else:
-            print(f"Warning: File not found {sql_file_name}")
-    
-    print("\n" + "="*60)
-    print("All operations completed successfully!")
-    print("="*60)
+        try:
+            client = get_client(is_low_ram=args.low_ram)
+            execute_computation_pipeline(client, args)
+        except Exception as e:
+            print(f"Execution Error: {e}")
+            sys.exit(1)
+    else:
+        parser.print_help()
 
 if __name__ == '__main__':
     main()

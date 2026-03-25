@@ -28,8 +28,8 @@ else
 fi
 
 echo ""
-echo "=== Phase 1: 建立 ClickHouse 空殼結構 ======================================"
-python scripts/etl/execute_etl.py --skip-existing
+echo "=== Phase 1: 建立 ClickHouse 地基結構 (Setup) =============================="
+python scripts/etl/setup_schema.py
 
 echo ""
 echo "=== Phase 2: 全量同步外部資料 (MS SQL -> Bronze) ==========================="
@@ -39,13 +39,13 @@ python scripts/etl/sync_unified.py --table all
 
 if [[ "$MODE" == "--low-ram" ]]; then
     echo ""
-    echo "=== Phase 3: 啟動精確維度與事實計算引擎 (Phase 3 & 4) =================="
-    # 使用我們全新開發的 Python 內嵌分批時間切割器，完美避開 OOM 與 Bash 解析錯誤
-    # --start 預設為 2025-10-01 (您的資料正確起點)
+    echo "=== Phase 3: 啟動精確維度與事實計算引擎 (Backfill) ====================="
+    # 使用升級後的統一運算引擎，支援斷點續傳與 OOM 保護
     python scripts/etl/execute_etl.py --backfill $LOW_RAM_FLAG
 else
     # ================= HIGH-RAM =================
     echo ""
+    echo "[提醒] 高規格模式下，ClickHouse 會在排程抵達時自動觸發 Silver/Gold 更新。"
     echo "[提醒] 高規格模式下，ClickHouse 會在排程抵達時自動觸發 Silver/Gold 更新。"
     echo "如果您急需立刻看到結果，也可以手動執行: "
     echo "python scripts/etl/execute_etl.py --backfill"

@@ -13,7 +13,7 @@
 
 -- DROP TABLE IF EXISTS silver.mv_varinst_pivoted;
 
-CREATE TABLE silver.mv_varinst_pivoted (
+CREATE TABLE IF NOT EXISTS silver.mv_varinst_pivoted (
     PROC_INST_ID_ String,
     varinst_region String,
     varinst_plant String,
@@ -28,9 +28,9 @@ ORDER BY (PROC_INST_ID_)
 TTL toDate(_refresh_time) + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1;
 
--- 驗證
-SELECT 'mv_varinst_pivoted' AS table_name, count() AS row_count 
-FROM silver.mv_varinst_pivoted;
+-- -- 驗證
+-- SELECT 'mv_varinst_pivoted' AS table_name, count() AS row_count 
+-- FROM silver.mv_varinst_pivoted;
 
 -- ========================================
 -- 2.2 五階維度主檔 (修正 JOIN 邏輯)
@@ -38,7 +38,7 @@ FROM silver.mv_varinst_pivoted;
 -- ========================================
 -- DROP TABLE IF EXISTS silver.mv_dim_mfg_five_level;
 
-CREATE TABLE silver.mv_dim_mfg_five_level (
+CREATE TABLE IF NOT EXISTS silver.mv_dim_mfg_five_level (
     line_name String,
     line_desc String,
     prod_area_code String,
@@ -79,8 +79,8 @@ LEFT JOIN bronze.common_mdm_factory_area_master fa ON pa.FACTORY = fa.FACTORY
 LEFT JOIN bronze.common_mdm_mfg_site_master sm ON fa.MFG_SITE = sm.MFG_SITE
 WHERE ld.LINE_NAME IS NOT NULL AND ld.LINE_NAME != '';
 
--- 驗證
-SELECT 'mv_dim_mfg_five_level' AS table_name, count() AS row_count 
-FROM silver.mv_dim_mfg_five_level;
+-- -- 驗證
+-- SELECT 'mv_dim_mfg_five_level' AS table_name, count() AS row_count 
+-- FROM silver.mv_dim_mfg_five_level;
 
-SELECT 'Silver Layer 1 完成' AS status;
+-- SELECT 'Silver Layer 1 完成' AS status;
