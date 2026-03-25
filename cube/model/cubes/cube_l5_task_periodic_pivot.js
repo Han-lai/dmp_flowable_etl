@@ -1,12 +1,11 @@
 /**
- * L5 任務完成率 Cube - V2 Pivot 版 (Updated 2026-02-10)
+ * L5 任務完成率 Cube - Pivot 版 (Updated 2026-03-25)
  * 
- * 目的: 結合 "V2 邏輯" (Time Machine, 寬表計算) 與 "Pivot 結構" (長表展示)。
- * 用途: 專門提供給 Superset "Status Comparison" 報表使用，支援時間回溯與精準過濾。
- * 更新: 2026-02-10 - 補回 Month/Week/Day-7 全週期邏輯，確保與 V2 資料完全一致。
+ * 目的: 結合 "核心邏輯" (Time Machine, 寬表計算) 與 "Pivot 結構" (長表展示)。
+ * 更新: 2026-03-25 - 對齊 Gold Layer 命名規範，直接對接視圖 (View) 確保資料聚合。
  */
 
-cube(`L5TaskPeriodicV2Pivot`, {
+cube(`L5TaskPeriodicPivot`, {
     sql: `
     WITH 
         -- 1. 引用 V2 核心邏輯: 參數過濾與錨點判定
@@ -14,17 +13,17 @@ cube(`L5TaskPeriodicV2Pivot`, {
             SELECT 
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
-            FROM gold.rmv_l5_task_completion_v2 -- 原 _v2 來源
+            FROM gold.rmv_l5_task_completion -- 對接 Gold層 視圖 (View) 以確保資料完全聚合
             WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.snapshotDate.filter('toString(snapshot_date)')}
-                OR ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
-                OR ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%dT00:00:00.000Z')")}
+                ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter('toString(snapshot_date)')}
+                OR ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
+                OR ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%dT00:00:00.000Z')")}
             )
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffVxType.filter('vx_type')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
         ),
         calc_anchor AS (
             SELECT 
@@ -37,15 +36,15 @@ cube(`L5TaskPeriodicV2Pivot`, {
         ),
         base AS (
             SELECT *
-            FROM gold.rmv_l5_task_completion_v2
+            FROM gold.rmv_l5_task_completion
             CROSS JOIN calc_anchor
             WHERE snapshot_date >= toStartOfMonth(anchor_dt) - INTERVAL 1 MONTH
               AND snapshot_date <= toLastDayOfMonth(anchor_dt) + INTERVAL 1 MONTH
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2Pivot.diffVxType.filter('vx_type')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
         ),
 
         -- 2. V2 核心邏輯: 計算 Wide Metrics (包含 Month, Week, Day-7)
@@ -166,8 +165,8 @@ cube(`L5TaskPeriodicV2Pivot`, {
     ) AS pivoted_result
     `,
 
-    title: 'L5 任務完成率 (V2 Pivot)',
-    description: '結合 V2 邏輯 (Time Machine) 與 Pivot 結構，供 Superset 狀態比較報表使用',
+    title: 'L5 任務完成率 (Pivot)',
+    description: '結合核心邏輯 (Time Machine) 與 Pivot 結構，供 Superset 狀態比較報表使用',
 
     measures: {
         taskQty: {

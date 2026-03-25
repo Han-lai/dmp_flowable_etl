@@ -1,22 +1,29 @@
-cube(`L5TaskPeriodicV2`, {
+/**
+ * L5 任務完成率 Cube - 標準版 (Updated 2026-03-25)
+ * 
+ * 核心邏輯: 採用 Time Machine 架構，支援回溯查詢。
+ * 資料來源: 連結至 ClickHouse Gold Layer 視圖 (gold.rmv_l5_task_completion)。
+ * 備註: 查詢對象為 View 而非 Table，以確保 SummingMergeTree 的資料已完全聚合。
+ */
+cube(`L5TaskPeriodic`, {
     sql: `
     WITH 
         params AS (
             SELECT 
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
-            FROM gold.rmv_l5_task_completion_v2 -- 原 _v2 來源
+            FROM gold.rmv_l5_task_completion -- 對接 Gold層 視圖 (View) 以確保資料完全聚合
             WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodicV2.snapshotDate.filter('toString(snapshot_date)')}
-                OR ${FILTER_PARAMS.L5TaskPeriodicV2.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
-                OR ${FILTER_PARAMS.L5TaskPeriodicV2.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%dT00:00:00.000Z')")}
+                ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter('toString(snapshot_date)')}
+                OR ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
+                OR ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%dT00:00:00.000Z')")}
             )
 
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffVxType.filter('vx_type')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffVxType.filter('vx_type')}
         ),
         calc_anchor AS (
             SELECT 
@@ -29,15 +36,15 @@ cube(`L5TaskPeriodicV2`, {
         ),
         base AS (
             SELECT *
-            FROM gold.rmv_l5_task_completion_v2
+            FROM gold.rmv_l5_task_completion
             CROSS JOIN calc_anchor
             WHERE snapshot_date >= toStartOfMonth(anchor_dt) - INTERVAL 1 MONTH
               AND snapshot_date <= toLastDayOfMonth(anchor_dt) + INTERVAL 1 MONTH
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicV2.diffVxType.filter('vx_type')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodic.diffVxType.filter('vx_type')}
         )
 
     -- A. Month: 加總當月所有任務，但 Acc 只取月底快照
@@ -105,7 +112,7 @@ cube(`L5TaskPeriodicV2`, {
         0 as total_qty, 0 as todo_qty, 0 as doing_qty,
         0 as doing_done_qty, 0 as done_qty, 0 as acc_qty,
         0 as acc_total_qty
-    FROM (SELECT DISTINCT snapshot_date FROM gold.rmv_l5_task_completion_v2)
+    FROM (SELECT DISTINCT snapshot_date FROM gold.rmv_l5_task_completion)
     `,
 
     measures: {
