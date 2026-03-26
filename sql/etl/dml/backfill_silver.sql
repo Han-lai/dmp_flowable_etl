@@ -3,11 +3,16 @@
 INSERT INTO silver.mv_fact_task_vx
 SELECT
     t.ID_ AS task_id,
+    t.START_TIME_ AS task_start_time,
+
+    t.CLAIM_TIME_ AS task_claim_time,
+    t.END_TIME_ AS task_end_time,
     toDate(t.START_TIME_) AS task_start_date,        
     NULLIF(toDate(t.CLAIM_TIME_), toDate('1970-01-01')) AS task_claim_date,        
     NULLIF(toDate(t.END_TIME_), toDate('1970-01-01')) AS task_end_date,            
     toDate(COALESCE(t.START_TIME_, t.CLAIM_TIME_, t.END_TIME_)) AS task_primary_date,
     toDate(COALESCE(t.START_TIME_, t.CLAIM_TIME_, t.END_TIME_)) AS task_create_date,
+
     
     CASE 
         WHEN t.END_TIME_ IS NOT NULL THEN 'DONE'
@@ -68,7 +73,16 @@ SELECT
     t.PROC_INST_ID_ AS proc_inst_id,
     now() AS _mview_update_time
 FROM bronze.bpm_act_hi_taskinst AS t
-LEFT JOIN silver.mv_varinst_pivoted ON t.PROC_INST_ID_ = mv_varinst_pivoted.PROC_INST_ID_
+LEFT JOIN (
+    -- Only load needed process instances into join RAM
+    SELECT * FROM silver.mv_varinst_pivoted
+    WHERE PROC_INST_ID_ IN (
+        SELECT DISTINCT PROC_INST_ID_ FROM bronze.bpm_act_hi_taskinst
+        WHERE (START_TIME_ >= '{start_ts}' AND START_TIME_ <= '{end_ts}')
+           OR (CLAIM_TIME_ >= '{start_ts}' AND CLAIM_TIME_ <= '{end_ts}')
+           OR (END_TIME_ >= '{start_ts}' AND END_TIME_ <= '{end_ts}')
+    )
+) AS mv_varinst_pivoted ON t.PROC_INST_ID_ = mv_varinst_pivoted.PROC_INST_ID_
 LEFT JOIN silver.mv_dim_mfg_five_level AS mdm ON (mv_varinst_pivoted.varinst_lineName = mdm.line_name) AND (mv_varinst_pivoted.varinst_plant = mdm.plant_code)
 LEFT JOIN (
     SELECT DISTINCT plant_code, region_code 
@@ -77,13 +91,22 @@ LEFT JOIN (
 ) AS plant_mdm ON COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') = plant_mdm.plant_code
 LEFT JOIN bronze.common_hr_employee AS he ON t.ASSIGNEE_ = he.EmpCode
 LEFT JOIN (
+    -- Only load needed task variables into join RAM
     SELECT TASK_ID_, LONG_
     FROM bronze.bpm_act_hi_varinst
     WHERE NAME_ = 'autoComplete' AND TASK_ID_ IS NOT NULL AND TASK_ID_ != ''
+      AND TASK_ID_ IN (
+          SELECT DISTINCT ID_ FROM bronze.bpm_act_hi_taskinst
+          WHERE (START_TIME_ >= toDateTime64('{start_ts}', 3) AND START_TIME_ <= toDateTime64('{end_ts}', 3))
+             OR (CLAIM_TIME_ >= toDateTime64('{start_ts}', 3) AND CLAIM_TIME_ <= toDateTime64('{end_ts}', 3))
+             OR (END_TIME_ >= toDateTime64('{start_ts}', 3) AND END_TIME_ <= toDateTime64('{end_ts}', 3))
+      )
 ) AS tb ON t.ID_ = tb.TASK_ID_
+
 WHERE (t.ID_ IS NOT NULL) AND (t.ID_ != '')
   AND (
-      (toDate(t.START_TIME_) >= '{start_date}' AND toDate(t.START_TIME_) <= '{end_date}') OR
-      (toDate(t.CLAIM_TIME_) >= '{start_date}' AND toDate(t.CLAIM_TIME_) <= '{end_date}') OR
-      (toDate(t.END_TIME_) >= '{start_date}' AND toDate(t.END_TIME_) <= '{end_date}')
+      (t.START_TIME_ >= '{start_ts}' AND t.START_TIME_ <= '{end_ts}') OR
+      (t.CLAIM_TIME_ >= '{start_ts}' AND t.CLAIM_TIME_ <= '{end_ts}') OR
+      (t.END_TIME_ >= '{start_ts}' AND t.END_TIME_ <= '{end_ts}')
   )
+
