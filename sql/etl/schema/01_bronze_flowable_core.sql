@@ -98,10 +98,10 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_re_procdef
     `HAS_GRAPHICAL_NOTATION_` Nullable(UInt8),
     `SUSPENSION_STATE_` Nullable(Int32),
     `TENANT_ID_` Nullable(String),
-    `ENGINE_VERSION_` Nullable(String),
     `DERIVED_FROM_` Nullable(String),
     `DERIVED_FROM_ROOT_` Nullable(String),
     `DERIVED_VERSION_` Nullable(Int32),
+    `ENGINE_VERSION_` Nullable(String),
     `_batch_id` String DEFAULT '',
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1

@@ -23,6 +23,7 @@ CH_CONFIG = {
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 
+
 # Ordered list of DDL files to deploy
 SQL_FILES = [
     ("00_meta_checkpoint.sql", "Metadata Checkpoint Table"),
