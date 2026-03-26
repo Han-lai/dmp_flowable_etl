@@ -1,8 +1,8 @@
 /**
- * L5 任務完成率 Cube - Pivot 版 (Updated 2026-03-25)
+ * L5 任務完成率 Cube - Pivot 版 (Updated 2026-03-26)
  * 
  * 目的: 結合 "核心邏輯" (Time Machine, 寬表計算) 與 "Pivot 結構" (長表展示)。
- * 更新: 2026-03-25 - 對齊 Gold Layer 命名規範，直接對接視圖 (View) 確保資料聚合。
+ * 更新: 2026-03-26 - 對齊 Gold Layer 命名規範，直接對接視圖 (View) 確保資料已透過 FINAL 去重 (ReplacingMergeTree)。
  */
 
 cube(`L5TaskPeriodicPivot`, {
