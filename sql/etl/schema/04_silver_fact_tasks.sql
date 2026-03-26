@@ -8,10 +8,15 @@
 
 CREATE TABLE IF NOT EXISTS silver.mv_fact_task_vx (
     task_id String,
+    task_start_time DateTime64(3),
+    task_claim_time Nullable(DateTime64(3)),
+    task_end_time Nullable(DateTime64(3)),
     task_start_date Date,
     task_claim_date Nullable(Date),
     task_end_date Nullable(Date),
     task_primary_date Date,
+
+
     task_create_date Date,
     task_status String,
     vx_type String,

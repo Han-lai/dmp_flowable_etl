@@ -18,10 +18,10 @@ import pandas as pd
 # =================================================================
 
 CH_CONFIG = {
-    'host': os.getenv('CLICKHOUSE_HOST', '10.136.218.207'),
-    'port': int(os.getenv('CLICKHOUSE_PORT', '8121')),
+    'host': os.getenv('CLICKHOUSE_HOST', '10.146.206.76'),
+    'port': int(os.getenv('CLICKHOUSE_PORT', '8123')),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
-    'password': os.getenv('CLICKHOUSE_PASSWORD', 'default'),
+    'password': os.getenv('CLICKHOUSE_PASSWORD', '1qaz2wsx3edc'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 
@@ -98,9 +98,14 @@ def execute_computation_pipeline(client, args):
     if args.low_ram:
         client.command("SET max_threads = 1")
         client.command("SET max_memory_usage = 6000000000")
-        client.command("SET max_bytes_before_external_group_by = 3000000000")
-        client.command("SET join_algorithm = 'auto'")
-        print(" Using Mem-Optimized Settings (1 Thread, 6GB Limit)")
+        client.command("SET max_bytes_before_external_group_by = 1000000000")
+        client.command("SET max_bytes_in_join = 1000000000")
+        client.command("SET max_bytes_ratio_before_external_group_by = 0.5")
+        client.command("SET join_algorithm = 'grace_hash'")
+
+        print(" Using Mem-Optimized Settings (1 Thread, 6GB Limit, 1GB Spill)")
+
+
 
     # Safety: Reset Logic
     if getattr(args, 'reset', False):
@@ -110,16 +115,19 @@ def execute_computation_pipeline(client, args):
         client.command("TRUNCATE TABLE IF EXISTS bronze.etl_checkpoint")
         print("    Tables and checkpoints cleared.")
 
-    # Window Generation
-    start_dateobj = datetime.datetime.strptime(args.start, "%Y-%m-%d").date()
-    end_dateobj = datetime.datetime.strptime(args.end, "%Y-%m-%d").date()
+    # Window Generation (Using datetime for finer granularity)
+    start_dtobj = datetime.datetime.strptime(args.start, "%Y-%m-%d")
+    end_dtobj = datetime.datetime.strptime(args.end, "%Y-%m-%d") + datetime.timedelta(days=1, seconds=-1)
     
     windows = []
-    curr = start_dateobj
-    while curr <= end_dateobj:
+    curr = start_dtobj
+    while curr <= end_dtobj:
         next_curr = curr + datetime.timedelta(days=args.step_days)
-        e = next_curr - datetime.timedelta(days=1)
-        windows.append((curr.strftime("%Y-%m-%d"), e.strftime("%Y-%m-%d")))
+        if next_curr > end_dtobj + datetime.timedelta(seconds=1):
+            next_curr = end_dtobj + datetime.timedelta(seconds=1)
+        
+        e = next_curr - datetime.timedelta(seconds=1)
+        windows.append((curr, e))
         curr = next_curr
 
     # Load Templates
@@ -129,57 +137,67 @@ def execute_computation_pipeline(client, args):
     gold_tpl = load_sql_template('backfill_gold.sql')
 
     def run_safe(phase_name, sql_tpl, start_dt, end_dt):
-        """Recursive function to process windows with auto-split on OOM."""
-        start_str = start_dt.strftime("%Y-%m-%d")
-        end_str = end_dt.strftime("%Y-%m-%d")
+        """Recursive function to process windows with auto-split on OOM (supports down to hours)."""
+        start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
+        end_str = end_dt.strftime("%Y-%m-%d %H:%M:%S")
         
+        # 1. Skip if already successful
+
         if get_checkpoint(client, phase_name, start_str, end_str) == 'SUCCESS' and not args.reset:
             return
+
+        # 2. Skip if the window is truly empty (Prevents Code: 41 and reduces ops)
+        try:
+            # We use taskinst as the primary indicator for windowed activity
+            res = client.query(f"SELECT count() FROM bronze.bpm_act_hi_taskinst WHERE START_TIME_ >= '{start_str}' AND START_TIME_ <= '{end_str}'")
+            if res.result_rows[0][0] == 0:
+                # Skip for now, but don't mark as SUCCESS in checkpoint table
+                # This allows future runs to process it if data is synced later
+                return
+
+        except Exception as check_e:
+
+            print(f"    [Warn] Persistence check failed for {phase_name}: {check_e}")
 
         try:
             print(f"   > Processing {phase_name}: {start_str} ~ {end_str} ...")
             
-            # Special case for exclusions which doesn't use dates
-            if sql_tpl == exclusion_sql:
-                client.command(sql_tpl)
-            else:
-                client.command(sql_tpl.replace('{start_date}', start_str).replace('{end_date}', end_str))
-            
-            # Additional wait for mutations if needed
-            if phase_name == 'silver_exclusions':
-                for _ in range(15):
-                    time.sleep(1)
-                    if client.command("SELECT count() FROM system.mutations WHERE is_done = 0 AND table = 'mv_fact_task_vx'") == 0: break
-            
+            # Replace both date and timestamp placeholders
+            q = sql_tpl.replace('{start_date}', start_dt.strftime("%Y-%m-%d")) \
+                       .replace('{end_date}', end_dt.strftime("%Y-%m-%d")) \
+                       .replace('{start_ts}', start_str) \
+                       .replace('{end_ts}', end_str)
+            client.command(q)
             update_checkpoint(client, phase_name, start_str, end_str, 'SUCCESS')
+            time.sleep(1) # Breath for the server
+
         except Exception as e:
+
             err_msg = str(e)
-            # Check for memory limit exceeded (ClickHouse Code 241 or similar keywords)
-            if ("Memory limit exceeded" in err_msg or "Code: 241" in err_msg) and (end_dt - start_dt).days >= 1:
-                mid_days = (end_dt - start_dt).days // 2
-                mid_dt = start_dt + datetime.timedelta(days=mid_days)
+            duration = end_dt - start_dt
+            # Split if OOM and duration is more than 600 seconds (10 minutes)
+            if ("Memory limit exceeded" in err_msg or "Code: 241" in err_msg) and duration.total_seconds() > 600:
+                mid_seconds = int(duration.total_seconds() // 2)
+                mid_dt = start_dt + datetime.timedelta(seconds=mid_seconds)
                 print(f"   [OOM Alert] Memory Limit hit at {start_str} ~ {end_str}. Splitting window into halves...")
                 run_safe(phase_name, sql_tpl, start_dt, mid_dt)
-                run_safe(phase_name, sql_tpl, mid_dt + datetime.timedelta(days=1), end_dt)
+                run_safe(phase_name, sql_tpl, mid_dt, end_dt)
             else:
+
+
                 update_checkpoint(client, phase_name, start_str, end_str, 'FAILED', err_msg)
                 print(f"    CRITICAL FAILED at {start_str}: {err_msg}")
                 sys.exit(1)
 
-    # Loop 1: Dimension Pivot
+    # Loop 1: Dimension Pivot (Self-Adaptive)
     print("\n[Stage 1/2] Computing silver_varinst_pivoted (Self-Adaptive)")
-    for (s_str, e_str) in windows:
-        s_dt = datetime.datetime.strptime(s_str, "%Y-%m-%d").date()
-        e_dt = datetime.datetime.strptime(e_str, "%Y-%m-%d").date()
+    for (s_dt, e_dt) in windows:
         run_safe('silver_varinst_pivoted', pivot_template, s_dt, e_dt)
 
-    # Loop 2: Fact & Gold Aggregation
+    # Loop 2: Fact & Gold Aggregation (Self-Adaptive)
     print("\n[Stage 2/2] Computing gold_task_completion (Self-Adaptive)")
-    for (s_str, e_str) in windows:
-        s_dt = datetime.datetime.strptime(s_str, "%Y-%m-%d").date()
-        e_dt = datetime.datetime.strptime(e_str, "%Y-%m-%d").date()
-        
-        print(f"\n---- [Time Window: {s_str} ~ {e_str}] ----")
+    for (s_dt, e_dt) in windows:
+        print(f"\n---- [Time Window: {s_dt.strftime('%Y-%m-%d %H:%M:%S')} ~ {e_dt.strftime('%Y-%m-%d %H:%M:%S')}] ----")
         run_safe('silver_facts', silver_tpl, s_dt, e_dt)
         run_safe('silver_exclusions', exclusion_sql, s_dt, e_dt)
         run_safe('gold_task_completion', gold_tpl, s_dt, e_dt)
