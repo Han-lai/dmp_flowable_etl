@@ -1,9 +1,9 @@
 /**
- * L5 任務完成率 Cube - 標準版 (Updated 2026-03-25)
+ * L5 任務完成率 Cube - 標準版 (Updated 2026-03-26)
  * 
  * 核心邏輯: 採用 Time Machine 架構，支援回溯查詢。
  * 資料來源: 連結至 ClickHouse Gold Layer 視圖 (gold.rmv_l5_task_completion)。
- * 備註: 查詢對象為 View 而非 Table，以確保 SummingMergeTree 的資料已完全聚合。
+ * 備註: 查詢對象為 View 而非 Table，以確保 ReplacingMergeTree 的資料在讀取時透過 FINAL 取得最新版本。
  */
 cube(`L5TaskPeriodic`, {
     sql: `
@@ -13,6 +13,7 @@ cube(`L5TaskPeriodic`, {
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
             FROM gold.rmv_l5_task_completion -- 對接 Gold層 視圖 (View) 以確保資料完全聚合
+
             WHERE (
                 ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter('toString(snapshot_date)')}
                 OR ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
