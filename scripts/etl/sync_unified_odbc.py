@@ -1,0 +1,468 @@
+#!/usr/bin/env python3
+"""
+Unified Sync Script for All Bronze Tables (Flowable + MDM + HR)
+Syncs data from MSSQL to ClickHouse Bronze layer using native ODBC Bridge.
+
+Replaces jdbc() table function with native odbc() table function.
+ODBC Connection proven syntax:
+  odbc('DSN=MSSQL_DSN;Database={db};Uid={user};Pwd={pwd};MARS_Connection=yes', 'dbo', '{table}')
+  WHERE {time_col} >= '{start}' AND {time_col} < '{end}'
+"""
+
+import sys
+import logging
+import time
+import argparse
+import os
+from datetime import datetime, timedelta
+import clickhouse_connect
+
+# ClickHouse Configuration
+CLICKHOUSE_CONFIG = {
+    "host": os.getenv("CLICKHOUSE_HOST", "10.136.218.207"),
+    "port": int(os.environ.get("CLICKHOUSE_PORT", "8122")),
+    "username": os.getenv("CLICKHOUSE_USERNAME", "default"),
+    "password": os.getenv("CLICKHOUSE_PASSWORD", "default"),
+    "database": os.getenv("CLICKHOUSE_DATABASE", "default"),
+    "send_receive_timeout": int(os.getenv("CLICKHOUSE_TIMEOUT", "600"))
+}
+
+# MSSQL ODBC Credentials
+MSSQL_USER = os.getenv("MSSQL_USER", "APP_SRV_BPM")
+MSSQL_PASSWORD = os.getenv("MSSQL_PASSWORD", "APP_SRV_BPM")
+ODBC_DSN = os.getenv("ODBC_DSN", "MSSQL_DSN")
+
+# Configure Logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S"
+)
+logger = logging.getLogger(__name__)
+
+
+# ==========================================
+# Helper: Parse source "DB.schema.table" -> dict
+# ==========================================
+def parse_source(source_str):
+    """Parse 'APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108' into components."""
+    parts = source_str.split(".")
+    if len(parts) == 3:
+        return {"db": parts[0], "schema": parts[1], "table": parts[2]}
+    elif len(parts) == 2:
+        return {"db": parts[0], "schema": "dbo", "table": parts[1]}
+    else:
+        return {"db": "APP_SRV_BPM", "schema": "dbo", "table": parts[0]}
+
+def build_odbc_conn(db_name):
+    """Build the ODBC connection string for a given database."""
+    return f"DSN={ODBC_DSN};Database={db_name};Uid={MSSQL_USER};Pwd={MSSQL_PASSWORD};MARS_Connection=yes"
+
+
+# ==========================================
+# Table Configurations (unchanged from original)
+# ==========================================
+TABLE_CONFIGS = {
+    # --- HR & Common (Small/Medium Tables - Full Sync) ---
+    "hr_employee": {
+        "source": "APP_SRV_COMMON.dbo.HR_Employee_0202",
+        "target": "bronze.common_hr_employee",
+        "strategy": "skip", # 這張表含有 odbc 無法解析的欄位會導致死鎖，改用原有 JDBC 或 View
+        "columns": "EmpCode, EmpName, DeptCode, DeptCodeLname, Email, if(TerminateDate IS NULL, 1, 0) AS IsActive, ModifyDate AS UpdateTime"
+    },
+    "emp_node_role": {
+        "source": "APP_SRV_COMMON.dbo.EmpNodeRoleMapping_0202",
+        "target": "bronze.common_emp_node_role_mapping",
+        "strategy": "full",
+        "columns": "EmpCode, NodeCode, UpdateTime, UpdateEmp"
+    },
+    "emp_org_info": {
+        "source": "APP_SRV_COMMON.dbo.EmpOrgInfoMapping_0202",
+        "target": "bronze.common_emp_org_info_mapping",
+        "strategy": "full",
+        "columns": "EmpCode, Plant, MFGFactoryId, UpdateTime, UpdateEmp"
+    },
+    "emp_user_group": {
+        "source": "APP_SRV_COMMON.dbo.EmpUserGroupMapping_0202",
+        "target": "bronze.common_emp_user_group_mapping",
+        "strategy": "full",
+        "columns": "EmpCode, UserGroupId, UpdateTime, UpdateEmp"
+    },
+    "user_group": {
+        "source": "APP_SRV_COMMON.dbo.UserGroup_0202",
+        "target": "bronze.common_user_group",
+        "strategy": "full",
+        "columns": "UserGroupId, UserGroupName, UserGroupDesc, UpdateTime, UpdateEmp"
+    },
+    "process_role_user": {
+        "source": "APP_SRV_COMMON.dbo.ProcessRoleUserMapping_0202",
+        "target": "bronze.common_process_role_user_mapping",
+        "strategy": "full",
+        "columns": "ID, RoleId, Plant, Factory, ProductionArea, LineName, EmpCode, Updater, UpdateDatetime, UpdateCount, Creator, CreateDatetime"
+    },
+
+    # --- MDM Masters (Small Tables - Full Sync) ---
+    "mdm_line_desc": {
+        "source": "APP_SRV_COMMON.dbo.MDM_LINE_DESC_MASTER_0202",
+        "target": "bronze.common_mdm_line_desc_master",
+        "strategy": "full",
+        "columns": "LINE_NAME, LINE_DESC, PROD_AREA_ID"
+    },
+    "mdm_prod_area": {
+        "source": "APP_SRV_COMMON.dbo.MDM_PROD_AREA_MASTER_0202",
+        "target": "bronze.common_mdm_prod_area_master",
+        "strategy": "full",
+        "columns": "PROD_AREA_ID, PROD_AREA_CODE, FACTORY, MFG_PLANT_ID"
+    },
+    "mdm_factory_area": {
+        "source": "APP_SRV_COMMON.dbo.MDM_FACTORY_AREA_MASTER_0202",
+        "target": "bronze.common_mdm_factory_area_master",
+        "strategy": "full",
+        "columns": "FACTORY, FACTORY_DESC, PLANT_NODE, PLANT_NODE_DESC, REGION, MFG_SITE"
+    },
+    "mdm_mfg_site": {
+        "source": "APP_SRV_COMMON.dbo.MDM_MFG_SITE_MASTER_0202",
+        "target": "bronze.common_mdm_mfg_site_master",
+        "strategy": "full",
+        "columns": "MFG_SITE, MFG_SITE_DESC"
+    },
+    "mdm_mfg_plant": {
+        "source": "APP_SRV_COMMON.dbo.MDM_MFG_PLANT_MASTER_0202",
+        "target": "bronze.common_mdm_mfg_plant_master",
+        "strategy": "full",
+        "columns": "MFG_PLANT_ID, MFG_PLANT_CODE, MFG_PLANT_DESC, FACTORY, VALIDITY"
+    },
+    # --- DMP Function Config (Full Sync) ---
+    "dmp_func_config": {
+        "source": "APP_SRV_COMMON.dbo.DMPFunctionConfig_0202",
+        "target": "bronze.common_dmp_function_config",
+        "strategy": "full",
+        "columns": "*"
+    },
+    "dmp_func_client_mapping": {
+        "source": "APP_SRV_COMMON.dbo.DMPFunctionClientMapping_0202",
+        "target": "bronze.common_dmp_function_client_mapping",
+        "strategy": "full",
+        "columns": "*"
+    },
+
+    # --- Flowable Core (Small Tables - Full Sync) ---
+    "procdef": {
+        "source": "APP_SRV_BPM.dbo.ACT_RE_PROCDEF_0108",
+        "target": "bronze.bpm_act_re_procdef",
+        "strategy": "full",
+        "columns": "*"
+    },
+
+    # --- Flowable Core (Large Tables - Batch Sync) ---
+    "taskinst": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108",
+        "target": "bronze.bpm_act_hi_taskinst",
+        "time_col": "LAST_UPDATED_TIME_",
+        "strategy": "batch",
+        "step_days": 2,
+        "columns": "ID_, REV_, PROC_DEF_ID_, TASK_DEF_KEY_, PROC_INST_ID_, EXECUTION_ID_, NAME_, ASSIGNEE_, START_TIME_, CLAIM_TIME_, END_TIME_, DURATION_, DELETE_REASON_, LAST_UPDATED_TIME_"
+    },
+    "varinst": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_VARINST_0108",
+        "target": "bronze.bpm_act_hi_varinst",
+        "time_col": "CREATE_TIME_",
+        "strategy": "batch",
+        "step_days": 1,
+        "columns": "PROC_INST_ID_, TASK_ID_, NAME_, TEXT_, REV_, LONG_, CREATE_TIME_"
+    },
+    "procinst": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108",
+        "target": "bronze.bpm_act_hi_procinst",
+        "time_col": "START_TIME_",
+        "strategy": "batch",
+        "columns": "*"
+    },
+    "identitylink": {
+        "source": "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK_0108",
+        "target": "bronze.bpm_act_hi_identitylink",
+        "time_col": "CREATE_TIME_",
+        "strategy": "batch",
+        "step_days": 1,
+        "columns": "USER_ID_, TYPE_, TASK_ID_, CREATE_TIME_"
+    }
+}
+
+
+def get_client():
+    return clickhouse_connect.get_client(**CLICKHOUSE_CONFIG)
+
+
+def generate_batches(start_str, end_date_str, step_days=7, step_hours=0):
+    """Generate time ranges for batch processing."""
+    try:
+        start_date = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        start_date = datetime.strptime(start_str, "%Y-%m-%d")
+
+    try:
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d %H:%M:%S")
+    except ValueError:
+        end_date = datetime.strptime(end_date_str, "%Y-%m-%d")
+        if len(end_date_str) == 10:
+            end_date = end_date + timedelta(days=1, microseconds=-1)
+
+    current_date = start_date
+    batches = []
+    step_delta = timedelta(days=step_days)
+    if step_hours > 0:
+        step_delta = timedelta(hours=step_hours)
+
+    while current_date < end_date:
+        next_date = current_date + step_delta
+        if next_date > end_date:
+            next_date = end_date
+        batches.append((current_date.strftime("%Y-%m-%d %H:%M:%S"), next_date.strftime("%Y-%m-%d %H:%M:%S")))
+        current_date = next_date
+
+    return batches
+
+
+def setup_watermark_table(client):
+    sql = """
+    CREATE TABLE IF NOT EXISTS bronze._sync_watermark (
+        table_name String,
+        last_sync_time DateTime64(3),
+        sync_time DateTime64(3),
+        row_count UInt64
+    ) ENGINE = ReplacingMergeTree(sync_time)
+    ORDER BY (table_name)
+    """
+    client.command(sql)
+
+
+def update_watermark(client, table_name, last_sync_time_str, row_count):
+    try:
+        ts_val = last_sync_time_str
+        if len(ts_val) == 10:
+            ts_val += " 00:00:00"
+        sql = f"""
+        INSERT INTO bronze._sync_watermark (table_name, last_sync_time, sync_time, row_count)
+        VALUES ('{table_name}', CAST('{ts_val}', 'DateTime64(3)'), now(), {row_count})
+        """
+        client.command(sql)
+        logger.info(f"  Watermark updated for {table_name}: {last_sync_time_str}")
+    except Exception as e:
+        logger.warning(f"  Failed to update watermark: {e}")
+
+
+def get_last_watermark(client, table_name):
+    try:
+        sql = f"SELECT maxOrNull(last_sync_time) FROM bronze._sync_watermark FINAL WHERE table_name = '{table_name}'"
+        result = client.query(sql)
+        if result.result_rows and result.result_rows[0][0]:
+            dt = result.result_rows[0][0]
+            return dt.strftime("%Y-%m-%d %H:%M:%S")
+    except Exception as e:
+        logger.warning(f"Could not fetch watermark for {table_name}: {e}")
+    return None
+
+
+def get_source_min_time(client, config):
+    """
+    For ODBC, SELECT min() over tens of millions of rows causes the bridge 
+    to try and download the whole table (aggregation NOT pushed down perfectly).
+    To avoid deadlocks, we return a hardcoded safe default if no watermark exists,
+    or rely on the user passing --start arguments explicitly.
+    """
+    logger.info("  [ODBC Safety] Skipping SELECT min() to prevent full table memory scan. Using default 2023-01-01")
+    return "2023-01-01 00:00:00"
+
+
+# =================================================================
+# Core Sync Logic
+# =================================================================
+
+def sync_batch(client, config, start_str, end_str):
+    """
+    Executes a single batch sync for a specific time range via ODBC.
+    ClickHouse reads from odbc() and applies WHERE filter locally.
+    ReplacingMergeTree handles deduplication.
+    """
+    src = parse_source(config['source'])
+    target = config['target']
+    time_col = config['time_col']
+    cols = config.get('columns', '*')
+    conn_str = build_odbc_conn(src['db'])
+    batch_id = f"{start_str}_{end_str}"
+
+    logger.info(f"Processing Batch: {start_str} to {end_str}")
+
+    # Build SELECT clause
+    if cols == '*':
+        select_clause = "*"
+    else:
+        select_clause = cols
+
+    insert_sql = f"""
+    INSERT INTO {target}
+    SELECT {select_clause},
+           '{batch_id}' as _batch_id,
+           now() as _extracted_at,
+           1 as _sync_version
+    FROM odbc('{conn_str}', '{src['schema']}', '{src['table']}')
+    WHERE {time_col} >= '{start_str}' AND {time_col} < '{end_str}'
+    """
+
+    max_retries = 3
+    retry_delay = 30
+
+    for attempt in range(max_retries):
+        start_time = time.perf_counter()
+        try:
+            client.command(insert_sql)
+            duration = time.perf_counter() - start_time
+            count_sql = f"""
+            SELECT count() FROM {target}
+            WHERE {time_col} >= '{start_str}' AND {time_col} < '{end_str}'
+            """
+            count = client.command(count_sql)
+            logger.info(f"  Synced {count:,} rows in {duration:.2f}s")
+            return count
+        except Exception as e:
+            logger.warning(f"  Batch failed (Attempt {attempt + 1}/{max_retries}): {e}")
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+            else:
+                logger.error(f"  All retries failed for batch {batch_id}")
+                raise e
+
+
+def sync_batch_adaptive(client, config, start_str, end_str):
+    """Adaptive sync: splits batch in half if it fails due to size."""
+    try:
+        return sync_batch(client, config, start_str, end_str)
+    except Exception as e:
+        logger.warning(f"Batch {start_str} to {end_str} failed. Checking if we can split...")
+        start_dt = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
+        end_dt = datetime.strptime(end_str, "%Y-%m-%d %H:%M:%S")
+        diff = end_dt - start_dt
+
+        if diff < timedelta(minutes=30):
+            logger.error(f"  Range too small to split ({diff}). Aborting this block.")
+            raise e
+
+        mid_dt = start_dt + (diff / 2)
+        mid_str = mid_dt.strftime("%Y-%m-%d %H:%M:%S")
+        logger.info(f"  Splitting: {start_str} -> {mid_str} AND {mid_str} -> {end_str}")
+
+        count1 = sync_batch_adaptive(client, config, start_str, mid_str)
+        count2 = sync_batch_adaptive(client, config, mid_str, end_str)
+        return count1 + count2
+
+
+def sync_full(client, config):
+    """
+    Full sync via ODBC: reads entire table and writes to ClickHouse.
+    ReplacingMergeTree handles deduplication for repeated runs.
+    """
+    src = parse_source(config['source'])
+    target = config['target']
+    cols = config.get('columns', '*')
+    conn_str = build_odbc_conn(src['db'])
+
+    logger.info(f"Full Syncing: {target}")
+
+    if cols == '*':
+        select_clause = "*"
+    else:
+        select_clause = cols
+
+    insert_sql = f"""
+    INSERT INTO {target}
+    SELECT {select_clause},
+           'full_sync_{datetime.now().strftime("%Y%m%d")}' as _batch_id,
+           now() as _extracted_at,
+           1 as _sync_version
+    FROM odbc('{conn_str}', '{src['schema']}', '{src['table']}')
+    """
+
+    start_time = time.perf_counter()
+    try:
+        client.command(insert_sql)
+        duration = time.perf_counter() - start_time
+        count = client.command(f"SELECT count() FROM {target}")
+        logger.info(f"  Synced {count:,} rows in {duration:.2f}s")
+        update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), count)
+    except Exception as e:
+        logger.error(f"  Full sync failed: {e}")
+
+
+# =================================================================
+# Main Entry Point
+# =================================================================
+
+def main():
+    parser = argparse.ArgumentParser(description="Unified ODBC Batch Sync for All Bronze Tables")
+    parser.add_argument("--table", choices=list(TABLE_CONFIGS.keys()) + ['all'], default='all', help="Table to sync")
+    parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
+    parser.add_argument("--step-days", type=int, default=7, help="Batch size in days")
+    parser.add_argument("--step-hours", type=int, default=0, help="Batch size in hours")
+    parser.add_argument("--dry-run", action="store_true", help="Print batches without executing")
+
+    args = parser.parse_args()
+
+    client = get_client()
+    setup_watermark_table(client)
+
+    tables_to_sync = [args.table] if args.table != 'all' else list(TABLE_CONFIGS.keys())
+    logger.info(f"Target Tables: {', '.join(tables_to_sync)}")
+
+    for table_key in tables_to_sync:
+        config = TABLE_CONFIGS[table_key]
+        config['table_key'] = table_key
+        target_table = config['target']
+
+        logger.info(f"\n{'='*60}")
+        logger.info(f"Starting Sync for: {table_key.upper()}")
+        if config['strategy'] == 'skip':
+            logger.warning(f"  [SKIPPED] 因含有特殊大物件結構，此表在 ODBC 架構下容易死鎖，已標記為略過 (請改用 JDBC 通道)。")
+            continue
+
+        if config['strategy'] == 'full':
+            if not args.dry_run:
+                sync_full(client, config)
+            else:
+                logger.info("[DRY RUN] Would execute Full Sync (Insert via ODBC)")
+
+        elif config['strategy'] == 'batch':
+            start_date = args.start
+            if not start_date:
+                last_wm = get_last_watermark(client, target_table)
+                if last_wm:
+                    start_date = last_wm
+                    logger.info(f"  Resuming from watermark: {start_date}")
+                else:
+                    start_date = get_source_min_time(client, config)
+                    logger.info(f"  No watermark. Auto-detected start: {start_date}")
+
+            effective_step_days = config.get('step_days', args.step_days)
+            effective_step_hours = config.get('step_hours', args.step_hours)
+            batches = generate_batches(start_date, args.end, effective_step_days, effective_step_hours)
+            logger.info(f"Generated {len(batches)} batches from {start_date} to {args.end}")
+
+            session_total = 0
+            for i, (start, end) in enumerate(batches, 1):
+                logger.info(f"Batch {i}/{len(batches)}: {start} -> {end}")
+                if not args.dry_run:
+                    try:
+                        batch_count = sync_batch_adaptive(client, config, start, end)
+                        session_total += batch_count
+                        update_watermark(client, target_table, end, session_total)
+                    except Exception as e:
+                        logger.error(f"Stopping sync for {table_key} due to error: {e}")
+                        break
+                else:
+                    logger.info("  [DRY RUN] Would execute batch sync via ODBC")
+
+    logger.info("\nAll operations completed.")
+
+
+if __name__ == "__main__":
+    main()
