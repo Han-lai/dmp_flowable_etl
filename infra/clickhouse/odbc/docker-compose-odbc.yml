@@ -1,0 +1,46 @@
+services:
+  # Customized ClickHouse Server with Native ODBC
+  clickhouse-odbc:
+    image: clickhouse-server-odbc-image
+    pull_policy: never  
+    container_name: clickhouse-server-odbc
+    ports:
+      - "8122:8123"
+      - "9002:9000"
+      - "9364:9363"
+    volumes:
+      - clickhouse-odbc-data:/var/lib/clickhouse
+      - ${VOLUMES_ROOT}/clickhouse-odbc/config:/var/lib/clickhouse/server/config.d
+      - ${VOLUMES_ROOT}/clickhouse-odbc/odbc.ini:/etc/odbc.ini
+    environment:
+      - CLICKHOUSE_DB=bronze
+      - CLICKHOUSE_USER=default
+      - CLICKHOUSE_PASSWORD=default
+    ulimits:
+      nofile:
+        soft: 262144
+        hard: 262144
+    networks:
+      - clickhouse-net
+    command: >
+      /bin/bash -c "
+      mkdir -p /var/lib/clickhouse/server/config.d &&
+      echo '<clickhouse>
+        <listen_host>0.0.0.0</listen_host>
+        <prometheus>
+          <endpoint>/metrics</endpoint>
+          <port>9363</port>
+          <metrics>true</metrics>
+          <events>true</events>
+          <asynchronous_metrics>true</asynchronous_metrics>
+        </prometheus>
+      </clickhouse>' > /var/lib/clickhouse/server/config.d/config.xml &&
+      /entrypoint.sh
+      "
+
+volumes:
+  clickhouse-odbc-data:  
+
+networks:
+  clickhouse-net:
+    driver: bridge
