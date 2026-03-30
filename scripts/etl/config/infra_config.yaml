@@ -1,0 +1,20 @@
+# DMP Flowable Infrastructure Setup Configuration
+# This file defines the databases and DDL scripts required for the environment.
+
+# Databases to ensure exist
+databases:
+  - bronze
+  - silver
+  - gold
+
+# Ordered list of DDL files to deploy
+# File name and its human-readable description for logging
+setup_scripts:
+  - file: "00_meta_checkpoint.sql" # Metadata Checkpoint Table
+  - file: "01_bronze_flowable_core.sql" # Bronze Layer - Flowable Core Tables
+  - file: "02_bronze_common_dims.sql" # Bronze Layer - Common Dimensions (HR/MDM)
+  - file: "03_silver_pivot_and_hierarchy.sql" # Silver Layer 1 - Transposed Variables & Org Hierarchy
+  - file: "04_silver_fact_tasks.sql" # Silver Layer 2 - Fact Tasks (V2 Multi-Time Dimension)
+  # - file: "05_silver_dim_users.sql" # Silver Layer 3 - User Dimensions
+  - file: "06_gold_kpi_task_completion.sql" # Gold Layer 1 - KPI Task Completion (L5)
+  # - file: "07_gold_kpi_user_utilization.sql" # Gold Layer 2 - KPI User Utilization (L7)

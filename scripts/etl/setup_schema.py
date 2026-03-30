@@ -10,6 +10,7 @@ import sys
 import argparse
 import re
 from pathlib import Path
+import yaml
 
 # =================================================================
 # 1. Configuration
@@ -17,24 +18,27 @@ from pathlib import Path
 
 CH_CONFIG = {
     'host': os.getenv('CLICKHOUSE_HOST', 'REDACTED_IP'),
-    'port': int(os.getenv('CLICKHOUSE_PORT', '8121')),
+    'port': int(os.getenv('CLICKHOUSE_PORT', '8122')),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
     'password': os.getenv('CLICKHOUSE_PASSWORD', 'default'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 
 
-# Ordered list of DDL files to deploy
-SQL_FILES = [
-    ("00_meta_checkpoint.sql", "Metadata Checkpoint Table"),
-    ("01_bronze_flowable_core.sql", "Bronze Layer - Flowable Core Tables"),
-    ("02_bronze_common_dims.sql", "Bronze Layer - Common Dimensions (HR/MDM)"),
-    ("03_silver_pivot_and_hierarchy.sql", "Silver Layer 1 - Transposed Variables & Org Hierarchy"),
-    ("04_silver_fact_tasks.sql", "Silver Layer 2 - Fact Tasks (V2 Multi-Time Dimension)"),
-    ("05_silver_dim_users.sql", "Silver Layer 3 - User Dimensions"),
-    ("06_gold_kpi_task_completion.sql", "Gold Layer 1 - KPI Task Completion (L5)"),
-    ("07_gold_kpi_user_utilization.sql", "Gold Layer 2 - KPI User Utilization (L7)")
-]
+# ==========================================
+# Load Infrastructure Configuration from YAML
+# ==========================================
+def load_infra_config():
+    base_dir = os.path.dirname(os.path.abspath(__file__))
+    config_path = os.path.join(base_dir, "config", "infra_config.yaml")
+    try:
+        with open(config_path, 'r', encoding='utf-8') as f:
+            return yaml.safe_load(f)
+    except Exception as e:
+        print(f"Error loading infra configuration: {e}")
+        sys.exit(1)
+
+INFRA_CONFIG = load_infra_config()
 
 # =================================================================
 # 2. Functions
@@ -45,7 +49,7 @@ def get_client():
 
 def initialize_databases(client):
     print("\n[DB Init] Initializing Databases...")
-    for db in ['bronze', 'silver', 'gold']:
+    for db in INFRA_CONFIG.get('databases', []):
         try:
             client.command(f"CREATE DATABASE IF NOT EXISTS {db}")
             print(f" - {db:10}: OK")
@@ -105,7 +109,9 @@ def main():
         script_dir = Path(__file__).resolve().parent
         sql_dir = script_dir.parent.parent / 'sql' / 'etl' / 'schema'
         
-        for sql_file_name, description in SQL_FILES:
+        for script in INFRA_CONFIG.get('setup_scripts', []):
+            sql_file_name = script['file']
+            description = script.get('desc', '') # Make desc optional
             sql_file = sql_dir / sql_file_name
             if sql_file.exists():
                 execute_sql_file(client, sql_file, description, force=args.force)
