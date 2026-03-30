@@ -9,18 +9,15 @@
 -- DROP TABLE IF EXISTS bronze.common_hr_employee;
 CREATE TABLE bronze.common_hr_employee (
     EmpCode String,
-    EmpName String,
     DeptCode Nullable(String),
-    DeptCodeLname Nullable(String),
-    Email Nullable(String),
     IsActive Nullable(Int32),
-    UpdateTime DateTime,
+    ModifyDate DateTime,
     `_batch_id` String DEFAULT '',
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY EmpCode
-TTL UpdateTime + INTERVAL 1 YEAR;
+TTL ModifyDate + INTERVAL 1 YEAR;
 
 -- ==========================================
 -- 2.2 Organization & Role Mapping Tables
