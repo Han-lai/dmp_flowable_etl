@@ -1,0 +1,28 @@
+# DMP Flowable Computation Pipeline Configuration
+# This file defines the sequence of analytical transformations (Bronze -> Silver -> Gold).
+
+# Tables to clear during a global --reset
+reset_targets:
+  - "silver.mv_varinst_pivoted"
+  - "silver.mv_fact_task_vx"
+  - "gold.rmv_l5_task_completion_phys"
+
+# Computation Stages:
+# Stage 1: Initial pivoting of raw variable instances.
+# Stage 2: Fact aggregation and Gold KPI calculation.
+pipeline_stages:
+  - name: "Stage 1: Dimension Pivot (Self-Adaptive)"
+    description: "Converts EAV-style ACT_HI_VARINST into a wide table format."
+    steps:
+      - phase_id: "silver_varinst_pivoted"
+        template: "backfill_pivot.sql"
+
+  - name: "Stage 2: Fact & Gold Aggregation (Self-Adaptive)"
+    description: "Computes core Task facts and final L5 Completion KPIs."
+    steps:
+      - phase_id: "silver_facts"
+        template: "backfill_silver.sql"
+      - phase_id: "silver_exclusions"
+        template: "backfill_exclusion.sql"
+      - phase_id: "gold_task_completion"
+        template: "backfill_gold.sql"
