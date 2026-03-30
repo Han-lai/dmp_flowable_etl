@@ -20,7 +20,7 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
          │       - mv_fact_task_vx (核心事實表)
          ▼
     ┌────┴────┐
-    │ Gold    │  指標快照層 (2 張 RMV)
+    │ Gold    │  指標聚合層 (ReplacingMergeTree + VIEW)
     │ 層      │  - rmv_l5_task_completion (L5 完成率)
     └────┬────┘  - rmv_user_utilization (人員使用率)
          │
@@ -47,14 +47,24 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 - 使用 TTL 設定：`TTL snapshot_date + INTERVAL 1 YEAR`
 - 資料保留 365 天
 
-### 3. 重複資料處理
-- 使用 `ReplacingMergeTree` 引擎
-- 查詢時使用 `FINAL` 關鍵字確保資料一致
+### 3. Checkpoint-based Computation (故障自癒計算模式)
+- **定義**: 在 Python (`execute_etl.py`) 中透過 `bronze.etl_checkpoint` 記錄每個運算時間視窗的狀態。
+- **實作**: 
+    - 階段區分：分為 `silver_varinst_pivoted` 與 `gold_task_completion`。
+    - 斷點續傳：程式失敗後重新執行，自動跳過已成功的視窗。
+    - **重刷機制**: 透過 `--reset` 或 `--backfill` 指定時間區間，配合 `ReplacingMergeTree` 實現冪等更新。
+
+### 4. 重複資料處理
+- 使用 `ReplacingMergeTree` 引擎。
+- 原則：**以同步版本 (`_sync_version`) 作為版本號**，確保多次同步後僅保留最新資料，消滅 DELETE 導致的性能負擔。
  
-### 4. 指標計算標準模式 (Metric Patterns)
-- **時點快照 (Snapshot Status)**: 使用 `snapshot_date` 與任務生命週期 (Start/Claim/End) 動態比對，而非依賴當前狀態。
-- **滑動活動視窗 (Rolling Activity Window)**: 針對積壓指標 (如 Acc)，採用 D-6 至 D 的核心活動判定，以反應近期動態。
-- **Vx 歸屬優先級**: `TaskDefinitionKey` (流程定義) > `moNumber` (工單規則)。
+### 5. 指標計算與對齊模式 (Metric & Parity Patterns)
+- **Any-Event Filter**: 為了與 Baseline 核對，不僅統計 Task 節點，還納入所有在 `ACT_HI_TASKINST` 中有活動記錄的關聯事件。
+- **180 天變數回溯 (Variable Lookback)**: 針對跨月長週期任務，回溯 180 天內的流程變數，確保 Region/Plant 等維度不缺失。
+- **金層實體表與視圖 (Gold 2-Tier Architecture)**: 
+    - `gold.rmv_l5_task_completion_phys`: 實體表，使用 **`ReplacingMergeTree`** 儲存冪等快照，避免歷史回補時發生 Double-count 和 OOM。
+    - `gold.rmv_l5_task_completion`: 對接視圖，整合實體表數據並提供最終防禦性去重給 Cube.js/Superset，實現「數據與流量隔離」。
+- **ACC 滾動脫鉤 (ACC Decoupling)**: 7 天滾動指標 (ACC) 因涉及 `uniqExact` 的跨天去重，不再與 Todo/Doing/Done 的每日快照混合聚合，而是透過獨立的 `acc_stats` CTE 搭配 `range()` 展開計算，以確保 Baseline 完全精準對齊。
 
 ## Cube.js 設計模式 (Design Patterns)
 

@@ -2,7 +2,128 @@
 
 ## 已完成里程碑
 
-### 2026-03-16 (今日進度 - SQL 邏輯優化與自動刷新機制完善)
+### 2026-03-27 (今日進度 - 原生 ODBC 管線架構落成與 Table Engine 防死鎖突破) [IN_PROGRESS]
+- 🚀 **ClickHouse 原生 ODBC 管線平行建置**:
+    - **架構重塑**: 成功拆分 `infra/clickhouse/` 為 `jdbc/` 與 `odbc/` 雙子資料夾，並建置包含 msodbcsql18 與 unixODBC 驅動之客製化 ClickHouse 容器。
+    - **無縫交接**: 開發 `sync_unified_odbc.py` 利用原生介面完全取代舊版 JDBC Bridge，解決了長久以來的 Java 記憶體不穩定隱患。
+- 🔍 **克服 MS ODBC 底層解析死鎖 (Deadlock)**:
+    - **問題**: 發現 `hr_employee` 透過 `odbc()` 函數同步時發生致命卡死。
+    - **診斷**: 透過特製解剖腳本確認，死鎖並非網路或資料量引起，而是 MS-ODBC 驅動程式在向 MSSQL 動態索要全表 Schema Metadata 時，遭遇 LOB 或極端字元型別引發崩潰。
+    - **突破 (Table Engine Bypass)**: 實證發現透過 `CREATE TABLE ... ENGINE = ODBC` 硬性宣告安全欄位 (DDL)，能成功阻止驅動層往後端探測毒藥欄位，達成 100% 瞬間讀取不卡死。
+- ✅ **千萬級資料表 OOM 防護**:
+    - 成功將 `taskinst`, `varinst` 等巨型表的自動 `min()` 日期探勘拔除，強迫使用靜態起點去進行安全微批次分割，解決 ODBC Table Function 不支援聚合下推導致的全表下載癱瘓報錯。
+### 2026-03-26 (今日進度 - 金層 OOM 終極修復與次要廠區基準分析) [IN_PROGRESS]
+- 🚀 **Gold 預聚合層雙清 OOM 與防禦性架構 (ReplacingMergeTree)**:
+    - **問題**: 原本 `SummingMergeTree` 的架構在回補時會產生「疊加累計 (Double-Count)」的毒藥資料，且由於 7天 ACC 滾動時窗使用巨大 Array Join 展開，在 6GB RAM 下必然 OOM。
+    - **解決**: 
+        1. 引進 `ReplacingMergeTree` 取代 SummingMergeTree。結合 `execute_etl.py` 的幂等 Append，允許我們不受限地切出以天為單位的安全微批次寫入，確保歷史資料永不疊加。
+        2. 將 7天 ACC 邏輯徹底脫鉤成獨立的 CTE (`acc_stats`)，改用 `range()` 配合 `uniqExact`，只留算好的數字不留大量中繼陣列。
+    - **成果**: 達成 WJ2 廠區 Baseline 100% 精準對齊，同時解鎖了 ClickHouse 記憶體瓶頸。
+- 🔍 **次要廠區 (CNS DG3) 數據差異溯源**:
+    - **現象**: 發現 DG3 廠區在 Gold 層的 Todo 完美精準，但 Doing 和 Done 暴增。且 CubeJS 基準查詢異常，呈現 `Todo + Doing = Total Acc` 的矛盾算式。
+    - **初步結論**: 透過 Python 腳本分析 Any-Event 納入的非人工節點，發現 DG3 Baseline 完全排除了沒有 `assignee_code` 的系統任務與自動派工，導致我們的 Doing(36) 與 Done(204) 遠大於基準的 Dg(21) 和 Dn(78)。這是因為我們把 100% 不漏單的政策套到了本來就有漏單的舊算法基準上，等待明日向相關端釐清。
+
+### 2026-03-25 (昨日進度 - ETL 記憶體優化與 1/15 斷點處理)
+- 🚀 **ETL 記憶體與 JOIN 效能極致優化**:
+    - **自適應分片 (Sub-day Splitting)**: `execute_etl.py` 已支援 10 分鐘級別的遞迴分片，成功衝過 `11-30` 與 `12-13` 的資料高峰期。
+    - **JOIN 效能修復 (Pruning)**: 透過在 `backfill_silver.sql` 加入「精準 ID 過濾」子查詢，避免 ClickHouse 在 `FillingRightJoinSide` 階段載入完整變數表導致的 OOM。
+    - **磁碟溢寫設定**: 已在 `--low-ram` 模式中啟用 `max_bytes_in_join` (1GB) 與 `grace_hash` 演算法。
+- 🔍 **目前瓶頸 (Current Blocker)**:
+    - **Code: 41 報錯**: 在處理 2026-01 資料時，Stage 2 的最後一關 `gold_task_completion` 觸發了非法參數類型錯誤。
+    - **診斷進度**: 已順利修復 `backfill_gold.sql` 中因 `yesterday()` 無法跨時區相容導致的執行錯誤。
+
+### 2026-03-24 (昨進度 - ETL 管線可靠性與全流程分片化)
+- 🚀 **ETL 管線可靠性升級正式落地**:
+    - **解決 Phase 1 OOM**: 透過「時間視窗分片」重構 `mv_varinst_pivoted` 計算邏輯，消滅千萬級 aggregation 導致的記憶體崩潰。
+    - **實作 Checkpoint**: 新增 `bronze.etl_checkpoint` 表，實現 Phase 1 與 Phase 4 的「視窗級」狀態紀錄與斷點續傳。
+    - **移除 TRUNCATE**: 取代原本的暴力清空邏輯，改用進度檢索與 `--reset` 參數，支援真增量 (Incremental Append)。
+### 3. Checkpoint-based Computation (故障自癒計算模式)
+- **定義**: 在 Python (`execute_etl.py`) 中透過 `bronze.etl_checkpoint` 記錄每個運算時間視窗的狀態。
+- **優點**: 
+    - **斷點續傳**：程式失敗後重新執行，自動跳過已成功的視窗，大幅減少 OOM 恢復時間。
+    - **增量安全**：配合 `ReplacingMergeTree`，可進行安全的分片重刷與增量 Append，保護歷史資料。
+- 🔧 **同步機制與架構優化**:
+    - **解決方案**: 
+        - 移除 `sync_unified.py` 的 DELETE 邏輯，改用 `ReplacingMergeTree`。
+        - **精簡欄位**: `varinst` (7 欄)、`taskinst` (14 欄)。
+        - **Schema 重建**: 解決 `TASK_ID_` 缺失導致的 Silver 層關聯問題。
+    - **效益**: 極大降低記憶體峰值，提升 Server 76 的運作穩定性。
+- 📋 **確認 Bronze 表引擎**:
+    - 驗證所有 Bronze 表均使用 `ReplacingMergeTree(_sync_version)` 引擎。
+    - 確認 `ORDER BY` 鍵值相同時會自動保留最新版本（`_sync_version` 最大）。
+- ✅ **保留自適應切割機制**:
+    - `sync_batch_adaptive()` 繼續作為容錯機制，處理 JDBC 超時等錯誤。
+    - 移除 DELETE 後，此機制將更有效運作。
+
+### 2026-03-23 (昨日進度 - 金層架構優化與增量同步可靠性提升)
+- 🚀 **金層架構重構正式落地**:
+    - **實作**: 完成 `SummingMergeTree` + `UNION ALL` 拆分計算邏輯。
+    - **對接**: 將 BI 對接層統一為 `gold.rmv_l5_task_completion` 視圖，底層切換至 `_phys` 實體表。
+    - **效益**: 極大降低了 Gold 層刷新時的記憶體壓力，成功解決 8GB 環境下的 OOM 問題。
+- 🔄 **ETL 增量更新機制升級**:
+    - **策略**: `taskinst` 同步基準由 `START_TIME_` 改為 `LAST_UPDATED_TIME_`。
+    - **成果**: 確保了「歷史任務」在發生狀態變更（如結束）時能被即時抓取，解決了資料更新不及時的技術債。
+- 📦 **代碼庫同步**:
+    - 完成與 GitLab 之最新代碼同步，包含 SQL DDL 與 Python 核心同步腳本。
+
+### 2026-03-20 (先前進度 - Gold 層 OOM 優化與架構重構預備)
+- 📝 **架構現況記錄 (Before Optimization)**:
+    - **對接點**: Superset 與 API 目前直接連向 `gold.rmv_l5_task_completion`。
+    - **現存問題**: 執行 `06_gold_kpi_task_completion.sql` 時，因 `FULL OUTER JOIN` 兩組龐大的 `ARRAY JOIN` 展開資料，在 8GB RAM 環境下頻繁觸發 OOM (3GB Limit)。
+    - **技術債**: `ReplacingMergeTree` 無法分次寫入不同指標，必須在單一 Query 完成所有計算。
+- ⚙️ **重構策略已確認**:
+    - **核心機制**: 切換為 `SummingMergeTree` + `UNION ALL` (拆分負載)。
+    - **相容性保證**: 使用「無感重導向」技術，將實體表改名為 `_phys`，原名保留為 `VIEW`，確保 BI 工具零更動。
+    - **文件存證**: 已產出 [implementation_plan.md](file:///C:/Users/Albee.lai/.gemini/antigravity/brain/4acf8365-5748-4f9a-8e17-82cdf869aa04/implementation_plan.md) 與 [architecture_comparison.md](file:///C:/Users/Albee.lai/.gemini/antigravity/brain/4acf8365-5748-4f9a-8e17-82cdf869aa04/architecture_comparison.md)。
+
+### 2026-03-19 (昨日進度 - 統一架構驗證與 Low-RAM 防護機制完成)
+- ✅ **統一 ETL 管線架構驗證完成**:
+    - **背景**: 完成跨環境部署的統一架構設計，支援 Low-RAM 與 High-RAM 兩種模式。
+    - **核心腳本**:
+        1. `execute_etl.py`: DDL 建立與內部計算引擎
+        2. `sync_unified.py`: 外部資料同步引擎
+        3. `init_pipeline.sh`: 統一初始化腳本（預設 Low-RAM 模式）
+    - **三階段流程**:
+        - Phase 1: 建立 ClickHouse 空殼結構 (`--skip-existing`)
+        - Phase 2: 全量同步外部資料 (MSSQL → Bronze)
+        - Phase 3: 內部計算 (Bronze → Silver → Gold，使用 10 天滑動視窗)
+    - **驗證結果**:
+        - ✅ `identitylink` 表結構優化：僅保留 `USER_ID_`, `TYPE_`, `TASK_ID_`, `CREATE_TIME_` 四個欄位
+        - ✅ Batch sync 策略驗證：成功同步 747,034 rows (2025-11-01~11-02)
+        - ✅ 自適應切割機制：遇到錯誤自動將時間範圍切半，最小至 30 分鐘
+    - **環境配置**:
+        - 測試環境：`REDACTED_IP:8122` (ClickHouse v24.3)
+        - 預設模式：`--low-ram` (適用於 Server 76 等低記憶體環境)
+
+- ✅ **資料管線統一重構 (Unified Pipeline)**:
+    - **背景**: 發現跨環境部署時存在腳本不一致問題，且 Server 76 (Low-RAM) 在計算指標時容易發生 OOM。
+    - **改動**: 棄用特定寫死的 `init_first_time.py`，全面重構 `init_pipeline.sh` 與 `execute_etl.py`。
+    - **實作**:
+        1. 引進 `--backfill-dimension`：獨立執行 `varinst` 樞紐轉換並優化 (OPTIMIZE)，斷開變數表的跨層延遲，消滅 JOIN 失效風險。
+        2. 引進 `--backfill --low-ram`：直接在 Python 內部實作以 `START_TIME_` 為基準的 **10 天滑動視窗 (10-day sliding window)**。
+    - **成效**: 成功解耦「資料拉取階段 (Bronze 儲存)」與「內部計算階段 (Silver/Gold 運算)」。只需一次外部全量同步，後續內部透過 10 天切割安全計算，完美保證跨表 JOIN 時間點的一致性並徹底消滅 OOM。
+
+### 2026-03-18 (今日進度 - 記憶體使用優化)
+- ✅ **Silver 層記憶體佔用優化 (Subquery Join)**:
+    - **改動**: 改寫 `04_silver_fact_tasks.sql`，將原本直接 JOIN 1,700 萬筆 `varinst` 的邏輯，改為先對 `autoComplete` 變數進行子查詢篩選。
+    - **成效**: 大幅縮減 JOIN Hash Table 的體積（縮減約 90% 以上），避開了 5GB 記憶體限制引起的 OOM 崩潰。
+    - **驗證**: 已於 `REDACTED_IP:8121` 完成套用，資料量 (147 萬筆) 與正確性維持不變。
+- ✅ **ClickHouse 跨版本相容性優化 (v24.3 vs v25.8)**:
+    - **背景**: 發現 REDACTED_IP (v25.8) 對於 `now64(3)` 與 `toDateTime64` 精度參數有嚴格型別限制，導致背景任務失敗。
+    - **改動**: 全面將 SQL 與 Python 中的 `now64(3)` 取代為 `now()`，並將 `toDateTime64` 改為 `CAST(..., 'DateTime64(3)')`。
+    - **影響**: 達成同一套 DDL 與腳本在舊版 (24.3) 與新版 (25.8) 均能無縫執行，支援「一鍵式」乾淨建置。
+    - **驗證**: 已在 207 伺服器成功測試 `user_group` 同步，並產出 `upgrade_server_76.sql` 指引。
+
+### 2026-03-17 (昨日進度 - 併發限制與穩定性分析)
+- ✅ **並發壓測與隊列優化**:
+    - **分析**: 完成 `concurrency_failure_report.md`，分析 4.5GB RAM 環境下的併發瓶頸。
+    - **決策**: 將 `max_concurrent_queries` 調整為 **20**，並啟用 `queue_max_wait_ms` (30秒) 緩衝機制，確保系統在壓力下穩定排隊而非直接報錯。
+
+### 2026-03-16 (今日進度 - [ ] 監控全自動刷新定時器的資源消耗
+- [ ] **運算管線可靠性升級 (Proposed)**:
+    - 實作 `bronze.etl_checkpoint` 進度追蹤表。
+    - 重構 `execute_etl.py` 移除破壞性 TRUNCATE 邏輯。
+    - 支援故障自癒（斷點續傳）與真增量 Append 運算。
 - ✅ **L5 指標運算效能優化 (ARRAY JOIN)**:
     - **改動**: 將 `06_gold_kpi_task_completion.sql` 原本負荷重擔的 `CROSS JOIN` 改寫為 `ARRAY JOIN`。
     - **成效**: 運算中間層數據從 7.5 億筆降至 1000 萬筆級別，效能提升 98%，徹底根除 OOM (記憶體溢出) 風險。
@@ -274,5 +395,11 @@
     - 用戶決定保留 Cube.js V2 模型中的 Rolling 7 Days 邏輯
     - Gold SQL (`rmv_l5_task_completion`) 維持每日匯總邏輯 (Status Quo)
 - [x] 執行 MView 重建腳本 `scripts/etl/update_mviews_no_data_loss.py` 完成 (48hr 更新生效)
+
+## 🚀 未來路徑 (Roadmap)
+- [x] **運算管線可靠性升級**:
+    - 實作 `bronze.etl_checkpoint` 進度追蹤表。
+    - 重構 `execute_etl.py` 移除破壞性 TRUNCATE 邏輯。
+    - 支援故障自癒（斷點續傳）與真增量 Append 運算。
 
 

@@ -1,0 +1,140 @@
+# ClickHouse Bronze Layer Sync Configuration (ODBC)
+# This file centralizes the mapping between MSSQL source tables and ClickHouse bronze tables.
+
+hr_employee:
+  source: "APP_SRV_COMMON.dbo.HR_Employee_0202"
+  target: "bronze.common_hr_employee"
+  strategy: "batch"
+  time_col: "ModifyDate"
+  step_days: 30
+  engine_ddl: >
+    EmpCode String, DeptCode String, TerminateDate DateTime, ModifyDate DateTime
+  columns: "EmpCode, DeptCode, if(TerminateDate = toDateTime(0), 1, 0) AS IsActive, ModifyDate"
+
+emp_node_role:
+  source: "APP_SRV_COMMON.dbo.EmpNodeRoleMapping_0202"
+  target: "bronze.common_emp_node_role_mapping"
+  strategy: "full"
+  engine_ddl: "EmpCode String, NodeCode String, UpdateTime DateTime, UpdateEmp String"
+  columns: "EmpCode, NodeCode, UpdateTime, UpdateEmp"
+
+emp_org_info:
+  source: "APP_SRV_COMMON.dbo.EmpOrgInfoMapping_0202"
+  target: "bronze.common_emp_org_info_mapping"
+  strategy: "full"
+  engine_ddl: "EmpCode String, Plant String, MFGFactoryId String, UpdateTime DateTime, UpdateEmp String"
+  columns: "EmpCode, Plant, MFGFactoryId, UpdateTime, UpdateEmp"
+
+emp_user_group:
+  source: "APP_SRV_COMMON.dbo.EmpUserGroupMapping_0202"
+  target: "bronze.common_emp_user_group_mapping"
+  strategy: "full"
+  engine_ddl: "EmpCode String, UserGroupId Int32, UpdateTime DateTime, UpdateEmp String"
+  columns: "EmpCode, UserGroupId, UpdateTime, UpdateEmp"
+
+user_group:
+  source: "APP_SRV_COMMON.dbo.UserGroup_0202"
+  target: "bronze.common_user_group"
+  strategy: "full"
+  engine_ddl: "UserGroupId Int32, UserGroupName String, UserGroupDesc String, UpdateTime DateTime, UpdateEmp String"
+  columns: "UserGroupId, UserGroupName, UserGroupDesc, UpdateTime, UpdateEmp"
+
+process_role_user:
+  source: "APP_SRV_COMMON.dbo.ProcessRoleUserMapping_0202"
+  target: "bronze.common_process_role_user_mapping"
+  strategy: "full"
+  engine_ddl: "ID Int32, RoleId String, Plant String, Factory String, ProductionArea String, LineName String, EmpCode String, Updater String, UpdateDatetime DateTime, UpdateCount Int32, Creator String, CreateDatetime DateTime"
+  columns: "ID, RoleId, Plant, Factory, ProductionArea, LineName, EmpCode, Updater, UpdateDatetime, UpdateCount, Creator, CreateDatetime"
+
+mdm_line_desc:
+  source: "APP_SRV_COMMON.dbo.MDM_LINE_DESC_MASTER_0202"
+  target: "bronze.common_mdm_line_desc_master"
+  strategy: "full"
+  engine_ddl: "LINE_NAME String, LINE_DESC String, PROD_AREA_ID String"
+  columns: "LINE_NAME, LINE_DESC, PROD_AREA_ID"
+
+mdm_prod_area:
+  source: "APP_SRV_COMMON.dbo.MDM_PROD_AREA_MASTER_0202"
+  target: "bronze.common_mdm_prod_area_master"
+  strategy: "full"
+  engine_ddl: "PROD_AREA_ID String, PROD_AREA_CODE String, FACTORY String, MFG_PLANT_ID String"
+  columns: "PROD_AREA_ID, PROD_AREA_CODE, FACTORY, MFG_PLANT_ID"
+
+mdm_factory_area:
+  source: "APP_SRV_COMMON.dbo.MDM_FACTORY_AREA_MASTER_0202"
+  target: "bronze.common_mdm_factory_area_master"
+  strategy: "full"
+  engine_ddl: "FACTORY String, FACTORY_DESC String, PLANT_NODE String, PLANT_NODE_DESC String, REGION String, MFG_SITE String"
+  columns: "FACTORY, FACTORY_DESC, PLANT_NODE, PLANT_NODE_DESC, REGION, MFG_SITE"
+
+mdm_mfg_site:
+  source: "APP_SRV_COMMON.dbo.MDM_MFG_SITE_MASTER_0202"
+  target: "bronze.common_mdm_mfg_site_master"
+  strategy: "full"
+  engine_ddl: "MFG_SITE String, MFG_SITE_DESC String"
+  columns: "MFG_SITE, MFG_SITE_DESC"
+
+mdm_mfg_plant:
+  source: "APP_SRV_COMMON.dbo.MDM_MFG_PLANT_MASTER_0202"
+  target: "bronze.common_mdm_mfg_plant_master"
+  strategy: "full"
+  engine_ddl: "MFG_PLANT_ID String, MFG_PLANT_CODE String, MFG_PLANT_DESC String, FACTORY String, VALIDITY String"
+  columns: "MFG_PLANT_ID, MFG_PLANT_CODE, MFG_PLANT_DESC, FACTORY, VALIDITY"
+
+dmp_func_config:
+  source: "APP_SRV_COMMON.dbo.DMPFunctionConfig_0202"
+  target: "bronze.common_dmp_function_config"
+  strategy: "full"
+  engine_ddl: "ID Int64, FunctionCode String, Plant String, Factory String, ProductionArea String, LineName String, AssignLineFlag String, Updater String, UpdateDatetime DateTime, UpdateCount Int64, Creator String, CreateDatetime DateTime, StartDps String, AssignWorkStatus String, EffectiveStartDate DateTime, EffectiveEndDate DateTime, SyncESB String"
+  columns: "*"
+
+dmp_func_client_mapping:
+  source: "APP_SRV_COMMON.dbo.DMPFunctionClientMapping_0202"
+  target: "bronze.common_dmp_function_client_mapping"
+  strategy: "full"
+  engine_ddl: "ID Int64, Region String, Plant String, Logsys String, Updater String, UpdateDatetime DateTime, UpdateCount Int64, Creator String, CreateDatetime DateTime"
+  columns: "*"
+
+procdef:
+  source: "APP_SRV_BPM.dbo.ACT_RE_PROCDEF_0108"
+  target: "bronze.bpm_act_re_procdef"
+  strategy: "full"
+  engine_ddl: "ID_ String, REV_ Int32, CATEGORY_ String, NAME_ String, KEY_ String, VERSION_ Int32, DEPLOYMENT_ID_ String, RESOURCE_NAME_ String, DGRM_RESOURCE_NAME_ String, DESCRIPTION_ String, HAS_START_FORM_KEY_ UInt8, HAS_GRAPHICAL_NOTATION_ UInt8, SUSPENSION_STATE_ Int32, TENANT_ID_ String, DERIVED_FROM_ String, DERIVED_FROM_ROOT_ String, DERIVED_VERSION_ Int32, ENGINE_VERSION_ String"
+  columns: "*"
+
+taskinst:
+  source: "APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108"
+  target: "bronze.bpm_act_hi_taskinst"
+  time_col: "LAST_UPDATED_TIME_"
+  strategy: "batch"
+  step_days: 10
+  engine_ddl: >
+    ID_ String, REV_ Int32, PROC_DEF_ID_ String, TASK_DEF_KEY_ String, PROC_INST_ID_ String, EXECUTION_ID_ String, NAME_ String, ASSIGNEE_ String, START_TIME_ DateTime, CLAIM_TIME_ DateTime, END_TIME_ DateTime, DURATION_ Int64, DELETE_REASON_ String, LAST_UPDATED_TIME_ DateTime
+  columns: "ID_, REV_, PROC_DEF_ID_, TASK_DEF_KEY_, PROC_INST_ID_, EXECUTION_ID_, NAME_, ASSIGNEE_, START_TIME_, CLAIM_TIME_, END_TIME_, DURATION_, DELETE_REASON_, LAST_UPDATED_TIME_"
+
+varinst:
+  source: "APP_SRV_BPM.dbo.ACT_HI_VARINST_0108"
+  target: "bronze.bpm_act_hi_varinst"
+  time_col: "CREATE_TIME_"
+  strategy: "batch"
+  step_days: 10
+  engine_ddl: "PROC_INST_ID_ String, TASK_ID_ String, NAME_ String, TEXT_ String, REV_ Int32, LONG_ Int64, CREATE_TIME_ DateTime"
+  columns: "PROC_INST_ID_, TASK_ID_, NAME_, TEXT_, REV_, LONG_, CREATE_TIME_"
+
+procinst:
+  source: "APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108"
+  target: "bronze.bpm_act_hi_procinst"
+  time_col: "START_TIME_"
+  strategy: "batch"
+  step_days: 10
+  engine_ddl: "ID_ String, REV_ Int32, PROC_INST_ID_ String, BUSINESS_KEY_ String, PROC_DEF_ID_ String, START_TIME_ DateTime, END_TIME_ DateTime, DURATION_ Decimal(18,3), START_USER_ID_ String, START_ACT_ID_ String, END_ACT_ID_ String, SUPER_PROCESS_INSTANCE_ID_ String, DELETE_REASON_ String, TENANT_ID_ String, NAME_ String, CALLBACK_ID_ String, CALLBACK_TYPE_ String, REFERENCE_ID_ String, REFERENCE_TYPE_ String, PROPAGATED_STAGE_INST_ID_ String, BUSINESS_STATUS_ String"
+  columns: "*"
+
+identitylink:
+  source: "APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK_0108"
+  target: "bronze.bpm_act_hi_identitylink"
+  time_col: "CREATE_TIME_"
+  strategy: "batch"
+  step_days: 10
+  engine_ddl: "USER_ID_ String, TYPE_ String, TASK_ID_ String, CREATE_TIME_ DateTime"
+  columns: "USER_ID_, TYPE_, TASK_ID_, CREATE_TIME_"
