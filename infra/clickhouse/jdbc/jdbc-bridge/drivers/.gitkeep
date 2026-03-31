@@ -1,3 +1,0 @@
-# MSSQL JDBC Driver 放置目錄
-# 強烈建議使用 mssql-jdbc-8.2.2.jre8.jar 並放到此目錄
-# 下載連結: https://repo1.maven.org/maven2/com/microsoft/sqlserver/mssql-jdbc/8.2.2.jre8/mssql-jdbc-8.2.2.jre8.jar
