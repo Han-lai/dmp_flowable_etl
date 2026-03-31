@@ -33,9 +33,8 @@ python scripts/etl/setup_schema.py
 
 echo ""
 echo "=== Phase 2: 全量同步外部資料 (MS SQL -> Bronze) ==========================="
-# ClickHouse Bronze 是純寫入，無 JOIN Overhead，全部一次拉完速度最快且不會 OOM。
-# (註: sync_unified.py 內部已有 identitylink 每日批量拉取的記憶體保護機制)
-python scripts/etl/sync_unified.py --table all
+# 使用 OOM 防護的 ODBC 引擎，支援自適應批次同步
+python scripts/etl/sync_unified_odbc.py --table all
 
 if [[ "$MODE" == "--low-ram" ]]; then
     echo ""
