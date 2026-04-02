@@ -20,9 +20,9 @@ import clickhouse_connect
 # ClickHouse Configuration
 CLICKHOUSE_CONFIG = {
     "host": os.getenv("CLICKHOUSE_HOST", "REDACTED_IP"),
-    "port": int(os.environ.get("CLICKHOUSE_PORT", "8122")),
+    "port": int(os.environ.get("CLICKHOUSE_PORT", "8123")),
     "username": os.getenv("CLICKHOUSE_USERNAME", "default"),
-    "password": os.getenv("CLICKHOUSE_PASSWORD", "default"),
+    "password": os.getenv("CLICKHOUSE_PASSWORD", "REDACTED_PASSWORD"),
     "database": os.getenv("CLICKHOUSE_DATABASE", "default"),
     "send_receive_timeout": int(os.getenv("CLICKHOUSE_TIMEOUT", "3600")), # Increased to 1 hour
     "connect_timeout": 30,
@@ -250,6 +250,7 @@ def sync_full(client, config):
     if range_batches and range_col:
         logger.info(f"  [Range Batch] Using {range_col} ranges ({len(range_batches)} batches) to avoid ODBC buffer overflow")
         total_count = 0
+        total_duration = 0  # 累計總時間
         for i, (range_start, range_end) in enumerate(range_batches, 1):
             batch_id = f"full_sync_{datetime.now().strftime('%Y%m%d')}_{i}"
             insert_sql = f"""
@@ -266,13 +267,14 @@ def sync_full(client, config):
             try:
                 client.command(insert_sql)
                 duration = (time.perf_counter() - start_time) * 1000
+                total_duration += duration  # 累加時間
                 count = client.command(f"SELECT count() FROM {target} WHERE {range_col} >= '{range_start}' AND {range_col} < '{range_end}' {QUERY_SETTINGS}")
                 total_count += count
                 logger.info(f"  Batch {i}/{len(range_batches)} [{range_start}-{range_end}]: {count:,} rows in {duration/1000:.2f}s")
             except Exception as e:
                 logger.error(f"  Batch {i} [{range_start}-{range_end}] failed: {e}")
-        logger.info(f"  Total synced: {total_count:,} rows")
-        update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), total_count)
+        logger.info(f"  Total synced: {total_count:,} rows in {total_duration/1000:.2f}s")
+        update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), total_count, total_duration)
         return total_count
     else:
         start_t = time.time()
@@ -374,13 +376,15 @@ def main():
                 logger.info(f"Generated {len(batches)} batches from {start_date} to {args.end}")
 
                 session_total = 0
+                session_total_duration = 0  # 累計總時間
                 for i, (start, end) in enumerate(batches, 1):
                     logger.info(f"Batch {i}/{len(batches)}: {start} -> {end}")
                     if not args.dry_run:
                         batch_count, batch_duration = sync_batch_adaptive(client, config, start, end)
                         session_total += batch_count
+                        session_total_duration += batch_duration  # 累加時間
                         row_count = session_total
-                        update_watermark(client, target_table, end, session_total, batch_duration)
+                        update_watermark(client, target_table, end, session_total, session_total_duration)
                     else:
                         logger.info("  [DRY RUN] Would execute batch sync via Temp Engine")
 

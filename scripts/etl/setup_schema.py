@@ -18,7 +18,7 @@ import yaml
 
 CH_CONFIG = {
     'host': os.getenv('CLICKHOUSE_HOST', 'REDACTED_IP'),
-    'port': int(os.getenv('CLICKHOUSE_PORT', '8122')),
+    'port': int(os.getenv('CLICKHOUSE_PORT', '8123')),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
     'password': os.getenv('CLICKHOUSE_PASSWORD', 'default'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')

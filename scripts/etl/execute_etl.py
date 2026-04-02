@@ -20,9 +20,9 @@ import yaml
 
 CH_CONFIG = {
     'host': os.getenv('CLICKHOUSE_HOST', 'REDACTED_IP'),
-    'port': int(os.getenv('CLICKHOUSE_PORT', '8122')),
+    'port': int(os.getenv('CLICKHOUSE_PORT', '8123')),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
-    'password': os.getenv('CLICKHOUSE_PASSWORD', 'default'),
+    'password': os.getenv('CLICKHOUSE_PASSWORD', 'REDACTED_PASSWORD'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 
@@ -51,17 +51,44 @@ def get_client(is_low_ram=False):
         config['send_receive_timeout'] = 300
     return clickhouse_connect.get_client(**config)
 
+def get_table_metrics(client, table_name):
+    """Fetches row count and disk size for a given table."""
+    try:
+        # Query system.parts for the total size on disk and row count
+        sql = f"""
+        SELECT 
+            sum(rows) as row_count,
+            sum(bytes_on_disk) as disk_size
+        FROM system.parts 
+        WHERE database = '{table_name.split('.')[0]}' 
+          AND table = '{table_name.split('.')[1]}'
+          AND active
+        """
+        res = client.query(sql)
+        if res.result_rows:
+            return res.result_rows[0][0], res.result_rows[0][1]
+    except Exception as e:
+        print(f"    [Warn] Failed to fetch metrics for {table_name}: {e}")
+    return 0, 0
+
 def get_checkpoint(client, phase, start, end):
     try:
-        res = client.query(f"SELECT status FROM bronze.etl_checkpoint FINAL WHERE phase = '{phase}' AND window_start = '{start}' AND window_end = '{end}'")
+        res = client.query(f"SELECT status FROM ops_metrics.etl_checkpoint FINAL WHERE phase = '{phase}' AND window_start = '{start}' AND window_end = '{end}'")
         if res.result_rows:
             return res.result_rows[0][0]
     except: pass
     return None
 
-def update_checkpoint(client, phase, start, end, status, error=""):
+def update_checkpoint(client, phase, start, end, status, error="", duration_ms=0, rows=0, bytes=0):
     try:
-        client.command(f"INSERT INTO bronze.etl_checkpoint (phase, window_start, window_end, status, error_msg) VALUES ('{phase}', '{start}', '{end}', '{status}', '{error[:500]}')")
+        # Optimized for ReplacingMergeTree
+        sql = f"""
+        INSERT INTO ops_metrics.etl_checkpoint 
+            (phase, window_start, window_end, status, error_msg, duration_ms, result_rows, result_bytes) 
+        VALUES 
+            ('{phase}', '{start}', '{end}', '{status}', '{error[:500]}', {duration_ms}, {rows}, {bytes})
+        """
+        client.command(sql)
     except Exception as e:
         print(f"Warning: Failed to update checkpoint: {e}")
 
@@ -88,13 +115,23 @@ def show_status(client):
 
     # 2. ETL Checkpoints
     try:
-        cp_sql = "SELECT phase, window_start, window_end, status, update_time FROM bronze.etl_checkpoint FINAL ORDER BY phase, window_start"
+        cp_sql = """
+        SELECT 
+            phase, window_start, window_end, status, 
+            round(duration_ms/1000, 2) as duration_sec,
+            formatReadableSize(result_bytes) as size,
+            result_rows as rows,
+            update_time
+        FROM ops_metrics.etl_checkpoint FINAL 
+        ORDER BY update_time DESC LIMIT 20
+        """
         res = client.query(cp_sql)
         if res.result_rows:
-            df = pd.DataFrame(res.result_rows, columns=['Phase', 'Start', 'End', 'Status', 'Updated At'])
-            print("\n[ETL Checkpoints (Computation Progress)]")
+            df = pd.DataFrame(res.result_rows, columns=['Phase', 'Start', 'End', 'Status', 'Dur(s)', 'Size', 'Rows', 'Updated At'])
+            print("\n[ETL Checkpoints (Computation Progress & Metrics)]")
             print(df.to_string(index=False))
-    except: pass
+    except Exception as e:
+        print(f"Error reading checkpoint status: {e}")
 
     # 3. Key Table Counts
     print("\n[Key Table Row Counts]")
@@ -112,14 +149,23 @@ def execute_computation_pipeline(client, args):
     print("="*80)
     
     if args.low_ram:
+        # Core Memory Limits
         client.command("SET max_threads = 1")
-        client.command("SET max_memory_usage = 6000000000")
-        client.command("SET max_bytes_before_external_group_by = 1000000000")
-        client.command("SET max_bytes_in_join = 1000000000")
-        client.command("SET max_bytes_ratio_before_external_group_by = 0.5")
+        client.command("SET max_memory_usage = 5500000000") # Limit to 5.5GB to leave room for OS/Buffer
+        
+        # External Processing (Spill to Disk)
+        client.command("SET max_bytes_before_external_group_by = 500000000") # 500MB force spill
+        client.command("SET max_bytes_before_external_sort = 500000000")
+        client.command("SET max_bytes_ratio_before_external_group_by = 0.3")
+        client.command("SET distributed_aggregation_memory_efficient = 1")
+        client.command("SET aggregation_memory_efficient_merge_threads = 1")
+        
+        # Join Optimization
+        client.command("SET max_bytes_in_join = 500000000")
         client.command("SET join_algorithm = 'grace_hash'")
+        client.command("SET max_columns_to_read = 30") # Limit scan width
 
-        print(" Using Mem-Optimized Settings (1 Thread, 6GB Limit, 1GB Spill)")
+        print(" Using Aggressive Mem-Optimized Settings (1 Thread, 5.5GB Limit, 500MB Spill)")
 
 
 
@@ -128,7 +174,7 @@ def execute_computation_pipeline(client, args):
         print("\n[Safety] Global Reset Initiated (--reset)...")
         for t in PIPELINE_CONFIG.get('reset_targets', []):
             client.command(f"TRUNCATE TABLE IF EXISTS {t}")
-        client.command("TRUNCATE TABLE IF EXISTS bronze.etl_checkpoint")
+        client.command("TRUNCATE TABLE IF EXISTS ops_metrics.etl_checkpoint")
         print("    Tables and checkpoints cleared.")
 
     # Window Generation (Using datetime for finer granularity)
@@ -152,14 +198,13 @@ def execute_computation_pipeline(client, args):
     exclusion_sql = load_sql_template('backfill_exclusion.sql')
     gold_tpl = load_sql_template('backfill_gold.sql')
 
-    def run_safe(phase_name, sql_tpl, start_dt, end_dt):
+    def run_safe(phase_id, sql_tpl, start_dt, end_dt, target_table=None):
         """Recursive function to process windows with auto-split on OOM (supports down to hours)."""
         start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
         end_str = end_dt.strftime("%Y-%m-%d %H:%M:%S")
         
         # 1. Skip if already successful
-
-        if get_checkpoint(client, phase_name, start_str, end_str) == 'SUCCESS' and not args.reset:
+        if get_checkpoint(client, phase_id, start_str, end_str) == 'SUCCESS' and not args.reset:
             return
 
         # 2. Skip if the window is truly empty (Prevents Code: 41 and reduces ops)
@@ -173,10 +218,12 @@ def execute_computation_pipeline(client, args):
 
         except Exception as check_e:
 
-            print(f"    [Warn] Persistence check failed for {phase_name}: {check_e}")
+            print(f"    [Warn] Persistence check failed for {phase_id}: {check_e}")
 
         try:
-            print(f"   > Processing {phase_name}: {start_str} ~ {end_str} ...")
+            print(f"   > Processing {phase_id}: {start_str} ~ {end_str} ...")
+            
+            start_perf = time.perf_counter()
             
             # Replace both date and timestamp placeholders
             q = sql_tpl.replace('{start_date}', start_dt.strftime("%Y-%m-%d")) \
@@ -184,24 +231,35 @@ def execute_computation_pipeline(client, args):
                        .replace('{start_ts}', start_str) \
                        .replace('{end_ts}', end_str)
             client.command(q)
-            update_checkpoint(client, phase_name, start_str, end_str, 'SUCCESS')
-            time.sleep(1) # Breath for the server
+            
+            duration_ms = (time.perf_counter() - start_perf) * 1000
+            
+            # Capture table metrics
+            rows, bytes = 0, 0
+            if target_table:
+                rows, bytes = get_table_metrics(client, target_table)
+            
+            update_checkpoint(client, phase_id, start_str, end_str, 'SUCCESS', 
+                              duration_ms=duration_ms, rows=rows, bytes=bytes)
+            
+            print(f"     [Success] {duration_ms/1000:.2f}s | Rows: {rows:,} | Size: {bytes:,} bytes")
+            time.sleep(0.5) # Breath for the server
 
         except Exception as e:
 
             err_msg = str(e)
             duration = end_dt - start_dt
-            # Split if OOM and duration is more than 600 seconds (10 minutes)
-            if ("Memory limit exceeded" in err_msg or "Code: 241" in err_msg) and duration.total_seconds() > 600:
+            # Split if OOM and duration is more than 60 seconds (1 minute)
+            if ("Memory limit exceeded" in err_msg or "Code: 241" in err_msg) and duration.total_seconds() > 60:
                 mid_seconds = int(duration.total_seconds() // 2)
                 mid_dt = start_dt + datetime.timedelta(seconds=mid_seconds)
                 print(f"   [OOM Alert] Memory Limit hit at {start_str} ~ {end_str}. Splitting window into halves...")
-                run_safe(phase_name, sql_tpl, start_dt, mid_dt)
-                run_safe(phase_name, sql_tpl, mid_dt, end_dt)
+                run_safe(phase_id, sql_tpl, start_dt, mid_dt, target_table=target_table)
+                run_safe(phase_id, sql_tpl, mid_dt, end_dt, target_table=target_table)
             else:
 
 
-                update_checkpoint(client, phase_name, start_str, end_str, 'FAILED', err_msg)
+                update_checkpoint(client, phase_id, start_str, end_str, 'FAILED', err_msg)
                 print(f"    CRITICAL FAILED at {start_str}: {err_msg}")
                 sys.exit(1)
 
@@ -212,12 +270,13 @@ def execute_computation_pipeline(client, args):
         for step in stage['steps']:
             phase_id = step['phase_id']
             sql_tpl = load_sql_template(step['template'])
+            target_t = step.get('target_table')
             
             for (s_dt, e_dt) in windows:
                 # Add window header for readability if it's the first step in a multi-step stage
                 if len(stage['steps']) > 1:
                     print(f"\n---- [Time Window: {s_dt.strftime('%Y-%m-%d %H:%M:%S')} ~ {e_dt.strftime('%Y-%m-%d %H:%M:%S')}] ----")
-                run_safe(phase_id, sql_tpl, s_dt, e_dt)
+                run_safe(phase_id, sql_tpl, s_dt, e_dt, target_table=target_t)
 
     print("\n All calculation phases completed successfully!")
 
