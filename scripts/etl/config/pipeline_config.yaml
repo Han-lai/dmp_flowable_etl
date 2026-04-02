@@ -5,7 +5,8 @@
 reset_targets:
   - "silver.mv_varinst_pivoted"
   - "silver.mv_fact_task_vx"
-  - "gold.rmv_l5_task_completion_phys"
+  - "gold.rmv_l5_milestone_phys"
+  - "gold.rmv_l5_acc_phys"
 
 # Computation Stages:
 # Stage 1: Initial pivoting of raw variable instances.
@@ -16,13 +17,23 @@ pipeline_stages:
     steps:
       - phase_id: "silver_varinst_pivoted"
         template: "backfill_pivot.sql"
+        target_table: "silver.mv_varinst_pivoted"
 
   - name: "Stage 2: Fact & Gold Aggregation (Self-Adaptive)"
     description: "Computes core Task facts and final L5 Completion KPIs."
     steps:
       - phase_id: "silver_facts"
         template: "backfill_silver.sql"
-      - phase_id: "silver_exclusions"
+        target_table: "silver.mv_fact_task_vx"
+      - phase_id: "silver_exclusion"
         template: "backfill_exclusion.sql"
-      - phase_id: "gold_task_completion"
-        template: "backfill_gold.sql"
+        target_table: "silver.mv_fact_task_vx"
+      - phase_id: "gold_milestone"
+        template: "backfill_gold_milestone.sql"
+        target_table: "gold.rmv_l5_milestone_phys"
+      - phase_id: "gold_acc"
+        template: "backfill_gold_acc.sql"
+        target_table: "gold.rmv_l5_acc_phys"
+      - phase_id: "gold_unified"
+        template: "sync_gold_unified.sql"
+        target_table: "gold.rmv_l5_task_completion_phys"
