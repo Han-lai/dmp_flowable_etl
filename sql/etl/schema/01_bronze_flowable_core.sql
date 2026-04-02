@@ -3,7 +3,7 @@
 -- 內容: TaskInst, VarInst, ProcInst, ProcDef, IdentityLink
 -- ========================================
 
--- 1. bpm_act_hi_taskinst (Optimized for 6GB RAM Sync)
+-- 1. bpm_act_hi_taskinst (Optimized for PROC_INST_ID_ JOIN queries)
 -- DROP TABLE IF EXISTS bronze.bpm_act_hi_taskinst;
 CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_taskinst
 (
@@ -23,10 +23,14 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_taskinst
     LAST_UPDATED_TIME_ DateTime64(3),
     _batch_id String,
     _extracted_at DateTime64(3),
-    _sync_version UInt64 DEFAULT 1
+    _sync_version UInt64 DEFAULT 1,
+    INDEX idx_start_time START_TIME_ TYPE minmax GRANULARITY 3,
+    INDEX idx_claim_time CLAIM_TIME_ TYPE minmax GRANULARITY 3,
+    INDEX idx_end_time END_TIME_ TYPE minmax GRANULARITY 3
 )
 ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY (ID_, START_TIME_);
+ORDER BY (PROC_INST_ID_, ID_)
+SETTINGS allow_nullable_key = 1;
 
 -- 2. bpm_act_hi_varinst (Optimized for 6GB RAM Sync - No BYTEARRAY_)
 -- DROP TABLE IF EXISTS bronze.bpm_act_hi_varinst;
@@ -41,12 +45,13 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_varinst
     CREATE_TIME_ DateTime64(3),
     _batch_id String,
     _extracted_at DateTime64(3),
-    _sync_version UInt64 DEFAULT 1
+    _sync_version UInt64 DEFAULT 1,
+    INDEX idx_task_id TASK_ID_ TYPE bloom_filter GRANULARITY 3
 )
 ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY (PROC_INST_ID_, NAME_, CREATE_TIME_);
 
--- 3. bpm_act_hi_procinst (流程實例歷史 - 暫維持原樣)
+-- 3. bpm_act_hi_procinst (流程實例歷史 - 優化為 PROC_INST_ID_ 主鍵)
 -- DROP TABLE IF EXISTS bronze.bpm_act_hi_procinst;
 CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_procinst
 (
@@ -76,7 +81,7 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_procinst
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY ID_
+ORDER BY PROC_INST_ID_
 TTL toDate(START_TIME_) + toIntervalYear(1)
 SETTINGS allow_nullable_key = 1;
 
