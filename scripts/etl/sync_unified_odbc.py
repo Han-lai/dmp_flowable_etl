@@ -153,8 +153,8 @@ def get_last_watermark(client, table_name):
 
 
 def get_source_min_time(client, config):
-    logger.info("  [ODBC Safety] Skipping SELECT min() to prevent full table memory scan. Using default 2025-10-01")
-    return "2025-10-01 00:00:00"
+    logger.info("  [ODBC Safety] Using default historical floor 2025-01-01 00:00:00")
+    return "2025-01-01 00:00:00"
 
 
 def sync_batch(client, config, start_str, end_str):
@@ -246,6 +246,9 @@ def sync_full(client, config):
     logger.info(f"Full Syncing: {target}")
     select_clause = "*" if cols == '*' else cols
     QUERY_SETTINGS = "SETTINGS max_execution_time = 3600, odbc_bridge_use_connection_pooling = 1"
+
+    # Always truncate before full sync to ensure 1:1 parity and clean slate
+    client.command(f"TRUNCATE TABLE IF EXISTS {target}")
 
     if range_batches and range_col:
         logger.info(f"  [Range Batch] Using {range_col} ranges ({len(range_batches)} batches) to avoid ODBC buffer overflow")

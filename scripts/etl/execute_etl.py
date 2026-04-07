@@ -282,7 +282,7 @@ def main():
     parser.add_argument("--daily", action="store_true", help="Auto-process last 7 days")
     parser.add_argument("--status", action="store_true", help="Display progress and row counts")
     parser.add_argument("--reset", action="store_true", help="Truncate tables and clear checkpoints")
-    parser.add_argument("--start", type=str, default="2025-10-01", help="Start date (YYYY-MM-DD)")
+    parser.add_argument("--start", type=str, default="2025-01-01", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=datetime.date.today().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
     parser.add_argument("--step-days", type=int, default=10, help="Window size for memory safety")
     parser.add_argument("--low-ram", action="store_true", help="Enable 6GB RAM optimization")

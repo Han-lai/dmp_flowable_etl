@@ -20,7 +20,7 @@ CH_CONFIG = {
     'host': os.getenv('CLICKHOUSE_HOST', '10.146.206.76'),
     'port': int(os.getenv('CLICKHOUSE_PORT', '8123')),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
-    'password': os.getenv('CLICKHOUSE_PASSWORD', 'default'),
+    'password': os.getenv('CLICKHOUSE_PASSWORD', '1qaz2wsx3edc'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 
