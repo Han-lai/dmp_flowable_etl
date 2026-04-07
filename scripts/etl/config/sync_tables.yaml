@@ -4,12 +4,10 @@
 hr_employee:
   source: "APP_SRV_COMMON.dbo.HR_Employee_0202"
   target: "bronze.common_hr_employee"
-  strategy: "batch"
-  time_col: "ModifyDate"
-  step_days: 30
+  strategy: "full"
   engine_ddl: >
-    EmpCode String, DeptCode String, TerminateDate DateTime, ModifyDate DateTime
-  columns: "EmpCode, DeptCode, if(TerminateDate = toDateTime(0), 1, 0) AS IsActive, ModifyDate"
+    EmpCode String, EmpName String, DeptCode Nullable(String), TerminateDate Nullable(DateTime64(3)), ModifyDate Nullable(DateTime64(3))
+  columns: "EmpCode, EmpName, DeptCode, if(TerminateDate IS NULL OR TerminateDate <= toDateTime64('1970-01-01 00:00:00', 3), 1, 0) AS IsActive, ModifyDate"
 
 emp_node_role:
   source: "APP_SRV_COMMON.dbo.EmpNodeRoleMapping_0202"

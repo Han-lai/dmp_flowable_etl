@@ -7,6 +7,7 @@ reset_targets:
   - "silver.mv_fact_task_vx"
   - "gold.rmv_l5_milestone_phys"
   - "gold.rmv_l5_acc_phys"
+  - "gold.rmv_l5_task_completion_phys"
 
 # Computation Stages:
 # Stage 1: Initial pivoting of raw variable instances.
