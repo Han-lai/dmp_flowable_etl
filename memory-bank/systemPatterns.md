@@ -5,31 +5,29 @@
 ```
 MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
          │
-         ▼ sync/ 同步腳本 (Python)
+         ▼ sync/ 同步腳本 (Python + Native ODBC)
          │
     ┌────┴────┐
-    │ Bronze  │  原始資料層 (18 張表)
+    │ Bronze  │  原始資料層 (18 張表，ReplacingMergeTree)
     │ 層      │  - bpm_act_hi_taskinst
     └────┬────┘  - bpm_act_hi_varinst
-         │       - common_hr_employee
-         ▼       - common_mdm_* (主檔)
+         │       
     ┌────┴────┐
-    │ Silver  │  清洗轉換層 (4 張 RMV)
+    │ Silver  │  清洗轉換層 (Refreshable MView + Physical Fact)
     │ 層      │  - mv_varinst_pivoted (變數透視)
-    └────┬────┘  - mv_dim_mfg_five_level (五階維度)
-         │       - mv_fact_task_vx (核心事實表)
-         ▼
+    │         │  - mv_fact_task_vx (核心物理事實表)
+    └────┬────┘  
+         │       
     ┌────┴────┐
-    │ Gold    │  指標聚合層 (ReplacingMergeTree + VIEW)
-    │ 層      │  - rmv_l5_task_completion (L5 完成率)
-    └────┬────┘  - rmv_user_utilization (人員使用率)
+    │ Gold    │  指標聚合層 (Physical Snapshot Tables)
+    │ 層      │  - gold.rmv_l5_task_completion_phys (L5 實體表)
+    │         │  - gold.rmv_l5_acc_phys (ACC 實體表)
+    └────┬────┘  
          │
-         ▼
     ┌─────────┐
     │ Cube.js │  語意層 API (與 Superset 整合)
     └─────────┘
           │
-          ▼
     ┌─────────┐
     │ FastAPI │  進階報表 API (自定義複雜格式)
     └─────────┘
@@ -37,33 +35,31 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 
 ## 關鍵技術決策
 
-### 1. 為什麼用 Refreshable MView 而非原生增量 MView？
-- ClickHouse 原生 MView 只在主表 INSERT 時觸發
-- JOIN 表更新時不會觸發 MView 刷新
-- 使用 `REFRESH EVERY 48 HOUR` 確保資料一致性 (2026-02-12 調整)
-- **注意**: 多層級 MView (Silver -> Gold) 刷新存在延遲，執行全量重建腳本時需加入等待緩衝 (`sleep`) 以避免讀取空資料。
+### 1. 為什麼從 JDBC 遷移至 Native ODBC？ (2026-03-27)
+- **穩定性**: 解決 JDBC-bridge 頻繁發生的 Java Heap Space OOM 問題。
+- **效能**: 使用 `msodbcsql18` 原生驅動，降低資料轉換開銷。
+- **解耦**: 移除對 Java 環境的依賴，簡化 Docker 容器架構。
 
-### 2. 資料保留策略
-- 使用 TTL 設定：`TTL snapshot_date + INTERVAL 1 YEAR`
-- 資料保留 365 天
+### 2. ODBC 死鎖 (Deadlock) 繞過方案
+- **問題**: `odbc()` 表函數在讀取主檔 (如 `hr_employee`) 時，會因 MS-ODBC 動態探測 Schema 導致卡死。
+- **解法**: 使用 `CREATE TABLE ... ENGINE = ODBC` 硬性定義 DDL，阻止驅動執行耗時的 Metadata 探測。
 
-### 3. Checkpoint-based Computation (故障自癒計算模式)
-- **定義**: 在 Python (`execute_etl.py`) 中透過 `bronze.etl_checkpoint` 記錄每個運算時間視窗的狀態。
-- **實作**: 
-    - 階段區分：分為 `silver_varinst_pivoted` 與 `gold_task_completion`。
-    - 斷點續傳：程式失敗後重新執行，自動跳過已成功的視窗。
-    - **重刷機制**: 透過 `--reset` 或 `--backfill` 指定時間區間，配合 `ReplacingMergeTree` 實現冪等更新。
+### 3. 計算架構 (Windowed Computation)
+- **實作**: 透過 `bronze.etl_checkpoint` 記錄每個運算時間視窗的狀態。
+- **10-Day Windowing**: 針對 Server 76 的 6GB RAM 限制，將補分運算切分為 10 日一組的滾動視窗，確保長週期 (15個月) 運算不崩潰。
+- **低記憶體模式 (--low-ram)**: 被動限制 ClickHouse 執行緒與啟用磁碟溢出 (Spill to disk)，優先保證系統穩定性。
+- **斷點續傳**: 程式失敗後自動從最後一個成功的 Checkpoint 續跑。
 
-### 4. 重複資料處理
-- 使用 `ReplacingMergeTree` 引擎。
-- 原則：**以同步版本 (`_sync_version`) 作為版本號**，確保多次同步後僅保留最新資料，消滅 DELETE 導致的性能負擔。
+### 4. 重複資料處理 (ReplacingMergeTree)
+- 使用 `ReplacingMergeTree(_sync_version)`。
+- **優點**: 支援分批次 (Batch) 寫入相同的主鍵，並自動保留最新版本，消滅 DELETE 性能負擔。
  
 ### 5. 指標計算與對齊模式 (Metric & Parity Patterns)
-- **Any-Event Filter**: 為了與 Baseline 核對，不僅統計 Task 節點，還納入所有在 `ACT_HI_TASKINST` 中有活動記錄的關聯事件。
-- **180 天變數回溯 (Variable Lookback)**: 針對跨月長週期任務，回溯 180 天內的流程變數，確保 Region/Plant 等維度不缺失。
+- **Any-Event Filter**: 納入所有在 `ACT_HI_TASKINST` 中有活動記錄的關聯事件以對齊 Baseline。
+- **180 天變數回溯**: 確保長週期任務的維度 (Region/Plant) 不缺失。
 - **金層實體表與視圖 (Gold 2-Tier Architecture)**: 
-    - `gold.rmv_l5_task_completion_phys`: 實體表，使用 **`ReplacingMergeTree`** 儲存冪等快照，避免歷史回補時發生 Double-count 和 OOM。
-    - `gold.rmv_l5_task_completion`: 對接視圖，整合實體表數據並提供最終防禦性去重給 Cube.js/Superset，實現「數據與流量隔離」。
+    - `gold.rmv_l5_task_completion_phys`: 實體表，儲存冪等快照。
+    - `gold.rmv_l5_task_completion`: 視圖層，提供給 Cube.js，實現讀寫隔離。
 - **ACC 滾動脫鉤 (ACC Decoupling)**: 7 天滾動指標 (ACC) 因涉及 `uniqExact` 的跨天去重，不再與 Todo/Doing/Done 的每日快照混合聚合，而是透過獨立的 `acc_stats` CTE 搭配 `range()` 展開計算，以確保 Baseline 完全精準對齊。
 
 ## Cube.js 設計模式 (Design Patterns)

@@ -36,8 +36,8 @@ END AS is_excluded
 
 ---
 
-## 2. Gold Layer: 指標聚合與時序快照
-在 `gold.rmv_l5_task_completion` 中，我們透過「快照爆炸」實現時序分析。
+## 2. Gold Layer: 指標聚合與物理化
+在 `gold.rmv_l5_task_completion_phys` 中，我們透過「週窗物理化」實現穩定計算。
 
 ### **2.1 快照爆炸機制 (`ARRAY JOIN`)**
 ```sql
@@ -64,7 +64,10 @@ WHERE tasks.task_start_date <= dates.snapshot_date
 
 ---
 > [!NOTE]
-> **維護提醒**：若業務單位修改了 V1/V2 的判定前綴，需在 `04_silver_fact_tasks.sql` 中更新 `CASE` 邏輯並重新執行 `SYSTEM REFRESH`。
+> **維護與更新流程**：本系統已完全轉向物理化 (Physicalization)。若修改了 V1/V2 判定邏輯，需執行以下指令進行全量補分 (Backfill)：
+> ```powershell
+> python scripts/etl/execute_etl.py --backfill --low-ram
+> ```
 
 ---
 **文件維護資訊**
