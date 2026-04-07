@@ -15,9 +15,7 @@ cube(`L5TaskPeriodic`, {
             FROM gold.rmv_l5_task_completion -- 對接 Gold層 視圖 (View) 以確保資料完全聚合
 
             WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter('toString(snapshot_date)')}
-                OR ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d 00:00:00.000000')")}
-                OR ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%dT00:00:00.000Z')")}
+                ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter('snapshot_date')}
             )
 
               AND ${FILTER_PARAMS.L5TaskPeriodic.diffRegion.filter('region')}
@@ -133,10 +131,9 @@ cube(`L5TaskPeriodic`, {
 
     dimensions: {
         periodName: { type: `string`, sql: `period_name`, title: '週期/日期' },
-        // 將 type 改為 string 並格式化，避免 Superset 帶入 T00:00:00.000Z 導致 ClickHouse Date 轉換失敗
         snapshotDate: {
-            type: `string`,
-            sql: `formatDateTime(filter_date, '%Y-%m-%d')`,
+            type: `time`,
+            sql: `filter_date`,
             title: '日期篩選(決定 Anchor)'
         },
         realSnapshotDate: { type: `time`, sql: `snapshot_date_real`, title: '實際資料日期' },
