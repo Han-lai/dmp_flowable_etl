@@ -35,5 +35,5 @@ pipeline_stages:
         template: "backfill_gold_acc.sql"
         target_table: "gold.rmv_l5_acc_phys"
       - phase_id: "gold_unified"
-        template: "sync_gold_unified.sql"
+        template: "backfill_gold.sql"
         target_table: "gold.rmv_l5_task_completion_phys"
