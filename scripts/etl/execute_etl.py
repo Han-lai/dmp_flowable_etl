@@ -192,11 +192,7 @@ def execute_computation_pipeline(client, args):
         windows.append((curr, e))
         curr = next_curr
 
-    # Load Templates
-    pivot_template = load_sql_template('backfill_pivot.sql')
-    silver_tpl = load_sql_template('backfill_silver.sql')
-    exclusion_sql = load_sql_template('backfill_exclusion.sql')
-    gold_tpl = load_sql_template('backfill_gold.sql')
+    # Templates are loaded dynamically from pipeline_config.yaml (see loop below)
 
     def run_safe(phase_id, sql_tpl, start_dt, end_dt, target_table=None):
         """Recursive function to process windows with auto-split on OOM (supports down to hours)."""

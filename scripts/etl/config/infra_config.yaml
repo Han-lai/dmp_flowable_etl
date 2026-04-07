@@ -6,6 +6,7 @@ databases:
   - bronze
   - silver
   - gold
+  - ops_metrics
 
 # Ordered list of DDL files to deploy
 # File name and its human-readable description for logging
