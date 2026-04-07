@@ -1,75 +1,59 @@
-# ETL 腳本工具目錄 (scripts/etl)
+# ETL 工具集 (scripts/etl) - ODBC 穩定版
 
-此目錄包含負責從來源系統 (MSSQL) 抽取資料、清洗並轉換至 ClickHouse (Bronze, Silver, Gold) 的核心工具。
+此目錄包含 DMP Flowable 數據流水線（Data Pipeline）的核心執行工具。目前已全面遷移至 **原生 ODBC 同步架構**，徹底解決了舊版 JDBC Bridge 的穩定性與記憶體問題。
 
-## 資料流概覽 (Data Flow Overview)
+## 💡 資料流架構 (Architecture)
 
-本專案的 ETL 流程主要是將資料從 **MSSQL (QAS/Production)** 抽取至 **ClickHouse Bronze 層**，並透過以下技術棧實現：
-1. **來源端**: MSSQL (包含 APP_SRV_BPM 與 APP_SRV_COMMON 資料庫)。
-2. **傳輸機制**: 透過 **ClickHouse JDBC Bridge** (資料源名稱：`mssql_master`) 進行遠端查詢。
-3. **目標端**: ClickHouse Bronze Layer (作為 ODS 原始資料層)。
-
-## 核心執行腳本 (Core Scripts)
-
-### 1. execute_etl.py - 結構建立與管理
-負責管理資料庫的架構 (Schema)。它的核心功能是讀取並執行 sql/etl/ 下的 SQL 檔案，確保 ClickHouse 端的表格結構（包含 Bronze 原始表、Silver 轉換視圖、Gold KPI 報表）依序正確建立。
-- **僅建立缺表**: python execute_etl.py --skip-existing (推薦日常用法，偵測到表已存在則跳過)
-- **強制重建**: python execute_etl.py --force (會執行 DROP TABLE，適合架構大改時使用)
-- **狀態檢查**: python execute_etl.py --status (統計當前資料庫各層級表格的筆數與狀態)
-
-### 2. sync_unified.py - 資料同步主體
-負責資料的搬運與同步。透過 JDBC Bridge 連接 MSSQL，處理資料型別轉換、增量同步邏輯 (Watermark) 以及針對大表的切片 (Batching) 同步。
-
-#### 同步表清單 (Synced Tables)
-
-目前的同步對照表如下：
-
-| 來源系統 (MSSQL) | 目標系統 (ClickHouse) | 同步策略 |
-| :--- | :--- | :--- |
-| APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108 | bronze.bpm_act_hi_taskinst | batch |
-| APP_SRV_BPM.dbo.ACT_HI_VARINST_0108 | bronze.bpm_act_hi_varinst | batch |
-| APP_SRV_BPM.dbo.ACT_HI_PROCINST_0108 | bronze.bpm_act_hi_procinst | batch |
-| APP_SRV_BPM.dbo.ACT_HI_IDENTITYLINK | bronze.bpm_act_hi_identitylink | batch |
-| APP_SRV_BPM.dbo.ACT_RE_PROCDEF_0108 | bronze.bpm_act_re_procdef | full |
-| APP_SRV_COMMON.dbo.HR_Employee_0202 | bronze.common_hr_employee | full |
-| APP_SRV_COMMON.dbo.EmpNodeRoleMapping_0202 | bronze.common_emp_node_role_mapping | full |
-| APP_SRV_COMMON.dbo.EmpOrgInfoMapping_0202 | bronze.common_emp_org_info_mapping | full |
-| APP_SRV_COMMON.dbo.EmpUserGroupMapping_0202 | bronze.common_emp_user_group_mapping | full |
-| APP_SRV_COMMON.dbo.UserGroup_0202 | bronze.common_user_group | full |
-| APP_SRV_COMMON.dbo.ProcessRoleUserMapping_0202 | bronze.common_process_role_user_mapping | full |
-| APP_SRV_COMMON.dbo.MDM_LINE_DESC_MASTER_0202 | bronze.common_mdm_line_desc_master | full |
-| APP_SRV_COMMON.dbo.MDM_PROD_AREA_MASTER_0202 | bronze.common_mdm_prod_area_master | full |
-| APP_SRV_COMMON.dbo.MDM_FACTORY_AREA_MASTER_0202 | bronze.common_mdm_factory_area_master | full |
-| APP_SRV_COMMON.dbo.MDM_MFG_SITE_MASTER_0202 | bronze.common_mdm_mfg_site_master | full |
-| APP_SRV_COMMON.dbo.DMPFunctionConfig_0202 | bronze.common_dmp_function_config | full |
-| APP_SRV_COMMON.dbo.DMPFunctionClientMapping_0202 | bronze.common_dmp_function_client_mapping | full |
-
-#### 基本用法
-- **同步所有表**: python sync_unified.py --table all
-- **同步特定表**: python sync_unified.py --table taskinst
-
-#### **時間區間同步 (Time Range Sync)**
-如果是 Strategy: batch 的大表 (如 taskinst, varinst, procinst)，您可以指定區間。
-- **指定日期**: python sync_unified.py --table taskinst --start 2025-10-01 --end 2025-10-10
-- **調整切分步長**: python sync_unified.py --table taskinst --step-days 1 (每天切一包，適合資料極大的情況)
-
-#### **防呆偵測 (Auto Start Date Detection)**
-- **自動起點**: 當您不帶 --start 參數且系統中沒有同步紀錄 (Watermark) 時，程式會自動透過 JDBC Bridge 查詢 MSSQL 來源端該表的最早紀錄時間作為起始點。這確保了同步會從有資料的第一天開始執行，避免從系統預設的 1970 年開始無意義的跑批。
-
-## 自動化封裝 (Wrappers)
-
-- **init_pipeline.sh**: 首次部署專用。依序呼叫 execute_etl.py 建立各層級結構，再執行 sync_unified.py 進行全量同步。
-- **daily_etl_wrapper.sh**: 日常排程專用。僅執行 sync_unified.py 進行增量資料更新。
+1.  **數據抽取 (Phase 1)**: 使用 `sync_unified_odbc.py` 透過 `ENGINE = ODBC` 直接從 MSSQL 抓取數據至 ClickHouse **Bronze 層**。
+2.  **數據轉換 (Phase 2)**: 使用 `execute_etl.py` 分兩階段進行分析計算：
+    *   **Stage 1**: 執行流程變數的轉置（Dimension Pivot）。
+    *   **Stage 2**: 執行核心事實表（Fact Tasks）與金層指標（Gold KPI）的物理化存儲。
 
 ---
 
-## 維運與疑難排解 (Troubleshooting)
+## 🛠️ 核心工具說明
 
-### 1. 欄位不匹配 (Columns mismatch)
-若來源端 MSSQL 增加欄位，請修改 sql/etl/ 下對應的 .sql 檔案，然後執行 python execute_etl.py 重建表格（或手動使用 ALTER TABLE 增加欄位）。
+### 1. `setup_schema.py` - 基礎架構初始化
+在首次部署或 Schema 變更時執行。它會根據 `config/infra_config.yaml` 的定義，自動建立資料庫與所有必要的資料表結構。
+*   **用法**: `python setup_schema.py`
+*   **參數**: `--force` (強制重建所有表，會刪除現有數據，請謹慎使用)。
 
-### 2. 進度重置 (Watermark Reset)
-若想讓某張表重新從頭同步，請修改 bronze._sync_watermark 中該表的紀錄：
-```sql
-ALTER TABLE bronze._sync_watermark DELETE WHERE table_name = 'bronze.bpm_act_hi_taskinst';
-```
+### 2. `sync_unified_odbc.py` - 統一數據同步引擎
+取代了舊有的 `sync_unified.py`，專為 Server 76 的低記憶體環境設計。
+*   **特性**:
+    *   **適應性分切 (Adaptive Splitting)**: 當遇到大表同步 OOM 時，會自動將時間視窗切細後重試。
+    *   **顯式 DDL 模式**: 透過手動定義欄位類型，避免 ODBC 驅動在探測 Metadata 時造成 MSSQL 鎖表。
+    *   **1:1 對齊**: 對於 MDM/HR 等主檔，採用 `TRUNCATE + INSERT` 策略確保資料與來源端完全一致。
+*   **用法**: `python sync_unified_odbc.py --table all`
+*   **常用參數**: `--start YYYY-MM-DD`, `--step-days 10`。
+
+### 3. `execute_etl.py` - 兩階段分析運算引擎
+負責執行 Silver 與 Gold 層的 SQL 邏輯。
+*   **分段運算**: 支援 `--step-days` 參數，將長時間範圍的計算切分為小視窗，確保在 6GB RAM 下也能處理千萬級數據。
+*   **物理金層 (Physical Gold)**: 不同於舊版的 View，現在會將 KPI 指標直接重寫入物理表 (`_phys`)，大幅提升 BI (Cube.js/Superset) 的查詢效能。
+*   **用法**: `python execute_etl.py --daily --low-ram` (日常增量更新)。
+
+---
+
+### 4. `optimize_tables.py` - 資料唯一性維護工具 (NEW)
+針對 `ReplacingMergeTree` 引擎的自動維護工具。
+*   **功能**: 批次對所有 Bronze/Silver/Gold 表執行 `OPTIMIZE TABLE ... FINAL`。
+*   **目的**: 強制 ClickHouse 合併背景分片，移除因多次同步產生的重複記錄。
+
+---
+
+## 📋 同步策略清單 (Sync Matrix)
+
+| 表名關鍵字 | 策略 | 說明 |
+| :--- | :--- | :--- |
+| `taskinst`, `varinst` | **batch** | 以時間視窗進行增量同步 (預設 10 日)。 |
+| `hr_employee`, `mdm_*` | **full** | 每日全量覆蓋，確保維度資料 100% 準確。 |
+| `procdef`, `user_group` | **full** | 小表全量更新。 |
+
+---
+
+## 🔧 維運事項 (Internal Maintenance)
+
+*   **密碼管理**: ClickHouse 連線資訊統一在腳本頂部的 `CH_CONFIG` 或環境變數中設定。
+*   **Watermark 重置**: 若需重跑特定表的同步，請刪除 `bronze._sync_watermark` 中的對應紀錄。
+*   **欄位變更**: 若 MSSQL 來源端異動欄位，請同步修改 `config/sync_tables.yaml` 並重新執行 `setup_schema.py`。

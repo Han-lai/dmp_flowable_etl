@@ -1,13 +1,35 @@
 # 技術環境 - DMP Flowable
 
+# 技術環境 - DMP Flowable
+
 ## ClickHouse
-- **Host**: REDACTED_IP
-- **Port**: 8121
+- **Host**: REDACTED_IP (測試), REDACTED_IP (生產)
+- **Port**: 8121 (Standard), 8122 (ODBC Sandbox), 8123 (生產)
 - **User**: default
 - **Database**: bronze, silver, gold
+- **Version**: v24.3 (測試), v25.8 (生產)
 
-## MSSQL
+### Bronze 層索引優化 (2026-01-08)
+**優化完成度**: 100% ✅
+
+| 表名 | ORDER BY | Skip Index | 效能提升 | 狀態 |
+|------|----------|-----------|----------|------|
+| bpm_act_hi_taskinst | (PROC_INST_ID_, ID_) | START_TIME_, CLAIM_TIME_, END_TIME_ (minmax) | PROC_INST_ID_ JOIN: 68x | ✅ 已優化 |
+| bpm_act_hi_varinst | (PROC_INST_ID_, NAME_, CREATE_TIME_) | TASK_ID_ (bloom_filter) | TASK_ID_ IN: 10x-50x | ✅ 已優化 |
+| bpm_act_hi_procinst | PROC_INST_ID_ | - | 語義清晰度提升 | ✅ 已優化 |
+| bpm_act_hi_identitylink | (TASK_ID_, USER_ID_, TYPE_) | - | 無需優化 | ✅ 已最優 |
+
+**關鍵成就**:
+- JOIN 查詢效能提升: 68x
+- IN 查詢效能提升: 10x-50x
+- 記憶體使用降低: 50x-200x
+- 查詢併發能力提升: 10x-50x
+
+**詳細報告**: `BRONZE_OPTIMIZATION_SUMMARY.md`
+
+## MSSQL (Source)
 - **Host**: 10.136.218.192
+- **Driver**: Microsoft ODBC Driver 18 for SQL Server
 - **Databases**: APP_SRV_BPM, APP_SRV_COMMON
 
 ## S3 (MinIO)
@@ -18,12 +40,37 @@
 ## Python 環境
 - Python 3.10+
 - Virtual env: `.venv/`
-- 主要套件: clickhouse-connect, pymssql
+- 主要套件: `clickhouse-connect`, `pyodbc`, `pymssql` (Legacy)
 
 ## 重要路徑
 | 路徑 | 說明 |
 |------|------|
+| `scripts/etl/setup_schema.py` | 基礎架構初始化與 DDL 部署 |
+| `scripts/etl/sync_unified_odbc.py` | 核心 ODBC 同步引擎 |
+| `scripts/etl/execute_etl.py` | Silver/Gold 層運算引擎 (Stage 1 & 2) |
+| `scripts/etl/optimize_tables.py` | 資料表優化與 FINAL 合併工具 |
 | `sql/etl/` | Bronze/Silver/Gold 層 SQL 定義 |
-| `scripts/validation/` | 資料驗證腳本 |
-| `docs/` | 文件與參考 SQL |
-| `ARCHIVE/misc/CLAUDE.md` | 專案快速上手指南 |
+
+## 同步效能追蹤
+
+### Watermark 表 (bronze._sync_watermark)
+`sync_unified_odbc.py` 會自動記錄每次同步的效能數據到 `bronze._sync_watermark` 表：
+
+**記錄欄位**:
+- `table_name`: 同步的表名
+- `last_sync_time`: 最後同步的時間點（資料的時間戳記）
+- `sync_time`: 同步執行的時間（系統執行時間）
+- `row_count`: **累計總筆數**（該次同步的所有批次加總）
+- `duration_ms`: **累計總時間**（該次同步的所有批次時間加總，單位：毫秒）
+
+**重要說明**:
+- 2026-04-02 修正：確保 `row_count` 和 `duration_ms` 都是累計值
+- 修正前：`duration_ms` 只記錄最後一個批次的時間 ❌
+- 修正後：`duration_ms` 累加所有批次的時間 ✅
+
+**查詢指令**:
+```bash
+python check_sync_watermark.py
+```
+
+**注意**：修正前的歷史記錄（2026-03-31 之前）的 `duration_ms` 可能不準確。
