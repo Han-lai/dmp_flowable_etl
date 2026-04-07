@@ -21,14 +21,14 @@ SELECT
     END AS task_status,
     
     CASE 
-        WHEN COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') = 'DG3' 
-             AND substring(COALESCE(mv_varinst_pivoted.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
+        WHEN COALESCE(NULLIF(v_pivot.varinst_plant, ''), mdm.plant_code, '') = 'DG3' 
+             AND substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
         THEN 'V1'
         WHEN (
-               COALESCE(NULLIF(mv_varinst_pivoted.varinst_factory, ''), mdm.factory_code, '') LIKE '%NPE%' 
-               OR COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') LIKE '%NPE%'
+               COALESCE(NULLIF(v_pivot.varinst_factory, ''), mdm.factory_code, '') LIKE '%NPE%' 
+               OR COALESCE(NULLIF(v_pivot.varinst_plant, ''), mdm.plant_code, '') LIKE '%NPE%'
              )
-             AND substring(COALESCE(mv_varinst_pivoted.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
+             AND substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
         THEN 'V1'
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
         WHEN t.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
@@ -36,30 +36,30 @@ SELECT
         ELSE COALESCE(substring(t.TASK_DEF_KEY_, 1, 2), 'Unknown')
     END AS vx_type,
     
-    COALESCE(NULLIF(mv_varinst_pivoted.varinst_region, ''), mdm.region_code, plant_mdm.region_code, 'UNKNOWN') AS region,
-    COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, 'UNKNOWN') AS plant,
-    COALESCE(NULLIF(mv_varinst_pivoted.varinst_factory, ''), mdm.factory_code, 'UNKNOWN') AS factory,
-    COALESCE(NULLIF(mv_varinst_pivoted.varinst_lineName, ''), mdm.line_name, 'UNKNOWN') AS line,
+    COALESCE(NULLIF(v_pivot.varinst_region, ''), mdm.region_code, plant_mdm.region_code, 'UNKNOWN') AS region,
+    COALESCE(NULLIF(v_pivot.varinst_plant, ''), mdm.plant_code, 'UNKNOWN') AS plant,
+    COALESCE(NULLIF(v_pivot.varinst_factory, ''), mdm.factory_code, 'UNKNOWN') AS factory,
+    COALESCE(NULLIF(v_pivot.varinst_lineName, ''), mdm.line_name, 'UNKNOWN') AS line,
     
-    CASE WHEN mv_varinst_pivoted.varinst_region != '' THEN 'VARINST' 
+    CASE WHEN v_pivot.varinst_region != '' THEN 'VARINST' 
          WHEN mdm.region_code IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS region_source,
-    CASE WHEN mv_varinst_pivoted.varinst_plant != '' THEN 'VARINST'
+    CASE WHEN v_pivot.varinst_plant != '' THEN 'VARINST'
          WHEN mdm.plant_code IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS plant_source,
-    CASE WHEN mv_varinst_pivoted.varinst_factory != '' THEN 'VARINST'
+    CASE WHEN v_pivot.varinst_factory != '' THEN 'VARINST'
          WHEN mdm.factory_code IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS factory_source,
-    CASE WHEN mv_varinst_pivoted.varinst_lineName != '' THEN 'VARINST'
+    CASE WHEN v_pivot.varinst_lineName != '' THEN 'VARINST'
          WHEN mdm.line_name IS NOT NULL THEN 'MDM' ELSE 'MISSING' END AS line_source,
     
     multiIf(tb.LONG_ = 1, 1, 
             (t.TASK_DEF_KEY_ LIKE 'E%') OR (t.TASK_DEF_KEY_ LIKE 'C%'), 1, 
-            (COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'Q%') OR (COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'R%'), 1, 
+            (COALESCE(v_pivot.varinst_moNumber, '') LIKE 'Q%') OR (COALESCE(v_pivot.varinst_moNumber, '') LIKE 'R%'), 1, 
             (t.NAME_ LIKE '%Notify%') OR (t.NAME_ LIKE '%Dummy%'), 1, 
             0) AS is_excluded,
     multiIf(tb.LONG_ = 1, 'bypass',
             t.TASK_DEF_KEY_ LIKE 'E%', 'system_node',
             t.TASK_DEF_KEY_ LIKE 'C%', 'system_node',
-            COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'Q%', 'Q_order',
-            COALESCE(mv_varinst_pivoted.varinst_moNumber, '') LIKE 'R%', 'R_order',
+            COALESCE(v_pivot.varinst_moNumber, '') LIKE 'Q%', 'Q_order',
+            COALESCE(v_pivot.varinst_moNumber, '') LIKE 'R%', 'R_order',
             t.NAME_ LIKE '%Notify%', 'notify_task',
             t.NAME_ LIKE '%Dummy%', 'dummy_task',
             '') AS exclude_reason,
@@ -69,7 +69,7 @@ SELECT
     
     t.TASK_DEF_KEY_ AS task_definition_key,
     t.NAME_ AS task_name,
-    mv_varinst_pivoted.varinst_moNumber AS mo_number,
+    v_pivot.varinst_moNumber AS mo_number,
     t.PROC_INST_ID_ AS proc_inst_id,
     now() AS _mview_update_time
 FROM bronze.bpm_act_hi_taskinst AS t
@@ -82,13 +82,13 @@ LEFT JOIN (
            OR (CLAIM_TIME_ >= '{start_ts}' AND CLAIM_TIME_ <= '{end_ts}')
            OR (END_TIME_ >= '{start_ts}' AND END_TIME_ <= '{end_ts}')
     )
-) AS mv_varinst_pivoted ON t.PROC_INST_ID_ = mv_varinst_pivoted.PROC_INST_ID_
-LEFT JOIN silver.mv_dim_mfg_five_level AS mdm ON (mv_varinst_pivoted.varinst_lineName = mdm.line_name) AND (mv_varinst_pivoted.varinst_plant = mdm.plant_code)
+) AS v_pivot ON t.PROC_INST_ID_ = v_pivot.PROC_INST_ID_
+LEFT JOIN silver.mv_dim_mfg_five_level AS mdm ON (v_pivot.varinst_lineName = mdm.line_name) AND (v_pivot.varinst_plant = mdm.plant_code)
 LEFT JOIN (
     SELECT DISTINCT plant_code, region_code 
     FROM silver.mv_dim_mfg_five_level 
     WHERE plant_code != '' AND region_code IS NOT NULL
-) AS plant_mdm ON COALESCE(NULLIF(mv_varinst_pivoted.varinst_plant, ''), mdm.plant_code, '') = plant_mdm.plant_code
+) AS plant_mdm ON COALESCE(NULLIF(v_pivot.varinst_plant, ''), mdm.plant_code, '') = plant_mdm.plant_code
 LEFT JOIN bronze.common_hr_employee AS he ON t.ASSIGNEE_ = he.EmpCode
 LEFT JOIN (
     -- Only load needed task variables into join RAM
