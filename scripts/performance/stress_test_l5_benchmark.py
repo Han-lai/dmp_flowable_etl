@@ -33,13 +33,13 @@ CH_USER     = "default"
 CH_PASSWORD = "REDACTED_PASSWORD"
 CH_DATABASE = "gold"
 
-# 壓測參數
-CONCURRENCY_LEVELS = [10]           # 先執行 10 人併發測試
+# 壓測參數 (包含 10, 50, 100 併發階梯)
+CONCURRENCY_LEVELS = [10, 50, 100]
 ITERATIONS         = 100            # 每階段總共執行 100 次查詢
 RANDOMIZE          = 1              # 1 = 隨機抽取 SQL 執行
 
-# 資料表名稱
-TABLE = "gold.rmv_l5_task_completion_v2"
+# 資料表名稱 (對接官方 Gold Layer 視圖)
+TABLE = "gold.rmv_l5_task_completion"
 
 # 輸出檔案路徑
 SCRIPT_DIR   = Path(__file__).parent
