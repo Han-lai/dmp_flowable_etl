@@ -3,10 +3,28 @@
 > [!IMPORTANT]
 > **Git Push**: 接下來的任務都不要自動地幫我 push 到 GitHub 當中。 (No automatic pushing to GitHub.)
 
-## 專案當前狀態 (2026-03-10 UPDATE)
-本專案已完成 **L5 Insight API (FastAPI)** 之開發與部署，並實現了 **Split-Stack (服務拆分)** 架構。
+## 專案當前狀態 (2026-04-02 UPDATE)
+本專案已完成 **Bronze 層 ClickHouse 索引優化**與**效能驗證**，並識別可清理的測試/分析檔案。
 
-### 最新完成 (2026-03-16)
+### 最新完成 (2026-04-02)
+- **Bronze 層優化完成**:
+  - 完成 Bronze 資料庫重建，應用所有優化設定 (ORDER BY + Skip Index)
+  - 清除 ops_metrics checkpoint，重新執行完整 ETL pipeline
+  - 驗證優化後的 Bronze → Silver → Gold 資料轉換
+- **ETL 效能比較分析**:
+  - Silver 層改善: silver_facts +11.54%, silver_exclusion +18.94%
+  - Gold 層效能下降: gold_milestone -153%, gold_acc -87%
+  - 整體效能: -10.35% (29.63秒 → 32.70秒)
+  - Silver 表資料量減少 61% (7.58M → 2.97M 筆)
+- **專案清理與整理**:
+  - 識別可刪除的測試/分析檔案: scripts/ 34個, 根目錄 21個
+  - 確認 sql/etl/dml/ 所有檔案需保留 (正式使用中)
+  - 所有 DML 檔案已正確使用 bronze.* 資料庫引用
+- **資料庫狀態**:
+  - bronze: 優化後的新資料庫 (52.88M 筆)
+  - bronze_backup: 舊版資料庫備份 (60.63M 筆)
+
+### 先前完成 (2026-03-16)
 - **L5 效能與區域修復**:
   - 優化 `ARRAY JOIN` 邏輯，大幅降低查詢負載與 OOM 風險。
   - 實作多階層區域關聯，將全量報表中的 `UNKNOWN` 降至 0。
@@ -15,11 +33,12 @@
 - **Git 結構化 Commit**:
   - 將 Perf、Docs、Fix 拆分推行至 GitLab。
 
-### 先前修復 (2026-02-26)
+### 先前修復 (2026-02-26) [已簡化於 2026-04-15]
 - **Vx 歸屬邏輯修復 (解決 V1 掛零異常)**:
   - **問題**: NPE 與 DG3 廠區的 V1 資料短少 (甚至為 0)，且全部湧入 V3 造成數量膨脹。
   - **根源**: Silver 層 `vx_type` 判斷序列將 `TASK_DEF_KEY_` 優先級置於頂層，導致本該由工單號 (MO) 強制轉為 V1 的特權工單被 `V3_` 開頭的自身屬性騎劫。
-  - **解決**: 重新實作廠區限定之過濾白名單 (`Plant = DG3` 或 `Plant LIKE %NPE%`)。確保特定工單前綴 (196, 315 等) 優先轉換為 V1，並實機比對確認千筆以上的懸案任務已正確歸屬。
+  - **解決**: 新增特定工單號規則，確保工單前綴 (196, 199, 200, 210, 212, 213) 優先轉換為 V1。
+  - **2026-04-15 更新**: 簡化邏輯，移除冗餘的 DG3/NPE 廠區限制條件。
 - **MDM 維度對應修復 (異廠同名線段)**: 
   - **問題**: Superset 上 DG3 廠區的 ST02 等線體在選擇 `Region: CNS` 時無資料。
   - **根源**: MDM 主檔中存在多條 `ST02`，分別隸屬 WJ5 (華東) 與 DG3 (華南)。Silver 視圖建構時僅依賴 `LineName` 去重，導致 DG3 誤判為 CNE。
@@ -104,12 +123,15 @@ python scripts/validation/data_explore/quick_stats.py
 ## 待辦事項 (Backlog)
 
 ### 已完成修正
+- **2026-04-02**: Bronze 層優化完成與 ETL 效能驗證
+- **2026-04-02**: 識別可清理的測試/分析檔案
 - **2026-03-10**: L5 Insight API (FastAPI) Deployment & Split-Stack Architecture.
 - **2026-03-10**: Production Naming Transition (V2 Removal) Across Docs & Code.
 - **2026-02-26**: Vx Attribution Logic Fix (DG3/NPE V1 vs V3 Correction).
 
 ### 其他待辦
+- [ ] **Gold 層效能調查**: 調查 Gold 層效能下降原因 (資料量減少但查詢變慢)
+- [ ] **專案清理**: 清理測試/分析檔案 (scripts/ 34個, 根目錄 21個)
 - [ ] **VM 驗證**: 確認 API 在正式 VM 環境中的效能與 Portainer 通訊穩定度。
 - [ ] **任務二**: 驗證 **L7 人員使用率 (User Utilization)** 指標 (目前仍暫緩)。
 - [ ] 監控背景 REFRESH 任務的效能負擔。
-

@@ -1,18 +1,21 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-04-07
+**最後更新**: 2026-04-14
 
 ---
 
 ## 🎯 當前焦點 (Current Focus)
 
 ### ⏩ 進行中
-- **性能監控**: 觀察 Silver/Gold 全面重建後的產線數據加載速度。
-- **文件維護**: 持續優化 ODBC 版技術文件中的圖表與範例代碼。
+- **運營監控**: 觀察 Server 76 實體化金層上線後的業務查詢穩定度與排隊機制運作狀況。
 
 ### ✅ 近期已解決
+- **OOM 危機解除與架構升級**: 成功由 MVIEW 轉型為 Physical Gold Layer，解決 76 營運主機高壓存取崩潰問題。
+- **高併發壓測驗證**: 完成 100 人併發效能驗證 (QPS達84.58, RAM足跡<5 MiB, P99延遲~0.61s)。
+- **架構盤點與文件標準化**: 完成設計書改版，彙整 `execute_etl.py` 操作邏輯與 Mermaid 架構圖。
+- **資安追蹤**: 成功溯源 `scripts/security_scan_results` Fortify 報表生成流程。
 - **文件雙軌化 (Dual-Layering)**: 完成 `docs/` 資料夾整理，建立 `legacy/` 存檔 JDBC 舊版文件，並將 ODBC 文件提升為標準命名的現行文件。
-- **ODBC 技術文件精進**: 建立 `02_ClickHouse_ODBC_Setup.md` 與更新 v5.0 架構總覽，全面對應現行 Python 同步機制。
+- **ODBC 技術文件精進**: 建立 `ClickHouse_ODBC_Setup.md` 與更新 v5.0 架構總覽，全面對應現行 Python 同步機制。
 - **Silver/Gold 全面重建**: 完成 2025-01-01 至今的完整資料 Backfill。
 - **SQL 關鍵修復**: 解決 `backfill_silver.sql` 別名衝突與 HR `EmpName` 缺失問題。
 - **ODBC 管線遷移**: 成功棄用 JDBC Bridge，改採原生 ODBC 驅動。
@@ -67,5 +70,7 @@
 - [x] L5 指標業務邏輯深度校正 (Attribution, Snapshot, Acc)
 - [x] L5 Gold 維度修復 (Race Condition Fix)
 - [x] Cube.js 週期性報表 X 軸自動排序支援
+- [x] 完成實體化金層(Physical Gold Layer)架構轉換與效能壓測驗證
+- [x] 確認 ETL Pipeline 執行細節與 Server 76 架構對齊
 - [ ] 任務二：驗證 L7 人員使用率 (User Utilization) 指標 (暫緩)
-- [ ] 監控全自動刷新定時器的資源消耗
+- [ ] 觀察實際上線後的查詢佇列穩定度
