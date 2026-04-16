@@ -21,18 +21,14 @@ SELECT
     END AS task_status,
     
     CASE 
-        WHEN COALESCE(NULLIF(v_pivot.varinst_plant, ''), mdm.plant_code, '') = 'DG3' 
-             AND substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
+        -- 規則 1: 特定工單號 → V1
+        WHEN substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213')
         THEN 'V1'
-        WHEN (
-               COALESCE(NULLIF(v_pivot.varinst_factory, ''), mdm.factory_code, '') LIKE '%NPE%' 
-               OR COALESCE(NULLIF(v_pivot.varinst_plant, ''), mdm.plant_code, '') LIKE '%NPE%'
-             )
-             AND substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213','315') 
-        THEN 'V1'
+        -- 規則 2-4: TASK_DEF_KEY_ 前綴匹配
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
         WHEN t.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
         WHEN t.TASK_DEF_KEY_ LIKE 'V3%' THEN 'V3'
+        -- 規則 5: 預設
         ELSE COALESCE(substring(t.TASK_DEF_KEY_, 1, 2), 'Unknown')
     END AS vx_type,
     
