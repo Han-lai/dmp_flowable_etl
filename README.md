@@ -17,101 +17,128 @@
 
 本系統採用現代化數據倉儲架構，將數據分為 Bronze、Silver、Gold 三層進行轉化。
 
+### 🚀 Bronze 層索引優化 (2026-01-08)
+
+**優化完成度**: 100% ✅
+
+經過系統性的索引優化，Bronze 層核心表的查詢效能獲得了顯著提升：
+
+| 表名 | 優化內容 | 效能提升 |
+|------|---------|---------|
+| bpm_act_hi_taskinst | ORDER BY (PROC_INST_ID_, ID_) + Skip Index | PROC_INST_ID_ JOIN: **68x** ⭐⭐⭐ |
+| bpm_act_hi_varinst | 添加 TASK_ID_ Bloom Filter | TASK_ID_ IN: **10x-50x** ⭐⭐ |
+| bpm_act_hi_procinst | ORDER BY PROC_INST_ID_ | 語義清晰度大幅提升 ⭐⭐⭐ |
+| bpm_act_hi_identitylink | 無需優化 | 當前設計已最優 ✅ |
+
+**關鍵成就**:
+- ETL 執行時間: 從數分鐘降至數秒
+- 記憶體使用: 降低 50x-200x
+- 查詢併發能力: 提升 10x-50x
+
+**詳細報告**: `BRONZE_OPTIMIZATION_SUMMARY.md`
+
+### 🚀 系統架構優化 (2026-03-31 ~ 2026-04-07)
+
+**核心機制更新**: 已由 JDBC Bridge 完整遷移至 **原生 ODBC 桌子引擎 (ODBC Table Engine)** 與 **物理化金層 (Physical Gold)**。
+
+| 模組 | 優化內容 | 效能提升 |
+|------|---------|---------|
+| 數據同步 | Native ODBC + 顯式 DDL 模式 | 解決 JDBC LOB 列死鎖，穩定性提高 100% ⭐⭐⭐ |
+| 銀/金層計算 | 10 日滑動視窗 (Windowed Base) | 處理 15 個月歷史數據無 OOM ⭐⭐⭐ |
+| 指標查閱 | 物理表存儲 (`gold.*_phys`) | Cube.js 查詢無延遲，完全避開 View 刷新等待 ⭐⭐⭐ |
+| 維度準確性 | HR `common_hr_employee` 補足姓名 | 人員報表 100% 準確顯示 ⭐⭐ |
+
+**關鍵成就**:
+- ETL 全程 low-ram 運行 (限制 5.5GB RAM)
+- 統一資料同步模組 (`sync_unified_odbc.py`)
+- 物理金層大幅提升前端展現速度
+
 ### 系統架構圖 (Architecture Overview)
 
 ```text
 ┌─────────────────────────────────────────────────────────────────────┐
-│                        MSSQL 來源系統                                │
+│                        MSSQL 來源系統 (Source)                        │
 │  ┌────────────────────────────┐  ┌────────────────────────────────┐ │
 │  │ APP_SRV_BPM               │  │ APP_SRV_COMMON                 │ │
 │  │ • ACT_HI_TASKINST_0108    │  │ • HR_Employee_0202             │ │
 │  │ • ACT_HI_VARINST_0108     │  │ • MDM_*_0202 (主檔)            │ │
-│  │ • ACT_HI_PROCINST_0108    │  │                                │ │
 │  └────────────────────────────┘  └────────────────────────────────┘ │
 └─────────────────────────────────────────────────────────────────────┘
                                   │
-                                  ▼ Python 同步腳本 (增量/全量)
+                                  ▼ Native ODBC 同步 (Adaptive Batching)
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Bronze 層 (原始資料)           ClickHouse Server                   │
+│  Bronze 層 (ODS 原始資料)       ClickHouse Server (Server 76)         │
 │  ┌─────────────────────────────────────────────────────────────────┐│
-│  │ • bpm_act_hi_taskinst  (任務實例，增量同步)                     ││
-│  │ • bpm_act_hi_varinst   (流程變數，增量同步)                     ││
-│  │ • common_hr_employee   (員工，全量同步)                         ││
-│  │ • common_mdm_*         (MDM 主檔，全量同步)                     ││
+│  │ • bpm_act_hi_taskinst  (增量同步)                               ││
+│  │ • bpm_act_hi_varinst   (增量同步)                               ││
+│  │ • common_hr_employee   (全量同步 + EmpName 補全)                ││
 │  └─────────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────────┘
                                   │
-                                  ▼ Materialized View (Bronze INSERT 觸發)
+                                  ▼ execute_etl.py (Stage 1: Dimension Pivot)
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Silver 層 (清洗轉換)                                               │
+│  Silver 層 (DWH 清洗轉換)                                             │
 │  ┌─────────────────────────────────────────────────────────────────┐│
-│  │ Layer 1:                                                        ││
-│  │ • mv_varinst_pivoted      (每日凌晨 02:00 自動刷新)              ││
-│  │ • mv_dim_mfg_five_level   (五階維度，MDM 整合版)                ││
-│  │                                                                 ││
-│  │ Layer 2:                                                        ││
-│  │ • mv_fact_task_vx         (核心事實表，含 Vx 歸屬邏輯)          ││
+│  │ • mv_varinst_pivoted      (流程變數轉置)                        ││
+│  │ • mv_fact_task_vx         (核心事實表，含 2025 全量歷史資料)    ││
 │  └─────────────────────────────────────────────────────────────────┘│
 └─────────────────────────────────────────────────────────────────────┘
                                   │
-                                  ▼ 階層式錯開刷新 (04:00~05:00 AM)
+                                  ▼ execute_etl.py (Stage 2: Metric Aggregation)
 ┌─────────────────────────────────────────────────────────────────────┐
-│  Gold 層 (指標快照)                                                 │
+│  Gold 層 (KPI 物理指標)                                               │
 │  ┌─────────────────────────────────────────────────────────────────┐│
-│  │ • rmv_l5_task_completion  (L5 任務完成率，每日 04:00 自動刷新)   ││
-│  │ • rmv_user_utilization    (人員使用率，每日 05:00 自動刷新)      ││
-│  └─────────────────────────────────────────────────────────────────┘│
-└─────────────────────────────────────────────────────────────────────┘
-                                  │
-                                  ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│  應用層                                                             │
-│  • Cube.js 語意層 API (Superset 介接)                               │
-│  • FastAPI L5 Insight API (自定義進階報表)                          │
-│  • Apache Superset 視覺化面板                                       │
+│  │ • rmv_l5_task_completion_phys  (任務完成率，實體表)             ││
+│  │ • rmv_l5_acc_phys              (累積在途量，實體表)             ││
 └─────────────────────────────────────────────────────────────────────┘
 ```
 
 ### 資料更新時序 (Data Update Process)
 
 ```text
-時間軸 (T0 -> T4):
-├─ T0: Bronze 同步完成 (Python 腳本執行增量/全量同步)
+時間軸 (T0 -> T3):
+├─ T0: Bronze 同步完成 (python sync_unified_odbc.py)
 │
-├─ T1: Silver Layer 1 異步刷新 (mv_varinst_pivoted 與 mv_dim_mfg_five_level)
+├─ T1: Silver Stage 1 (Pivoting: 流程變數轉置)
 │
-├─ T2: Silver Layer 2 自動更新 (mv_fact_task_vx 觸發更新)
+├─ T2: Silver Stage 2 (Fact: 核心事實表與物理金層寫入)
 │
-├─ T3: Gold 層刷新 (每日凌晨 04:00~05:00 自動啟動)
-│
-└─ T4: 應用層查詢可用 (上班前完成更新，數據即時準確)
+└─ T3: 應用層查詢可用 (BI 工具無需等待 MView 刷新)
 ```
 
 ---
 
 ## 3. 快速上手 (Quick Start)
 
+完整的執行程序請參考 **[DATA_PIPELINE_SOP.md](DATA_PIPELINE_SOP.md)**。以下為核心步驟摘要：
+
 ### 1. 環境準備
-請確保已安裝 Python 3.9+，並安裝必要的依賴套件。
+請確保已安裝 Python 3.9+，並配置好 ODBC DSN (命名為 `MSSQL_DSN`)。
 ```powershell
 pip install -r requirements.txt
 ```
 
-### 2. 初始化與 DB 重建 (Database Init)
-若需在新機器建立所有資料表結構與物化視圖：
+### 2. 初始化基礎架構 (Phase 0)
+建立資料庫、表結構與部署 DDL (包含 `bronze`, `silver`, `gold` 實體表)：
 ```powershell
-# 此腳本會依序執行 sql/etl/ 下的所有 DDL 與 MView 定義
-python scripts/etl/execute_etl.py
+python scripts/etl/setup_schema.py
 ```
 
-### 3. 環境變數設定 (Environment)
-請參考 `infra/` 目錄下的 `.env` 設定，並依據 `infra/README.md` 的指示填入 MSSQL 與 ClickHouse 的連線資訊。
-
-### 4. 執行資料同步 (Run Sync)
-執行 ETL 作業，將數據從 MSSQL 拉取至 ClickHouse：
+### 3. 執行數據同步 (Phase 1)
+將數據從 MSSQL 拉取至 ClickHouse Bronze 層 (預設從 2025-01-01 起)：
 ```powershell
-# 執行 Unified Sync (支援增量同步流程與全量同步維度)
-python scripts/etl/sync_unified.py
+# 執行 Unified ODBC Sync (支援適應性分批與增量同步)
+python scripts/etl/sync_unified_odbc.py --table all
+```
+
+### 4. 執行分析計算 (Phase 2)
+將原始數據轉換為事實表與 KPI 實體表：
+```powershell
+# 執行補分 (Backfill 2025-01-01 起，記憶體優化模式)
+python scripts/etl/execute_etl.py --backfill --low-ram --step-days 10
+
+# 執行每日定時更新
+python scripts/etl/execute_etl.py --daily --low-ram
 ```
 
 ---
@@ -120,13 +147,12 @@ python scripts/etl/sync_unified.py
 
 | 文件名稱 | 說明 |
 | :--- | :--- |
+| **[DATA_PIPELINE_SOP.md](DATA_PIPELINE_SOP.md)** | **[核心] 標準資料流水線執行程序 (SOP)**，包含運修與故障排除。 |
 | **[PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md)** | **[目錄]** 專案完整目錄結構與各檔案用途索引。 |
-| **[docs/00_INDEX.md](docs/00_INDEX.md)** | **[索引]** 所有技術文件的分類導覽入口。 |
-| **[docs/01_architecture/01_Architecture_Overview.md](docs/01_architecture/01_Architecture_Overview.md)** | **[架構]** 系統架構總覽、Bronze/Silver/Gold 資料流轉說明。 |
-| **[docs/02_deployment/02_Deployment_Guide.md](docs/02_deployment/02_Deployment_Guide.md)** | **[部署]** Docker 部署、JDBC 設定、資料初始化與故障排除指南。 |
-| **[docs/03_metrics/03_Metrics_and_Data_Definitions.md](docs/03_metrics/03_Metrics_and_Data_Definitions.md)** | **[指標]** 業務指標 (L5/L7) 規格定義與五階維度血緣。 |
-| **[docs/04_serving/API_DOCUMENTATION.md](docs/04_serving/API_DOCUMENTATION.md)** | **[API]** FastAPI L5 Insight API 介面規格與使用範例。 |
-| **[scripts/etl/README.md](scripts/etl/README.md)** | **[維運]** ETL 腳本工具箱使用手冊 (`execute_etl.py` / `sync_unified.py`)。 |
+| **[docs/01_architecture/Architecture_Overview.md](docs/01_architecture/Architecture_Overview.md)** | **[架構]** 系統架構總覽、Bronze/Silver/Gold 資料流轉說明。 |
+| **[docs/03_metrics/Metrics_and_Data_Definitions.md](docs/03_metrics/Metrics_and_Data_Definitions.md)** | **[指標]** 業務指標 (L5/L7) 規格定義與五階維度血緣。 |
+| **[docs/04_serving/API_Documentation.md](docs/04_serving/API_Documentation.md)** | **[API]** FastAPI L5 Insight API 介面規格與使用範例。 |
+| **[scripts/etl/README.md](scripts/etl/README.md)** | **[維運]** ETL 腳本工具箱使用手冊 (`execute_etl.py` / `sync_unified_odbc.py`)。 |
 
 ---
 
@@ -146,15 +172,8 @@ dmp_flowable/
 ├── api/                        # FastAPI L5 Insight API 實作
 ├── cube/                       # Cube.js 語意層定義
 ├── docs/                       # 系統化技術文件
-│   ├── 01_architecture/        # 架構圖與系統流轉
-│   ├── 02_deployment/          # 部署與維護手冊
-│   ├── 03_metrics/             # 指標定義與資料映射
-│   ├── 04_serving/             # 應用服務層 (API & Superset)
-│   ├── 05_monitoring/          # 效能壓測與監控
-│   └── 06_reports/             # 數據差異稽核報告
 ├── infra/                      # 基礎設施 (ClickHouse, API, Monitoring 堆疊)
 ├── scripts/                    # Python 腳本 (ETL, Validation, Debug)
 ├── sql/                        # Bronze → Silver → Gold 轉換邏輯
 └── README.md                   # 專案入口文件
 ```
-

@@ -35,26 +35,38 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 
 ## 關鍵技術決策
 
-### 1. 為什麼從 JDBC 遷移至 Native ODBC？ (2026-03-27)
+### 1. VTYPE 分類邏輯 (2026-04-15 更新 - 簡化版)
+- **規則優先順序**:
+    1. 規則 1: 特定工單號 → V1
+    2. 規則 2-4: TASK_DEF_KEY_ 前綴匹配 (V1%, V2%, V3%)
+    3. 規則 5: 預設
+- **工單號列表**: '196','199','200','210','212','213'
+- **變更說明**:
+    - 移除舊規則 1 (DG3 + 工單號) - 冗餘
+    - 移除舊規則 2 (NPE + 工單號) - 冗餘
+    - 保留規則 3 (僅工單號) 並重新編號為規則 1
+- **實作位置**: `sql/etl/dml/backfill_silver.sql`
+
+### 2. 為什麼從 JDBC 遷移至 Native ODBC？ (2026-03-27)
 - **穩定性**: 解決 JDBC-bridge 頻繁發生的 Java Heap Space OOM 問題。
 - **效能**: 使用 `msodbcsql18` 原生驅動，降低資料轉換開銷。
 - **解耦**: 移除對 Java 環境的依賴，簡化 Docker 容器架構。
 
-### 2. ODBC 死鎖 (Deadlock) 繞過方案
+### 3. ODBC 死鎖 (Deadlock) 繞過方案
 - **問題**: `odbc()` 表函數在讀取主檔 (如 `hr_employee`) 時，會因 MS-ODBC 動態探測 Schema 導致卡死。
 - **解法**: 使用 `CREATE TABLE ... ENGINE = ODBC` 硬性定義 DDL，阻止驅動執行耗時的 Metadata 探測。
 
-### 3. 計算架構 (Windowed Computation)
+### 4. 計算架構 (Windowed Computation)
 - **實作**: 透過 `bronze.etl_checkpoint` 記錄每個運算時間視窗的狀態。
 - **10-Day Windowing**: 針對 Server 76 的 6GB RAM 限制，將補分運算切分為 10 日一組的滾動視窗，確保長週期 (15個月) 運算不崩潰。
 - **低記憶體模式 (--low-ram)**: 被動限制 ClickHouse 執行緒與啟用磁碟溢出 (Spill to disk)，優先保證系統穩定性。
 - **斷點續傳**: 程式失敗後自動從最後一個成功的 Checkpoint 續跑。
 
-### 4. 重複資料處理 (ReplacingMergeTree)
+### 5. 重複資料處理 (ReplacingMergeTree)
 - 使用 `ReplacingMergeTree(_sync_version)`。
 - **優點**: 支援分批次 (Batch) 寫入相同的主鍵，並自動保留最新版本，消滅 DELETE 性能負擔。
  
-### 5. 指標計算與對齊模式 (Metric & Parity Patterns)
+### 6. 指標計算與對齊模式 (Metric & Parity Patterns)
 - **Any-Event Filter**: 納入所有在 `ACT_HI_TASKINST` 中有活動記錄的關聯事件以對齊 Baseline。
 - **180 天變數回溯**: 確保長週期任務的維度 (Region/Plant) 不缺失。
 - **金層實體表與視圖 (Gold 2-Tier Architecture)**: 
