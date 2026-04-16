@@ -26,6 +26,7 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_milestone_phys (
     _refresh_time DateTime64(3) DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(_refresh_time)
+PARTITION BY toYYYYMM(snapshot_date)
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
@@ -44,6 +45,7 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_acc_phys (
     _refresh_time  DateTime64(3) DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(_refresh_time)
+PARTITION BY toYYYYMM(snapshot_date)
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
@@ -67,6 +69,7 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     _refresh_time  DateTime64(3) DEFAULT now()
 )
 ENGINE = ReplacingMergeTree(_refresh_time)
+PARTITION BY toYYYYMM(snapshot_date)
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 

@@ -17,8 +17,7 @@ CREATE TABLE bronze.common_hr_employee (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = MergeTree()
-ORDER BY EmpCode
-TTL toDateTime(_extracted_at) + INTERVAL 1 YEAR;
+ORDER BY EmpCode;
 
 -- ==========================================
 -- 2.2 Organization & Role Mapping Tables
@@ -35,8 +34,7 @@ CREATE TABLE bronze.common_emp_node_role_mapping (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY (EmpCode, NodeCode)
-TTL UpdateTime + INTERVAL 1 YEAR;
+ORDER BY (EmpCode, NodeCode);
 
 -- 2. common_emp_org_info_mapping
 -- DROP TABLE IF EXISTS bronze.common_emp_org_info_mapping;
@@ -50,8 +48,7 @@ CREATE TABLE bronze.common_emp_org_info_mapping (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY (EmpCode, Plant, MFGFactoryId)
-TTL UpdateTime + INTERVAL 1 YEAR;
+ORDER BY (EmpCode, Plant, MFGFactoryId);
 
 -- 3. common_emp_user_group_mapping
 -- DROP TABLE IF EXISTS bronze.common_emp_user_group_mapping;
@@ -64,8 +61,7 @@ CREATE TABLE bronze.common_emp_user_group_mapping (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY (EmpCode, UserGroupId)
-TTL UpdateTime + INTERVAL 1 YEAR;
+ORDER BY (EmpCode, UserGroupId);
 
 -- 4. common_user_group
 -- DROP TABLE IF EXISTS bronze.common_user_group;
@@ -79,8 +75,7 @@ CREATE TABLE bronze.common_user_group (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY (UserGroupId)
-TTL UpdateTime + INTERVAL 1 YEAR;
+ORDER BY (UserGroupId);
 
 -- 5. common_process_role_user_mapping
 -- DROP TABLE IF EXISTS bronze.common_process_role_user_mapping;
@@ -116,8 +111,7 @@ CREATE TABLE bronze.common_mdm_line_desc_master (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY (PROD_AREA_ID, LINE_NAME)
-TTL toDateTime(_extracted_at) + INTERVAL 1 YEAR;
+ORDER BY (PROD_AREA_ID, LINE_NAME);
 
 -- 2. common_mdm_prod_area_master
 -- DROP TABLE IF EXISTS bronze.common_mdm_prod_area_master;
@@ -130,8 +124,7 @@ CREATE TABLE bronze.common_mdm_prod_area_master (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY PROD_AREA_ID
-TTL toDateTime(_extracted_at) + INTERVAL 1 YEAR;
+ORDER BY PROD_AREA_ID;
 
 -- 3. common_mdm_factory_area_master
 -- DROP TABLE IF EXISTS bronze.common_mdm_factory_area_master;
@@ -146,8 +139,7 @@ CREATE TABLE bronze.common_mdm_factory_area_master (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY FACTORY
-TTL toDateTime(_extracted_at) + INTERVAL 1 YEAR;
+ORDER BY FACTORY;
 
 -- 4. common_mdm_mfg_site_master
 -- DROP TABLE IF EXISTS bronze.common_mdm_mfg_site_master;
@@ -158,8 +150,7 @@ CREATE TABLE bronze.common_mdm_mfg_site_master (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY MFG_SITE
-TTL toDateTime(_extracted_at) + INTERVAL 1 YEAR;
+ORDER BY MFG_SITE;
 
 -- 5. common_mdm_mfg_plant_master (User Request: Use for Plant/Factory info)
 -- DROP TABLE IF EXISTS bronze.common_mdm_mfg_plant_master;
@@ -173,8 +164,7 @@ CREATE TABLE bronze.common_mdm_mfg_plant_master (
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY MFG_PLANT_ID
-TTL toDateTime(_extracted_at) + INTERVAL 1 YEAR;
+ORDER BY MFG_PLANT_ID;
 
 -- 2.4 DMP Function Config Tables
 -- ==========================================

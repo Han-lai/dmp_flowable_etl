@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS silver.mv_fact_task_vx (
     _mview_update_time DateTime64(3)
 )
 ENGINE = ReplacingMergeTree(_mview_update_time)
+PARTITION BY toYYYYMM(task_primary_date)
 ORDER BY (task_id)
 TTL task_primary_date + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1;

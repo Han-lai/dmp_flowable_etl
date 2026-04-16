@@ -29,7 +29,9 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_taskinst
     INDEX idx_end_time END_TIME_ TYPE minmax GRANULARITY 3
 )
 ENGINE = ReplacingMergeTree(_sync_version)
+PARTITION BY toYYYYMM(START_TIME_)
 ORDER BY (PROC_INST_ID_, ID_)
+TTL toDate(START_TIME_) + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1;
 
 -- 2. bpm_act_hi_varinst (Optimized for 6GB RAM Sync - No BYTEARRAY_)
@@ -49,7 +51,9 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_varinst
     INDEX idx_task_id TASK_ID_ TYPE bloom_filter GRANULARITY 3
 )
 ENGINE = ReplacingMergeTree(_sync_version)
-ORDER BY (PROC_INST_ID_, NAME_, CREATE_TIME_);
+PARTITION BY toYYYYMM(CREATE_TIME_)
+ORDER BY (PROC_INST_ID_, NAME_, CREATE_TIME_)
+TTL toDate(CREATE_TIME_) + INTERVAL 1 YEAR;
 
 -- 3. bpm_act_hi_procinst (流程實例歷史 - 優化為 PROC_INST_ID_ 主鍵)
 -- DROP TABLE IF EXISTS bronze.bpm_act_hi_procinst;
@@ -81,6 +85,7 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_procinst
     `_sync_version` UInt64 DEFAULT 1
 )
 ENGINE = ReplacingMergeTree(_sync_version)
+PARTITION BY toYYYYMM(START_TIME_)
 ORDER BY PROC_INST_ID_
 TTL toDate(START_TIME_) + toIntervalYear(1)
 SETTINGS allow_nullable_key = 1;
@@ -121,11 +126,12 @@ CREATE TABLE IF NOT EXISTS bronze.bpm_act_hi_identitylink (
     `USER_ID_` Nullable(String),
     `TYPE_` Nullable(String),
     `TASK_ID_` Nullable(String),
-    `CREATE_TIME_` Nullable(DateTime64(3)),
+    `CREATE_TIME_` DateTime64(3),
     `_batch_id` String DEFAULT '',
     `_extracted_at` DateTime64(3) DEFAULT now(),
     `_sync_version` UInt64 DEFAULT 1
 ) ENGINE = ReplacingMergeTree(_sync_version)
+PARTITION BY toYYYYMM(CREATE_TIME_)
 ORDER BY (TASK_ID_, USER_ID_, TYPE_)
-TTL toDate(_extracted_at) + INTERVAL 1 YEAR
+TTL toDate(CREATE_TIME_) + INTERVAL 1 YEAR
 SETTINGS allow_nullable_key = 1;
