@@ -61,9 +61,16 @@ def build_odbc_conn(db_name):
 
 
 def load_configs():
-    # 使用相對路徑尋找同目錄下 config/sync_tables.yaml
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    config_path = os.path.join(base_dir, "config", "sync_tables.yaml")
+    
+    config_name = "sync_tables.yaml"
+    if "--config" in sys.argv:
+        idx = sys.argv.index("--config")
+        if idx + 1 < len(sys.argv):
+            config_name = sys.argv[idx + 1]
+            
+    config_path = os.path.join(base_dir, "config", config_name)
+    logger.info(f"Using layout config: {config_path}")
     
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
@@ -309,6 +316,7 @@ def main():
     parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
     parser.add_argument("--step-days", type=int, default=7, help="Batch size in days")
     parser.add_argument("--step-hours", type=int, default=0, help="Batch size in hours")
+    parser.add_argument("--config", default="sync_tables.yaml", help="YAML config file name in config dir")
     parser.add_argument("--dry-run", action="store_true", help="Print batches without executing")
 
     args = parser.parse_args()
