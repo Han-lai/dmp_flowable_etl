@@ -1,17 +1,19 @@
 # L5 專案完成度與 Superset 定義總表
 
+> **版本說明**：本文件最後更新 2026-04-16，已對齊 Physical Gold Layer 架構與精簡後的 Cube.js V2 模型。
+
 ## 1. L5 專案完成度概覽 (Project Completion Status)
 
-截至 2026-02-09，L5 任務指標專案的核心架構與關鍵指標已完成開發與驗證。
+截至 2026-04-16，L5 任務指標專案的核心架構與關鍵指標已完成開發與驗收（含實體化金層壓測）。
 
 | 項目 (Component) | 狀態 | 說明 (Details) |
 | :--- | :--- | :--- |
-| **ETL 數據流** | ✅ 完成 | 完整覆蓋 Bronze -> Silver -> Gold 層，包含 Refreshable MView 架構。 |
+| **ETL 數據流** | ✅ 完成 | 完整覆蓋 Bronze → Silver → Gold 層，採用 **Physical Gold Layer（實體化金層）** 架構。 |
 | **數據對齊 (Validation)** | ✅ 完成 | 12/25 基準日數據達成三方對齊 (Raw=192, Gold=192)。ACC (在途量) 誤差收斂至 1 筆。 |
-| **Cube.js 架構** | ✅ 完成 | 提供 V1 (JS Logic) 與 V2 (SQL Logic) 雙模型，V2 支援時光機功能。 |
+| **Cube.js 架構** | ✅ 完成 | 精簡為 **V2 單軌模型**（`cube_l5_task_periodic_v2.js` 與 `_v2_pivot.js`），支援時光機功能；V1 模型已歸檔。 |
 | **Superset 支援** | ✅ 完成 | 支援 Pivot Table, Mixed Chart (Dual Axis), Tooltip 顯示。 |
-| **自動化刷新** | ✅ 完成 | Gold 層 MView 已配置後台自動刷新機制。 |
-| **人員利用率 (L7)** | ⏳ 待啟動 | 下階段重點開發項目。 |
+| **自動化刷新** | ✅ 完成 | Physical Gold Layer 以 ETL Pipeline 排程定期重建，保障每日資料一致性。 |
+| **人員利用率 (L7)** | ⏸️ 暫緩 | 下階段重點開發項目，目前優先穩定 L5 監控。 |
 
 ---
 
@@ -21,16 +23,22 @@
 
 ### A. L5 任務週期混合圖 (V1 Standard)
 
-**用途**: 檢視特定時間點 (預設最新) 的 月/週/日 趨勢。
+> [!WARNING]
+> **此圖表設定已過時**。`cube_l5_task_periodic.js`（V1 模型）已於 2026-02-10 歸檔，Superset 中對應的 Dataset 可能失效。**請改用下方 §B V2 版本**。
+
+<details>
+<summary>歷史設定參考（已歸檔）</summary>
 
 | 設定項 (Setting) | 值 (Value) | 備註 |
 | :--- | :--- | :--- |
-| **Dataset** | `L5 Task Periodic` | Cube: `cube_l5_task_periodic.js` |
+| **Dataset** | `L5 Task Periodic` | Cube: `cube_l5_task_periodic.js`（已歸檔）|
 | **Chart Type** | **Mixed Timeseries Chart** | |
 | **X-Axis** | `periodName` | 顯示文字 (Dec., W1, 12-31...) |
 | **Shared Sort By** | `periodSortOrder` | **Ascending** (升冪) |
 | **Query A (Bar)** | **Metrics**: `totalQty` | **不可**設定 Dimension/Group By |
 | **Query B (Line)** | **Metrics**: `doneRate` | 勾選 **Secondary Y Axis** (副軸) |
+
+</details>
 
 ### B. L5 任務週期報表 V2 (Time Machine & 8 Days)
 
