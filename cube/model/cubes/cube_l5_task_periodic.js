@@ -1,23 +1,21 @@
 /**
- * L5 任務完成率 Cube - 標準版 (Updated 2026-03-26)
- * 
- * 核心邏輯: 採用 Time Machine 架構，支援回溯查詢。
- * 資料來源: 連結至 ClickHouse Gold Layer 視圖 (gold.rmv_l5_task_completion)。
- * 備註: 查詢對象為 View 而非 Table，以確保 ReplacingMergeTree 的資料在讀取時透過 FINAL 取得最新版本。
+ * L5 任務完成率 Cube - 標準版 (V3.2 穩定版)
+ * 基準定義:
+ * 1. 指標順序: Total > Todo > Doing > Done > Doing+Done > Acc
+ * 2. 指標邏輯: 存量指標以「週期最後一日」為基準 (Stock Snapshot)
+ * 3. 分母邏輯: 所有粒度統一使用 total_task_bm (7D Rolling 分母已移至 ETL 層計算)
  */
 cube(`L5TaskPeriodic`, {
     sql: `
-    WITH 
+    WITH
         params AS (
-            SELECT 
+            SELECT
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
-            FROM gold.rmv_l5_task_completion -- 對接 Gold層 視圖 (View) 以確保資料完全聚合
-
+            FROM gold.rmv_l5_task_completion_phys
             WHERE (
                 ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter('snapshot_date')}
             )
-
               AND ${FILTER_PARAMS.L5TaskPeriodic.diffRegion.filter('region')}
               AND ${FILTER_PARAMS.L5TaskPeriodic.diffPlant.filter('plant')}
               AND ${FILTER_PARAMS.L5TaskPeriodic.diffFactory.filter('factory')}
@@ -25,120 +23,168 @@ cube(`L5TaskPeriodic`, {
               AND ${FILTER_PARAMS.L5TaskPeriodic.diffVxType.filter('vx_type')}
         ),
         calc_anchor AS (
-            SELECT 
-                CASE 
-                    WHEN max_filtered_date >= sys_today THEN sys_today 
+            SELECT
+                CASE
+                    WHEN max_filtered_date >= sys_today THEN sys_today
                     ELSE max_filtered_date
-                END as anchor_dt,
-                sys_today
+                END as anchor_dt
             FROM params
-        ),
-        base AS (
-            SELECT *
-            FROM gold.rmv_l5_task_completion
-            CROSS JOIN calc_anchor
-            WHERE snapshot_date >= toStartOfMonth(anchor_dt) - INTERVAL 1 MONTH
-              AND snapshot_date <= toLastDayOfMonth(anchor_dt) + INTERVAL 1 MONTH
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffVxType.filter('vx_type')}
         )
 
-    -- A. Month: 加總當月所有任務，但 Acc 只取月底快照
-    SELECT 'Month' as granularity, formatDateTime(anchor_dt, '%b.') as period_name, 1 as sort_order,
-           vx_type, region, plant, factory, line, 
-           anchor_dt as filter_date, anchor_dt as snapshot_date_real,
-           sum(total_task) as total_qty, sum(todo_count) as todo_qty, sum(doing_count) as doing_qty,
-           sum(doing_count + done_count) as doing_done_qty, sum(done_count) as done_qty, 
-           argMax(acc_todo_doing, snapshot_date) as acc_qty,
-           sum(total_task) as acc_total_qty
-    FROM base CROSS JOIN calc_anchor
-    WHERE snapshot_date >= toStartOfMonth(anchor_dt) AND snapshot_date <= anchor_dt
-    GROUP BY vx_type, region, plant, factory, line, anchor_dt, period_name
-
-    UNION ALL
-
-    -- B. Week: 加總當週所有任務，但 Acc 只取週日快照
-    SELECT 'Week' as granularity, concat('W', toString(toWeek(snapshot_date, 1))) as period_name,
-           CASE WHEN toWeek(snapshot_date, 1) = toWeek(anchor_dt, 1) THEN 2
-                WHEN toWeek(snapshot_date, 1) = toWeek(anchor_dt - INTERVAL 7 DAY, 1) THEN 3
-                ELSE 4 END as sort_order,
-           vx_type, region, plant, factory, line,
-           anchor_dt as filter_date, max(snapshot_date) as snapshot_date_real,
-           sum(total_task) as total_qty, sum(todo_count) as todo_qty, sum(doing_count) as doing_qty,
-           sum(doing_count + done_count) as doing_done_qty, sum(done_count) as done_qty, 
-           argMax(acc_todo_doing, snapshot_date) as acc_qty,
-           sum(total_task) as acc_total_qty
-    FROM base CROSS JOIN calc_anchor
-    WHERE (
-        (toWeek(snapshot_date, 1) = toWeek(anchor_dt, 1) AND snapshot_date <= anchor_dt) OR 
-        (toWeek(snapshot_date, 1) = toWeek(anchor_dt - INTERVAL 7 DAY, 1)) OR
-        (toWeek(snapshot_date, 1) = toWeek(anchor_dt - INTERVAL 14 DAY, 1))
-    )
-    GROUP BY granularity, period_name, sort_order, vx_type, region, plant, factory, line, anchor_dt
-
-    UNION ALL
-
-    -- C. Day: 當日任務，但 Acc 使用 7 天滾動總量作為分母
-    SELECT granularity, period_name, sort_order, vx_type, region, plant, factory, line, 
-           filter_date, snapshot_date_real,
-           total_qty, todo_qty, doing_qty, doing_done_qty, done_qty, acc_qty,
-           sum(total_qty) OVER (PARTITION BY vx_type, region, plant, factory, line ORDER BY snapshot_date_real ASC ROWS BETWEEN 6 PRECEDING AND CURRENT ROW) as acc_total_qty
+    SELECT
+        vx_type, region, plant, factory, line,
+        snapshot_date,
+        period_name,
+        granularity,
+        sort_order,
+        anchor_dt as filter_date,
+        total_task_bm,
+        todo_bm,
+        doing_bm,
+        done_bm,
+        acc_bm
     FROM (
-        SELECT 'Day' as granularity, toString(snapshot_date) as period_name,
-               5 + dateDiff('day', snapshot_date, anchor_dt) as sort_order,
-               vx_type, region, plant, factory, line,
-               anchor_dt as filter_date, snapshot_date as snapshot_date_real,
-               total_task as total_qty, todo_count as todo_qty, doing_count as doing_qty,
-               (doing_count + done_count) as doing_done_qty, done_count as done_qty, acc_todo_doing as acc_qty
-        FROM base CROSS JOIN calc_anchor
-        WHERE snapshot_date BETWEEN (anchor_dt - INTERVAL 13 DAY) AND anchor_dt
-    ) AS daily_stream
-    WHERE snapshot_date_real BETWEEN (filter_date - INTERVAL 6 DAY) AND filter_date
+        -- 1. Day (回溯 7 天)
+        SELECT
+            vx_type, region, plant, factory, line, snapshot_date,
+            toString(snapshot_date) as period_name, 'Day' as granularity,
+            5 + dateDiff('day', snapshot_date, ca.anchor_dt) as sort_order,
+            ca.anchor_dt as anchor_dt,
+            total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+        FROM gold.rmv_l5_task_completion_phys
+        CROSS JOIN calc_anchor AS ca
+        WHERE snapshot_date BETWEEN (ca.anchor_dt - INTERVAL 6 DAY) AND ca.anchor_dt
 
-    UNION ALL
+        UNION ALL
 
-    -- D. 專門給過濾器下拉選單看的資料 (Filter List Exposure)
-    SELECT 
-        'FilterRef' as granularity,
-        '' as period_name,
-        99 as sort_order,
-        '' as vx_type, '' as region, '' as plant, '' as factory, '' as line,
-        snapshot_date as filter_date,
-        snapshot_date as snapshot_date_real,
-        0 as total_qty, 0 as todo_qty, 0 as doing_qty,
-        0 as doing_done_qty, 0 as done_qty, 0 as acc_qty,
-        0 as acc_total_qty
-    FROM (SELECT DISTINCT snapshot_date FROM gold.rmv_l5_task_completion)
+        -- 2a. Week (Wx - 當前週: 從週一到 anchor_dt 的所有快照累積)
+        -- 使用 BETWEEN 確保即使 anchor_dt 當天無快照也能取到本週資料
+        SELECT vx_type, region, plant, factory, line, snapshot_date,
+               concat('W', toString(toISOWeek(ca.anchor_dt))) as period_name, 'Week' as granularity,
+               2 as sort_order,
+               ca.anchor_dt as anchor_dt,
+               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt, 3) AND ca.anchor_dt
+
+        UNION ALL
+
+        -- 2b. Week (Wx-1 - 前一週: 該週所有快照累積)
+        SELECT vx_type, region, plant, factory, line, snapshot_date,
+               concat('W', toString(toISOWeek(ca.anchor_dt - INTERVAL 7 DAY))) as period_name, 'Week' as granularity,
+               3 as sort_order,
+               ca.anchor_dt as anchor_dt,
+               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3)
+                                AND toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3) + INTERVAL 6 DAY
+
+        UNION ALL
+
+        -- 2c. Week (Wx-2 - 前兩週: 該週所有快照累積)
+        SELECT vx_type, region, plant, factory, line, snapshot_date,
+               concat('W', toString(toISOWeek(ca.anchor_dt - INTERVAL 14 DAY))) as period_name, 'Week' as granularity,
+               4 as sort_order,
+               ca.anchor_dt as anchor_dt,
+               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3)
+                                AND toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3) + INTERVAL 6 DAY
+
+        UNION ALL
+
+        -- 3. Month (MMM - 當前月: 從月初到 anchor_dt 的所有快照累積)
+        SELECT vx_type, region, plant, factory, line, snapshot_date,
+               formatDateTime(ca.anchor_dt, '%b.') as period_name, 'Month' as granularity,
+               1 as sort_order,
+               ca.anchor_dt as anchor_dt,
+               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        WHERE snapshot_date BETWEEN toStartOfMonth(ca.anchor_dt) AND ca.anchor_dt
+    )
     `,
 
     measures: {
-        totalQty: { type: `sum`, sql: `total_qty`, title: 'QTY: Total' },
-        todoQty: { type: `sum`, sql: `todo_qty`, title: 'QTY: Todo' },
-        doingQty: { type: `sum`, sql: `doing_qty`, title: 'QTY: Doing' },
-        doneQty: { type: `sum`, sql: `done_qty`, title: 'QTY: Done' },
-        doingDoneQty: { type: `sum`, sql: `doing_done_qty`, title: 'QTY: Doing+Done' },
-        accQty: { type: `sum`, sql: `acc_qty`, title: 'QTY: Todo+Doing(Acc)' },
+        // 1. Total Task
+        totalQty: {
+            type: `number`,
+            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.total_task_bm))`,
+            title: 'QTY: Total'
+        },
 
-        doneRate: { type: `number`, sql: `round(sum(done_qty) * 100.0 / nullIf(sum(total_qty), 0), 2)`, title: 'Rate: Done' },
-        doingDoneRate: { type: `number`, sql: `round(sum(doing_done_qty) * 100.0 / nullIf(sum(total_qty), 0), 2)`, title: 'Rate: Doing+Done' },
-        accRate: { type: `number`, sql: `round(sum(acc_qty) * 100.0 / nullIf(sum(acc_total_qty), 0), 2)`, title: 'Rate: Acc (Todo+Doing)' },
+        // 2. Todo (Snapshot)
+        todoQty: {
+            type: `number`,
+            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(${CUBE}.todo_bm), bitmapOr(groupBitmapMergeState(${CUBE}.doing_bm), groupBitmapMergeState(${CUBE}.done_bm))))`,
+            title: 'QTY: Todo'
+        },
+
+        // 3. Doing (Snapshot)
+        doingQty: {
+            type: `number`,
+            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(${CUBE}.doing_bm), groupBitmapMergeState(${CUBE}.done_bm)))`,
+            title: 'QTY: Doing'
+        },
+
+        // 4. Done (Snapshot)
+        doneQty: {
+            type: `number`,
+            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.done_bm))`,
+            title: 'QTY: Done'
+        },
+
+        // 5. Doing + Done
+        doingDoneQty: {
+            type: `number`,
+            sql: `bitmapCardinality(bitmapOr(groupBitmapMergeState(${CUBE}.doing_bm), groupBitmapMergeState(${CUBE}.done_bm)))`,
+            title: 'QTY: Doing+Done'
+        },
+
+        // 6. Todo + Doing (Acc) - 採 7 天滑動視窗定義 (基準日 D)
+        // 資料來源: gold.rmv_l5_acc_phys (backfill_gold_acc.sql 計算的 Rolling 7D bitmap)
+        // 語意: 基準日往前推 6 天內曾有活動，且截至基準日尚未完成的任務
+        accQty: {
+            type: `number`,
+            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.acc_bm))`,
+            title: 'QTY: Todo+Doing(Acc)'
+        },
+
+        // 分母指標: 統一使用 total_task_bm
+        // (7D Rolling 分母的計算已移至 ETL 層，Cube 層暫統一使用快照總量)
+        effectiveDenominator: {
+            type: `number`,
+            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.total_task_bm))`,
+            title: 'Denominator'
+        },
+
+        // Ratios
+        doneRate: {
+            type: `number`,
+            sql: `round(${doneQty} * 100.0 / nullIf(${effectiveDenominator}, 0), 2)`,
+            title: 'Rate: Done'
+        },
+
+        doingDoneRate: {
+            type: `number`,
+            sql: `round(${doingDoneQty} * 100.0 / nullIf(${effectiveDenominator}, 0), 2)`,
+            title: 'Rate: Doing+Done'
+        },
+
+        accRate: {
+            type: `number`,
+            sql: `round(${accQty} * 100.0 / nullIf(${effectiveDenominator}, 0), 2)`,
+            title: 'Rate: Acc (Todo+Doing)'
+        },
 
         periodSortOrder: { type: `max`, sql: `sort_order`, title: '排序用(Hidden)' }
     },
 
     dimensions: {
         periodName: { type: `string`, sql: `period_name`, title: '週期/日期' },
-        snapshotDate: {
-            type: `time`,
-            sql: `filter_date`,
-            title: '日期篩選(決定 Anchor)'
-        },
-        realSnapshotDate: { type: `time`, sql: `snapshot_date_real`, title: '實際資料日期' },
+        snapshotDate: { type: `time`, sql: `filter_date`, title: '日期篩選(決定 Anchor)' },
+        realSnapshotDate: { type: `time`, sql: `snapshot_date`, title: '實際資料日期' },
+        granularity: { type: `string`, sql: `granularity`, title: '粒度' },
 
-        // 五階組織維度
         diffVxType: { type: `string`, sql: `vx_type`, title: 'Vx 類型' },
         diffRegion: { type: `string`, sql: `region`, title: '地區' },
         diffPlant: { type: `string`, sql: `plant`, title: '廠區' },

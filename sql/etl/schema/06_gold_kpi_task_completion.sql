@@ -1,16 +1,19 @@
 -- ========================================
--- 步驟 6: Gold Layer - KPI Task Completion
+-- 步驟 6: Gold Layer - KPI Task Completion (V3 Bitmap Architecture)
 -- 內容: 2-Tier Gold Architecture
---   6a. rmv_l5_milestone_phys  - Todo/Doing/Done 里程碑計數 (中間表)
---   6b. rmv_l5_acc_phys        - 7 天滾動 ACC 計數 (中間表)
+--   6a. rmv_l5_milestone_phys       - Todo/Doing/Done Bitmap 里程碑 (中間表)
+--   6b. rmv_l5_acc_phys             - 7 天滾動 ACC Bitmap (中間表)
 --   6c. rmv_l5_task_completion_phys - Milestone + ACC 合併後的最終主表
---   6d. rmv_l5_task_completion - BI 對接 View (供 Cube.js / Superset)
+--   6d. rmv_l5_task_completion      - BI 對接 View (供 Cube.js / Superset)
 -- 前置: 04_silver_fact_tasks
+-- 引擎: AggregatingMergeTree (支援 bitmap OR 合併，對應 groupBitmapState/groupBitmapMergeState)
 -- ========================================
 
 -- ----------------------------------------
--- 6a. 中間表: Milestone (Todo/Doing/Done)
+-- 6a. 中間表: Milestone (Todo/Doing/Done Bitmap)
 --     由 backfill_gold_milestone.sql 寫入
+--     欄位類型: AggregateFunction(groupBitmap, UInt64)
+--     對應插入: groupBitmapStateIf(cityHash64(task_id), ...)
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS gold.rmv_l5_milestone_phys (
     snapshot_date Date,
@@ -19,20 +22,20 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_milestone_phys (
     plant         String,
     factory       String,
     line          String,
-    total_task    Int64,
-    todo_count    Int64,
-    doing_count   Int64,
-    done_count    Int64,
-    _refresh_time DateTime64(3) DEFAULT now()
+    todo_bm       AggregateFunction(groupBitmap, UInt64),
+    doing_bm      AggregateFunction(groupBitmap, UInt64),
+    done_bm       AggregateFunction(groupBitmap, UInt64),
+    _refresh_time SimpleAggregateFunction(max, DateTime64(3))
 )
-ENGINE = ReplacingMergeTree(_refresh_time)
-PARTITION BY toYYYYMM(snapshot_date)
+ENGINE = AggregatingMergeTree()
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 -- ----------------------------------------
--- 6b. 中間表: ACC (7-Day Rolling Accumulation)
+-- 6b. 中間表: ACC (7-Day Rolling Accumulation Bitmap)
 --     由 backfill_gold_acc.sql 寫入
+--     欄位類型: AggregateFunction(groupBitmap, UInt64)
+--     對應插入: groupBitmapState(cityHash64(task_id))
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS gold.rmv_l5_acc_phys (
     snapshot_date  Date,
@@ -41,18 +44,21 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_acc_phys (
     plant          String,
     factory        String,
     line           String,
-    acc_todo_doing Int64,
-    _refresh_time  DateTime64(3) DEFAULT now()
+    acc_bm         AggregateFunction(groupBitmap, UInt64),
+    _refresh_time  SimpleAggregateFunction(max, DateTime64(3))
 )
-ENGINE = ReplacingMergeTree(_refresh_time)
-PARTITION BY toYYYYMM(snapshot_date)
+ENGINE = AggregatingMergeTree()
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 -- ----------------------------------------
--- 6c. 最終主表: Milestone + ACC 合併
---     使用 ReplacingMergeTree 確保跨窗口 ETL 的幂等性
---     由 backfill_gold.sql (FULL OUTER JOIN) 寫入
+-- 6c. 最終主表: Milestone + ACC 合併 (Unified Bitmap)
+--     使用 AggregatingMergeTree 確保跨窗口 ETL 的 bitmap OR 冪等合併
+--     由 backfill_gold.sql (LEFT JOIN milestone + acc) 寫入
+--     欄位對應:
+--       total_task_bm = bitmapOr(todo_bm, doing_bm, done_bm)
+--       todo_bm / doing_bm / done_bm = 來自 rmv_l5_milestone_phys
+--       acc_bm = 來自 rmv_l5_acc_phys
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     snapshot_date  Date,
@@ -61,33 +67,33 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     plant          String,
     factory        String,
     line           String,
-    total_task     Int64,
-    todo_count     Int64,
-    doing_count    Int64,
-    done_count     Int64,
-    acc_todo_doing Int64,
-    _refresh_time  DateTime64(3) DEFAULT now()
+    total_task_bm  AggregateFunction(groupBitmap, UInt64),
+    todo_bm        AggregateFunction(groupBitmap, UInt64),
+    doing_bm       AggregateFunction(groupBitmap, UInt64),
+    done_bm        AggregateFunction(groupBitmap, UInt64),
+    acc_bm         AggregateFunction(groupBitmap, UInt64),
+    _refresh_time  SimpleAggregateFunction(max, DateTime64(3))
 )
-ENGINE = ReplacingMergeTree(_refresh_time)
-PARTITION BY toYYYYMM(snapshot_date)
+ENGINE = AggregatingMergeTree()
 ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 -- ----------------------------------------
 -- 6d. BI 對接 View (Cube.js / Superset)
---     使用 FINAL 確保讀取時已去重
+--     注意: AggregatingMergeTree 讀取時透過 groupBitmapMergeState 在 Query 層完成合併
+--     Cube.js model 使用 groupBitmapMergeState + bitmapCardinality 計算精確去重數值
 -- ----------------------------------------
 CREATE VIEW IF NOT EXISTS gold.rmv_l5_task_completion AS
 SELECT
     snapshot_date,
     vx_type,
     region, plant, factory, line,
-    total_task,
-    todo_count,
-    doing_count,
-    done_count,
-    acc_todo_doing,
+    total_task_bm,
+    todo_bm,
+    doing_bm,
+    done_bm,
+    acc_bm,
     _refresh_time
-FROM gold.rmv_l5_task_completion_phys FINAL;
+FROM gold.rmv_l5_task_completion_phys;
 
 -- Schema End (INSERT logic is handled by execute_etl.py / backfill_gold*.sql)

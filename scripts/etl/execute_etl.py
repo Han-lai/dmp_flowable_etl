@@ -151,7 +151,7 @@ def execute_computation_pipeline(client, args):
     if args.low_ram:
         # Core Memory Limits
         client.command("SET max_threads = 1")
-        client.command("SET max_memory_usage = 5500000000") # Limit to 5.5GB to leave room for OS/Buffer
+        client.command("SET max_memory_usage = 10000000000") # Limit to 10GB since container is now 11GB
         
         # External Processing (Spill to Disk)
         client.command("SET max_bytes_before_external_group_by = 500000000") # 500MB force spill
