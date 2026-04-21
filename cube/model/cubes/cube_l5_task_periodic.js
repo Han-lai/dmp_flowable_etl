@@ -108,44 +108,54 @@ cube(`L5TaskPeriodic`, {
         // 1. Total Task
         totalQty: {
             type: `number`,
-            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.total_task_bm))`,
+            sql: `bitmapCardinality(groupBitmapMergeState(total_task_bm))`,
             title: 'QTY: Total'
         },
 
         // 2. Todo (Snapshot)
         todoQty: {
             type: `number`,
-            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(${CUBE}.todo_bm), bitmapOr(groupBitmapMergeState(${CUBE}.doing_bm), groupBitmapMergeState(${CUBE}.done_bm))))`,
+            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(todo_bm), bitmapOr(groupBitmapMergeState(doing_bm), groupBitmapMergeState(done_bm))))`,
             title: 'QTY: Todo'
         },
 
         // 3. Doing (Snapshot)
         doingQty: {
             type: `number`,
-            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(${CUBE}.doing_bm), groupBitmapMergeState(${CUBE}.done_bm)))`,
+            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(doing_bm), groupBitmapMergeState(done_bm)))`,
             title: 'QTY: Doing'
         },
 
         // 4. Done (Snapshot)
         doneQty: {
             type: `number`,
-            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.done_bm))`,
+            sql: `bitmapCardinality(groupBitmapMergeState(done_bm))`,
             title: 'QTY: Done'
         },
 
         // 5. Doing + Done
         doingDoneQty: {
             type: `number`,
-            sql: `bitmapCardinality(bitmapOr(groupBitmapMergeState(${CUBE}.doing_bm), groupBitmapMergeState(${CUBE}.done_bm)))`,
+            sql: `bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_bm), groupBitmapMergeState(done_bm)))`,
             title: 'QTY: Doing+Done'
         },
 
-        // 6. Todo + Doing (Acc) - 採 7 天滑動視窗定義 (基準日 D)
-        // 資料來源: gold.rmv_l5_acc_phys (backfill_gold_acc.sql 計算的 Rolling 7D bitmap)
-        // 語意: 基準日往前推 6 天內曾有活動，且截至基準日尚未完成的任務
+        // 6. Todo + Doing (Acc) - 雙軌邏輯對齊
+        // 日別: 讀取 7D Rolling 位圖
+        // 週/月: 執行「先週期聯集、後排他過濾」(Union(A) - Union(B))
         accQty: {
             type: `number`,
-            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.acc_bm))`,
+            sql: `
+                CASE 
+                    WHEN min(granularity) = 'Day' THEN bitmapCardinality(groupBitmapMergeState(acc_bm))
+                    ELSE bitmapCardinality(
+                        bitmapAndnot(
+                            bitmapOr(groupBitmapMergeState(todo_bm), groupBitmapMergeState(doing_bm)),
+                            groupBitmapMergeState(done_bm)
+                        )
+                    )
+                END
+            `,
             title: 'QTY: Todo+Doing(Acc)'
         },
 
@@ -153,7 +163,7 @@ cube(`L5TaskPeriodic`, {
         // (7D Rolling 分母的計算已移至 ETL 層，Cube 層暫統一使用快照總量)
         effectiveDenominator: {
             type: `number`,
-            sql: `bitmapCardinality(groupBitmapMergeState(${CUBE}.total_task_bm))`,
+            sql: `bitmapCardinality(groupBitmapMergeState(total_task_bm))`,
             title: 'Denominator'
         },
 
