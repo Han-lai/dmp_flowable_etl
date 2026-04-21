@@ -70,9 +70,19 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 - **Any-Event Filter**: 納入所有在 `ACT_HI_TASKINST` 中有活動記錄的關聯事件以對齊 Baseline。
 - **180 天變數回溯**: 確保長週期任務的維度 (Region/Plant) 不缺失。
 - **金層實體表與視圖 (Gold 2-Tier Architecture)**: 
-    - `gold.rmv_l5_task_completion_phys`: 實體表，儲存冪等快照。
-    - `gold.rmv_l5_task_completion`: 視圖層，提供給 Cube.js，實現讀寫隔離。
-- **ACC 滾動脫鉤 (ACC Decoupling)**: 7 天滾動指標 (ACC) 因涉及 `uniqExact` 的跨天去重，不再與 Todo/Doing/Done 的每日快照混合聚合，而是透過獨立的 `acc_stats` CTE 搭配 `range()` 展開計算，以確保 Baseline 完全精準對齊。
+    - `gold.rmv_l5_task_completion_phys`: 實體表，儲存 `AggregateFunction(groupBitmap, UInt64)` 預聚合數據。
+    - `gold.rmv_l5_task_completion`: 視圖層，提供給 Cube.js。
+- **身分唯一排除法 (Identity-Preserving Exclusion, v3 - 2026-04-21)**:
+    - **原理**: 為了達成 `Todo + Doing + Done = Total` 且解決週/月報表重複計算問題，採用 Bitmap 減法運算。
+    - **優先級**: Done (最高) > Doing > Todo (最低)。
+    - **邏輯實作**:
+        - `TodoQty` = `bitmapAndnot(Union(Todo), Union(Doing, Done))`
+        - `DoingQty` = `bitmapAndnot(Union(Doing), Union(Done))`
+        - `AccQty` = `bitmapAndnot(Union(Acc), Union(Done))`
+    - **優點**: 
+        1. 徹底解決跨日任務重複累加。
+        2. 保證單一任務 ID 在週期內僅出現在一個狀態。
+        3. 透過 ClickHouse 的 `bitmapAndnot` 提升運算效率。
 
 ## Cube.js 設計模式 (Design Patterns)
 
