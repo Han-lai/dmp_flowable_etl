@@ -79,7 +79,7 @@
 | **VarInst** | 流程變數實例。以 Entity-Attribute-Value (EAV) 格式儲存，包含 `region`、`plant`、`moNumber` 等屬性 |
 | **Vx Type** | 簽核版本分類 (V1/V2/V3)。由特定工單號或 `TASK_DEF_KEY_` 前綴決定 |
 | **Snapshot Date** | 每日快照日期。一筆任務可能在 Start、Claim、End 三個日期各產生一筆快照記錄 |
-| **ACC** | Accumulation (累積在途量)。統計過去 7 日內仍處於 Todo 或 Doing 狀態的唯一任務數量 |
+| **ACC** | Accumulation (累積在途量)。日報表統計過去 7 日內的在途任務；週/月報表採「週期內排他聯集」計算。詳見 5.2 節。 |
 
 ---
 
@@ -436,7 +436,7 @@ SELECT * FROM gold.rmv_l5_task_completion_phys FINAL;
 | 3 | `doing_bm` | `Bitmap` | **進行中 (Doing)**。已領取但尚未完結的任務位圖。 |
 | 4 | `done_bm` | `Bitmap` | **已完成 (Done)**。已完結的任務位圖（累計值）。 |
 | 5 | `doing_done_bm` | (計算) | **Doing + Done**。公式：`bitmapOr(doing_bm, done_bm)`。 |
-| 6 | `acc_bm` | `Bitmap` | **Acc (在途累積)**。7 日滾動窗口內處於非完結狀態的唯一任務。 |
+| 6 | `acc_bm` | `Bitmap` | **Acc (在途累積)**。具備分粒度特性：日別為 7D 滾動窗口；週/月別為週期內聯集且排除已完結任務。 |
 
 ### 5.2 ACC 七日滾動達成率
 
