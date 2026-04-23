@@ -118,9 +118,67 @@ python scripts/etl/sync_unified_odbc.py --table taskinst --start "2025-01-01"
 
 ---
 
-**版本號**：v5.1.0 (ODBC 合併版)  
-**更新日期**：2026-04-16  
+## 6. 全新環境部署 SOP (From-Scratch Setup)
+
+以下是從零搭建完整系統的步驟，適用於首次部署或遷移至新主機。
+
+### 6.1 環境準備
+
+```powershell
+# 建立 Python 虛擬環境
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+
+# 安裝依賴
+pip install clickhouse-connect pyodbc pyyaml
+```
+
+**前置條件**：
+- ClickHouse Server 已啟動（含 ODBC Bridge 容器）
+- MSSQL ODBC DSN 已設定（參見 `docs/01_architecture/ClickHouse_ODBC_Setup.md`）
+- Python 3.10+
+
+### 6.2 步驟一覽
+
+```text
+Step 1 → setup_schema.py      建立所有 DB / Table / View
+Step 2 → sync_unified_odbc.py 從 MSSQL 拉取 Bronze 資料
+Step 3 → execute_etl.py       Silver + Gold 全量回補
+Step 4 → Cube.js 啟動         語義層上線
+```
+
+### 6.3 執行指令
+
+```powershell
+# Step 1: Schema 初始化（冪等，可安全重跑）
+python scripts/etl/setup_schema.py
+
+# Step 2: Bronze 全量同步
+python scripts/etl/sync_unified_odbc.py --table all
+
+# Step 3: Silver + Gold 歷史回補
+python scripts/etl/execute_etl.py --backfill --start 2025-01-01 --step-days 10 --low-ram
+
+# Step 4: Cube.js 啟動
+cd cube
+npm install
+npm run dev
+```
+
+> **注意**：Step 3 的 `--start` 日期應設為需要的最早資料日期。`--low-ram` 啟用記憶體保護模式，建議在 Server 76 環境下必須使用。
+
+### 6.4 驗證
+
+執行完成後，可透過以下方式驗證：
+1. 確認 `bronze._sync_watermark` 有所有 18 張表的記錄
+2. 確認 `ops_metrics.etl_checkpoint` 所有 step 為 `SUCCESS`
+3. 查詢 `gold.rmv_l5_task_completion` 確認有資料產出
+
+---
+
+**版本號**：v5.2.0 (合併 From-Scratch 部署指南)  
+**更新日期**：2026-04-23  
 **相關文件**：
 - 架構總覽：`docs/01_architecture/Architecture_Overview.md`
 - ETL 轉換管線：`docs/03_metrics/ETL_Transformation_Pipeline.md`
-- Legacy JDBC 部署手冊：`docs/legacy/02_deployment/`
+- ODBC 設定：`docs/01_architecture/ClickHouse_ODBC_Setup.md`
