@@ -1,4 +1,4 @@
-# DMP Flowable 業務指標與數據定義 (Business Metrics & Data Definitions)
+﻿# DMP Flowable 業務指標與數據定義 (Business Metrics & Data Definitions)
 
 **文件編號**: 03-MTR-001  
 **版本**: 5.1  
@@ -131,147 +131,18 @@ WHERE is_excluded = 0
 ORDER BY task_start_date DESC
 ```
 
----
 
-## 5. SQL 實作規格 (Implementation SQL Specs)
+## 5. SQL 實作規格參考 (Implementation SQL References)
 
-本節記錄各核心業務邏輯的**實際生產 SQL**，與 `sql/etl/dml/` 下的模板保持一致。
+本節的 SQL 實作細節已整併至 [ETL_Transformation_Pipeline.md](ETL_Transformation_Pipeline.md)，作為唯一維護來源。各主題對應章節如下：
 
-### 5.1 Vx 版本歸屬判定（`backfill_silver.sql`）
-
-判定邏輯寫於 `silver.mv_fact_task_vx` 的 `vx_type` 欄位，優先序由高至低：
-
-```sql
-CASE
-    -- 規則 1（最高優先）：特定工單號前綴 → 強制 V1
-    WHEN substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3)
-             IN ('196','199','200','210','212','213')
-    THEN 'V1'
-
-    -- 規則 2-4：TASK_DEF_KEY_ 前綴自動判定
-    WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
-    WHEN t.TASK_DEF_KEY_ LIKE 'V2%' THEN 'V2'
-    WHEN t.TASK_DEF_KEY_ LIKE 'V3%' THEN 'V3'
-
-    -- 規則 5：無法判定，取前兩字元或回填 Unknown
-    ELSE COALESCE(substring(t.TASK_DEF_KEY_, 1, 2), 'Unknown')
-END AS vx_type
-```
-
-> **演進說明（2026-04-15 簡化）**：原版本設有「廠區特權規則」（規則 1：DG3 廠 + 工單號；規則 1b：NPE 廠 + 工單號），於 2026-04-15 驗證後確認為冗餘——全域 323,486 筆及 CNS DG3 SMT ST02 線體 5,179 筆資料，100% 已被工單號規則涵蓋，故予以移除。目前「工單號前綴匹配」為第一優先規則。工單號清單：`196`, `199`, `200`, `210`, `212`, `213`。
-
----
-
-### 5.2 資料排除規則（`backfill_silver.sql`）
-
-以下邏輯寫於 `is_excluded` 與 `exclude_reason` 兩個欄位：
-
-```sql
--- is_excluded 旗標（0 = 有效資料，1 = 排除）
-multiIf(
-    tb.LONG_ = 1,                                      1,  -- autoComplete bypass (使用者手動跳過)
-    t.TASK_DEF_KEY_ LIKE 'E%',                         1,  -- 系統自動節點 (E 開頭)
-    t.TASK_DEF_KEY_ LIKE 'C%',                         1,  -- 系統自動節點 (C 開頭)
-    COALESCE(v_pivot.varinst_moNumber,'') LIKE 'Q%',   1,  -- 測試/研發工單
-    COALESCE(v_pivot.varinst_moNumber,'') LIKE 'R%',   1,  -- 測試/研發工單
-    t.NAME_ LIKE '%Notify%',                           1,  -- 通知節點
-    t.NAME_ LIKE '%Dummy%',                            1,  -- 佔位節點
-    0                                                      -- 有效資料
-) AS is_excluded,
-
--- exclude_reason 原因標記
-multiIf(
-    tb.LONG_ = 1,                                          'bypass',
-    t.TASK_DEF_KEY_ LIKE 'E%',                            'system_node',
-    t.TASK_DEF_KEY_ LIKE 'C%',                            'system_node',
-    COALESCE(v_pivot.varinst_moNumber,'') LIKE 'Q%',       'Q_order',
-    COALESCE(v_pivot.varinst_moNumber,'') LIKE 'R%',       'R_order',
-    t.NAME_ LIKE '%Notify%',                              'notify_task',
-    t.NAME_ LIKE '%Dummy%',                               'dummy_task',
-    ''
-) AS exclude_reason
-```
-
-> **注意**：`autoComplete` 旗標（`tb.LONG_ = 1`）的補標由 `backfill_exclusion.sql`（Stage 2b）透過 `ALTER TABLE UPDATE` 非同步處理，因為此旗標可能在任務建立後才被使用者設定。
-
----
-
-### 5.3 快照展開與狀態計算（`backfill_gold_milestone.sql`）
-
-將每個任務依三個事件日期展開為快照列，再於各快照時間點判定狀態：
-
-```sql
--- Step 1: ARRAY JOIN 展開（一列任務 → 最多三列快照）
-FROM silver.mv_fact_task_vx FINAL
-ARRAY JOIN arrayDistinct(arrayFilter(
-    d -> d IS NOT NULL,
-    [task_start_date, task_claim_date, task_end_date]
-)) AS snapshot_date
-
--- Step 2: 在各 snapshot_date 時間點上判定任務狀態
-SELECT
-    snapshot_date,
-    vx_type, region, plant, factory, line,
-    count() AS total_task,
-
-    -- Todo: 快照時間點早於認領或完結日期（尚未被任何人認領）
-    countIf(
-        snapshot_date < COALESCE(task_claim_date, task_end_date, today() + 1)
-    ) AS todo_count,
-
-    -- Doing: 已認領但尚未完結
-    countIf(
-        task_claim_date IS NOT NULL
-        AND snapshot_date >= task_claim_date
-        AND (task_end_date IS NULL OR snapshot_date < task_end_date)
-    ) AS doing_count,
-
-    -- Done: 已完結
-    countIf(
-        task_end_date IS NOT NULL AND snapshot_date >= task_end_date
-    ) AS done_count
-
-WHERE is_excluded = 0
-  AND snapshot_date >= toDate('{start_ts}')
-  AND snapshot_date <= toDate('{end_ts}')
-GROUP BY snapshot_date, vx_type, region, plant, factory, line
-```
-
----
-
-### 5.4 ACC 七日滾動（`backfill_gold_acc.sql`）
-
-使用 `range()` 展開任務活躍期間（最多 7 天），再以 `uniqExact` 跨日精確去重：
-
-```sql
--- Step 1: 將每個任務展開為「活躍日期序列」（最多 7 天）
-FROM silver.mv_fact_task_vx FINAL
-ARRAY JOIN arrayMap(
-    d -> toDate(d),
-    range(
-        toUInt32(task_start_date),
-        toUInt32(least(
-            COALESCE(task_end_date, today() + 2),  -- 未完結則延伸至今日後
-            task_start_date + 7,                   -- 最多展開 7 天
-            toDate('{end_ts}') + 1                 -- 不超過視窗上限
-        ))
-    )
-) AS active_date
-
--- Step 2: 過濾完結後的日期，再精確去重
-WHERE is_excluded = 0
-  AND active_date >= toDate('{start_ts}')
-  AND active_date <= toDate('{end_ts}')
-  AND (task_end_date IS NULL OR task_end_date > active_date)
-
-SELECT
-    active_date AS snapshot_date,
-    vx_type, region, plant, factory, line,
-    uniqExact(task_id) AS acc_todo_doing  -- 7 日滾動在途唯一任務數
-GROUP BY active_date, vx_type, region, plant, factory, line
-```
-
-> **與 Milestone 的差異**：Milestone 以「事件日期點」展開（最多 3 列），ACC 以「活躍期間」展開（最多 7 列）。兩者分開計算，於 Stage 6 以 FULL OUTER JOIN 合併為最終金層主表。
+| 主題 | 參考位置 |
+| :--- | :--- |
+| Vx 版本歸屬判定 SQL | `ETL_Transformation_Pipeline.md` §3.3 |
+| 資料排除規則 SQL | `ETL_Transformation_Pipeline.md` §3.5 |
+| 快照展開與狀態計算 SQL | `ETL_Transformation_Pipeline.md` §5.2-5.3 |
+| ACC 七日滾動 SQL | `ETL_Transformation_Pipeline.md` §6.2 |
+| SQL 模板原始碼 | `sql/etl/dml/backfill_*.sql` |
 
 ---
 
@@ -281,5 +152,5 @@ GROUP BY active_date, vx_type, region, plant, factory, line
 
 ---
 
-**文件負責人**: AIT / Data Engineering  
-**審核狀態**: §5.1 已對照 `backfill_silver.sql`（2026-04-15 VTYPE 簡化版）更新；§5.2~5.4 對照 `backfill_gold_milestone.sql`、`backfill_gold_acc.sql` 驗證完成，程式碼與文件一致。
+**文件負責人**: AIT / Data Engineering
+**審核狀態**: §1~§4 已對照程式碼驗證完成；§5 SQL 實作已整併至 ETL_Transformation_Pipeline.md（2026-04-23）。
