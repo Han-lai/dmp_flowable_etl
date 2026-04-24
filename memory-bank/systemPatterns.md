@@ -94,14 +94,22 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 *   **問題**: 直接篩選日期會濾除回溯所需的歷史資料。
 *   **解法**: 
     *   **SQL 層**: `anchor_dt as filter_date` (固定值) 與 `snapshot_date_real` (變動值)。
-    *   **Cube 層**: `snapshotDate` 映射到 `filter_date` 用於接收 Filter；`realSnapshotDate` 顯示真實日期。
-*   **關鍵細節 (ISO Date Fix)**: 
-    *   Dashboard Filter 會帶入 ISO 格式 (`T00:00:00Z`)。
-    *   **對策**: 維度設為 `type: string` 並用 `formatDateTime(..., '%Y-%m-%d')` 對齊。
+    *   **Cube 層**: `snapshotDate` 映射到 `filter_date` (由內層 CTE 產出的基準日) 用於接收 Filter；`realSnapshotDate` 顯示該行資料的真實快照日期。
+*   **關鍵細節 (ISO Date Fix - 2026-04-24)**: 
+    *   **問題**: Superset 會將時間包裝成 `TO_TIMESTAMP` 或帶有 `T` 與 `Z` 的 ISO 字串，導致 ClickHouse 24.3 執行 `CAST` 時噴出 `Cannot convert string to type DateTime`。
+    *   **對策**: 
+        1.  將 Cube 維度設為 `type: string`。
+        2.  使用 `formatDateTime(snapshot_date, '%Y-%m-%d')` 輸出的 10 位日期字串進行比對。
+        3.  這能徹底避開驅動程式內建的非法轉型，並確保 11 個週期 (7d+3w+1m) 的資料同步跳出。
 
-### 3. Filter List Exposure (過濾器清單擴張)
-*   **技術**: 在 SQL 加入 `UNION ALL SELECT DISTINCT snapshot_date`。
-*   **用途**: 讓下拉選單能顯示所有可用日期，而非僅限於目前計算出的 Anchor Date。
+### 4. 輕量化過濾器模式 (Lightweight Filter Pattern)
+*   **定義**: 建立獨立、低負荷的 Cube (`DimMfgFilter.js`) 專供 Superset Native Filters 調用。
+*   **動機**: 若直接讓篩選器查詢包含上百萬行數據且帶有複雜 CTE 的主模型，會導致選單加載超過 60 秒甚至超時。
+*   **實作細節**:
+    *   SQL 僅執行 `SELECT DISTINCT region, plant, ..., snapshot_date`。
+    *   不包含任何複雜的視窗聚合或 Union。
+    *   加入 `ORDER BY snapshot_date DESC` 確保最新日期優先出現在選單，避免被 Row Limit 截斷。
+*   **效益**: 選單載入速度從 >60s 提升至 <0.1s。
 
 ## FastAPI 設計模式 (API Design Patterns)
 
