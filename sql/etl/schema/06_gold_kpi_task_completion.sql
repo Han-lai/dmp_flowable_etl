@@ -1,4 +1,4 @@
--- ========================================
+﻿-- ========================================
 -- 步驟 6: Gold Layer - KPI Task Completion (V3 Bitmap Architecture)
 -- 內容: 2-Tier Gold Architecture
 --   6a. rmv_l5_milestone_phys       - Todo/Doing/Done Bitmap 里程碑 (中間表)
@@ -22,9 +22,9 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_milestone_phys (
     plant         String,
     factory       String,
     line          String,
-    todo_bm       AggregateFunction(groupBitmap, UInt64),
-    doing_bm      AggregateFunction(groupBitmap, UInt64),
-    done_bm       AggregateFunction(groupBitmap, UInt64),
+    todo       AggregateFunction(groupBitmap, UInt64),
+    doing      AggregateFunction(groupBitmap, UInt64),
+    done       AggregateFunction(groupBitmap, UInt64),
     _refresh_time SimpleAggregateFunction(max, DateTime64(3))
 )
 ENGINE = AggregatingMergeTree()
@@ -44,7 +44,7 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_acc_phys (
     plant          String,
     factory        String,
     line           String,
-    acc_bm         AggregateFunction(groupBitmap, UInt64),
+    acc         AggregateFunction(groupBitmap, UInt64),
     _refresh_time  SimpleAggregateFunction(max, DateTime64(3))
 )
 ENGINE = AggregatingMergeTree()
@@ -56,9 +56,9 @@ TTL snapshot_date + INTERVAL 1 YEAR;
 --     使用 AggregatingMergeTree 確保跨窗口 ETL 的 bitmap OR 冪等合併
 --     由 backfill_gold.sql (LEFT JOIN milestone + acc) 寫入
 --     欄位對應:
---       total_task_bm = bitmapOr(todo_bm, doing_bm, done_bm)
---       todo_bm / doing_bm / done_bm = 來自 rmv_l5_milestone_phys
---       acc_bm = 來自 rmv_l5_acc_phys
+--       total_task = bitmapOr(todo, doing, done)
+--       todo / doing / done = 來自 rmv_l5_milestone_phys
+--       acc = 來自 rmv_l5_acc_phys
 -- ----------------------------------------
 CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     snapshot_date  Date,
@@ -67,11 +67,11 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     plant          String,
     factory        String,
     line           String,
-    total_task_bm  AggregateFunction(groupBitmap, UInt64),
-    todo_bm        AggregateFunction(groupBitmap, UInt64),
-    doing_bm       AggregateFunction(groupBitmap, UInt64),
-    done_bm        AggregateFunction(groupBitmap, UInt64),
-    acc_bm         AggregateFunction(groupBitmap, UInt64),
+    total_task  AggregateFunction(groupBitmap, UInt64),
+    todo        AggregateFunction(groupBitmap, UInt64),
+    doing       AggregateFunction(groupBitmap, UInt64),
+    done        AggregateFunction(groupBitmap, UInt64),
+    acc         AggregateFunction(groupBitmap, UInt64),
     _refresh_time  SimpleAggregateFunction(max, DateTime64(3))
 )
 ENGINE = AggregatingMergeTree()
@@ -88,12 +88,13 @@ SELECT
     snapshot_date,
     vx_type,
     region, plant, factory, line,
-    total_task_bm,
-    todo_bm,
-    doing_bm,
-    done_bm,
-    acc_bm,
+    total_task,
+    todo,
+    doing,
+    done,
+    acc,
     _refresh_time
 FROM gold.rmv_l5_task_completion_phys;
 
 -- Schema End (INSERT logic is handled by execute_etl.py / backfill_gold*.sql)
+
