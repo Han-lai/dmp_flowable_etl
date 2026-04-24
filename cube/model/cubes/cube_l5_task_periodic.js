@@ -1,9 +1,9 @@
-/**
+﻿/**
  * L5 任務完成率 Cube - 標準版 (V3.2 穩定版)
  * 基準定義:
  * 1. 指標順序: Total > Todo > Doing > Done > Doing+Done > Acc
  * 2. 指標邏輯: 存量指標以「週期最後一日」為基準 (Stock Snapshot)
- * 3. 分母邏輯: 所有粒度統一使用 total_task_bm (7D Rolling 分母已移至 ETL 層計算)
+ * 3. 分母邏輯: 所有粒度統一使用 total_task (7D Rolling 分母已移至 ETL 層計算)
  */
 cube(`L5TaskPeriodic`, {
     sql: `
@@ -38,11 +38,11 @@ cube(`L5TaskPeriodic`, {
         granularity,
         sort_order,
         anchor_dt as filter_date,
-        total_task_bm,
-        todo_bm,
-        doing_bm,
-        done_bm,
-        acc_bm
+        total_task,
+        todo,
+        doing,
+        done,
+        acc
     FROM (
         -- 1. Day (回溯 7 天)
         SELECT
@@ -50,7 +50,7 @@ cube(`L5TaskPeriodic`, {
             toString(snapshot_date) as period_name, 'Day' as granularity,
             5 + dateDiff('day', snapshot_date, ca.anchor_dt) as sort_order,
             ca.anchor_dt as anchor_dt,
-            total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+            total_task, todo, doing, done, acc
         FROM gold.rmv_l5_task_completion_phys
         CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN (ca.anchor_dt - INTERVAL 6 DAY) AND ca.anchor_dt
@@ -63,7 +63,7 @@ cube(`L5TaskPeriodic`, {
                concat('W', toString(toISOWeek(ca.anchor_dt))) as period_name, 'Week' as granularity,
                2 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+               total_task, todo, doing, done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt, 3) AND ca.anchor_dt
 
@@ -74,7 +74,7 @@ cube(`L5TaskPeriodic`, {
                concat('W', toString(toISOWeek(ca.anchor_dt - INTERVAL 7 DAY))) as period_name, 'Week' as granularity,
                3 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+               total_task, todo, doing, done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3)
                                 AND toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3) + INTERVAL 6 DAY
@@ -86,7 +86,7 @@ cube(`L5TaskPeriodic`, {
                concat('W', toString(toISOWeek(ca.anchor_dt - INTERVAL 14 DAY))) as period_name, 'Week' as granularity,
                4 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+               total_task, todo, doing, done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3)
                                 AND toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3) + INTERVAL 6 DAY
@@ -98,7 +98,7 @@ cube(`L5TaskPeriodic`, {
                formatDateTime(ca.anchor_dt, '%b.') as period_name, 'Month' as granularity,
                1 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task_bm, todo_bm, doing_bm, done_bm, acc_bm
+               total_task, todo, doing, done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfMonth(ca.anchor_dt) AND ca.anchor_dt
     )
@@ -108,35 +108,35 @@ cube(`L5TaskPeriodic`, {
         // 1. Total Task
         totalQty: {
             type: `number`,
-            sql: `bitmapCardinality(groupBitmapMergeState(total_task_bm))`,
+            sql: `bitmapCardinality(groupBitmapMergeState(total_task))`,
             title: 'QTY: Total'
         },
 
         // 2. Todo (Snapshot)
         todoQty: {
             type: `number`,
-            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(todo_bm), bitmapOr(groupBitmapMergeState(doing_bm), groupBitmapMergeState(done_bm))))`,
+            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(todo), bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done))))`,
             title: 'QTY: Todo'
         },
 
         // 3. Doing (Snapshot)
         doingQty: {
             type: `number`,
-            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(doing_bm), groupBitmapMergeState(done_bm)))`,
+            sql: `bitmapCardinality(bitmapAndnot(groupBitmapMergeState(doing), groupBitmapMergeState(done)))`,
             title: 'QTY: Doing'
         },
 
         // 4. Done (Snapshot)
         doneQty: {
             type: `number`,
-            sql: `bitmapCardinality(groupBitmapMergeState(done_bm))`,
+            sql: `bitmapCardinality(groupBitmapMergeState(done))`,
             title: 'QTY: Done'
         },
 
         // 5. Doing + Done
         doingDoneQty: {
             type: `number`,
-            sql: `bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_bm), groupBitmapMergeState(done_bm)))`,
+            sql: `bitmapCardinality(bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done)))`,
             title: 'QTY: Doing+Done'
         },
 
@@ -147,11 +147,11 @@ cube(`L5TaskPeriodic`, {
             type: `number`,
             sql: `
                 CASE 
-                    WHEN min(granularity) = 'Day' THEN bitmapCardinality(groupBitmapMergeState(acc_bm))
+                    WHEN min(granularity) = 'Day' THEN bitmapCardinality(groupBitmapMergeState(acc))
                     ELSE bitmapCardinality(
                         bitmapAndnot(
-                            bitmapOr(groupBitmapMergeState(todo_bm), groupBitmapMergeState(doing_bm)),
-                            groupBitmapMergeState(done_bm)
+                            bitmapOr(groupBitmapMergeState(todo), groupBitmapMergeState(doing)),
+                            groupBitmapMergeState(done)
                         )
                     )
                 END
@@ -159,11 +159,11 @@ cube(`L5TaskPeriodic`, {
             title: 'QTY: Todo+Doing(Acc)'
         },
 
-        // 分母指標: 統一使用 total_task_bm
+        // 分母指標: 統一使用 total_task
         // (7D Rolling 分母的計算已移至 ETL 層，Cube 層暫統一使用快照總量)
         effectiveDenominator: {
             type: `number`,
-            sql: `bitmapCardinality(groupBitmapMergeState(total_task_bm))`,
+            sql: `bitmapCardinality(groupBitmapMergeState(total_task))`,
             title: 'Denominator'
         },
 
