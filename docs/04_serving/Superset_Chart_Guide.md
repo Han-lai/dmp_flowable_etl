@@ -1,92 +1,82 @@
-# L5 專案完成度與 Superset 定義總表
+# L5 專案完成度與 Superset 定義總表 (V3.2)
 
-> **版本說明**：本文件最後更新 2026-04-16，已對齊 Physical Gold Layer 架構與精簡後的 Cube.js V2 模型。
+> **版本說明**：本文件最後更新 **2026-04-24**，已全面對齊 **Bitmap V3 聚合架構** 與 **DimMfgFilter 輕量選單模式**。
 
-## 1. L5 專案完成度概覽 (Project Completion Status)
+---
 
-截至 2026-04-16，L5 任務指標專案的核心架構與關鍵指標已完成開發與驗收（含實體化金層壓測）。
+## 1. 核心指標與架構更新 (Core Framework)
+
+截至 2026-04-24，系統已升級至 **Bitmap V3 性能版**，顯著提升大數據量下的 `Acc (在途)` 與 `Unique Task Count` 計算精準度。
 
 | 項目 (Component) | 狀態 | 說明 (Details) |
 | :--- | :--- | :--- |
-| **ETL 數據流** | ✅ 完成 | 完整覆蓋 Bronze → Silver → Gold 層，採用 **Physical Gold Layer（實體化金層）** 架構。 |
-| **數據對齊 (Validation)** | ✅ 完成 | 12/25 基準日數據達成三方對齊 (Raw=192, Gold=192)。ACC (在途量) 誤差收斂至 1 筆。 |
-| **Cube.js 架構** | ✅ 完成 | 精簡為 **V2 單軌模型**（`cube_l5_task_periodic_v2.js` 與 `_v2_pivot.js`），支援時光機功能；V1 模型已歸檔。 |
-| **Superset 支援** | ✅ 完成 | 支援 Pivot Table, Mixed Chart (Dual Axis), Tooltip 顯示。 |
-| **自動化刷新** | ✅ 完成 | Physical Gold Layer 以 ETL Pipeline 排程定期重建，保障每日資料一致性。 |
-| **人員利用率 (L7)** | ⏸️ 暫緩 | 下階段重點開發項目，目前優先穩定 L5 監控。 |
+| **指標引擎 (KPI)** | ✅ **Bitmap V3** | 採用 ClickHouse Bitmap 運算，徹底解決「跨天 ID 重複加總」導致的數據偏大問題。 |
+| **選單效能** | ✅ **0.1s 響應** | 透過 `DimMfgFilter.js` 獨立選單模型，解決原本篩選選單 Loading 超過 60 秒導致的 Network Error。 |
+| **日期處理** | ✅ **String-Link** | 轉換為 `YYYY-MM-DD` 10 位字串比對，解決 ClickHouse 24.3 在 ISO 時間字串轉型上的報錯。 |
+| **報表跨度** | ✅ **11 週期** | 選取任一基準日，系統自動顯示：**7 天趨勢 + 3 週對比 + 1 個月加總**。 |
 
 ---
 
-## 2. Superset 圖表定義指南 (Chart Definitions)
+## 2. Superset 關鍵維度定義 (Dimensions Mapping)
 
-以下是針對使用者最常使用的圖表設定參數。
+在設定圖表或篩選器時，請務必區分以下兩個日期維度的不同用途。
 
-### A. L5 任務週期混合圖 (V1 Standard)
-
-> [!WARNING]
-> **此圖表設定已過時**。`cube_l5_task_periodic.js`（V1 模型）已於 2026-02-10 歸檔，Superset 中對應的 Dataset 可能失效。**請改用下方 §B V2 版本**。
-
-<details>
-<summary>歷史設定參考（已歸檔）</summary>
-
-| 設定項 (Setting) | 值 (Value) | 備註 |
+| 維度名稱 (Superset Label) | Cube 欄位名 (Field) | 關鍵用途 (Usage) |
 | :--- | :--- | :--- |
-| **Dataset** | `L5 Task Periodic` | Cube: `cube_l5_task_periodic.js`（已歸檔）|
-| **Chart Type** | **Mixed Timeseries Chart** | |
-| **X-Axis** | `periodName` | 顯示文字 (Dec., W1, 12-31...) |
-| **Shared Sort By** | `periodSortOrder` | **Ascending** (升冪) |
-| **Query A (Bar)** | **Metrics**: `totalQty` | **不可**設定 Dimension/Group By |
-| **Query B (Line)** | **Metrics**: `doneRate` | 勾選 **Secondary Y Axis** (副軸) |
-
-</details>
-
-### B. L5 任務週期報表 V2 (Time Machine & 8 Days)
-
-**用途**: 進階報表。支援「指定任意日期」回溯查看，並完整顯示當日 + 前 7 天 (共 8 天) 的日趨勢。
-
-| 設定項 (Setting) | 值 (Value) | 備註 |
-| :--- | :--- | :--- |
-| **Dataset** | `L5 Task Periodic V2` | Cube: `cube_l5_task_periodic_v2.js` |
-| **Chart Type** | **Mixed Timeseries Chart** | |
-| **X-Axis** | `periodName` | ⚠️ **注意**: 請勿使用 snapshotDate 當 X 軸 |
-| **Shared Sort By** | `periodSortOrder` | **Ascending** (升冪) |
-| **Query A (Bar)** | **Metrics**: `totalQty` | |
-| **Query B (Line)** | **Metrics**: `doneRate` | 勾選 **Secondary Y Axis** (副軸) |
-| **關鍵動作: Time Range** | 設定 **TIME** 區塊: | 已全面支持 YYYY-MM-DD 或長字串 |
-| - Time Column | `snapshotDate` | |
-| - Time Range | **Custom** (自定義) | |
-| - Start / End | `2025-12-31` | **起始與結束選同一天** 或使用 Dashboard 分別選 Start/End |
-
-> [!TIP]
-> **V2 篩選穩定化**：現在系統已具備 Triple-OR 魯棒性，能自動處理 Superset 帶入的 `.000000` 微秒字串，用戶不再需要擔心「Cannot convert string to Date」錯誤。
+| **日期篩選 (基準日期)** | `snapshotDate` | **所有篩選器的目標！** 用於決定「時光機」要看哪一天。所有報表行共享同一個值。 |
+| **實際快照日期** | `realSnapshotDate` | **僅用於展示**。代表該筆數據來自哪一天的快照 (例如 7 天趨勢中的每一天)。 |
+| **地區/廠區/線體 (diff)** | `diffRegion` 等 | 帶有 `diff` 前綴，專用於跨 Dataset 篩選聯動。 |
 
 ---
 
-## 3. Dashboard 設定指南 (Dashboard Setup)
+## 3. 圖表設定指南 (Chart Step-by-Step)
 
-在 Dashboard 層級，請使用 **Native Filters** (左側過濾器欄) 來統一控制圖表。
-
-### 設定「時光機」日期篩選器
-1.  **進入編輯模式**: 点击 Dashboard 右上角的 `Edit Dashboard` (筆形圖示)。
-2.  **新增過濾器**: 在左側 `Filters` tab 點擊 `+ Add/Edit Filters`。
-3.  **配置參數**:
-    *   **Filter Type**: `Time Range` (時間範圍)。
-    *   **Name**: 命名為 `Anchor Date` 或 `基準日`。
-    *   **Scoping**: 勾選包含 V2 圖表的 Tab。
-4.  **使用方式 (User Guide)**:
-    *   使用者點選 `Anchor Date` 濾鏡。
-    *   選擇 **Custom** -> **Specific Date** (若版本支援) 或 **Start/End 選同一天**。
-    *   點擊 **Apply**，V2 圖表即會顯示該基準日往前推 8 天的完整趨勢。
-
-### C. L5 任務完成率明細表 (Completion Pivot Table)
-
-**用途**: 每日/每週運營檢討，查看各地區、廠區的詳細數據。
+### A. L5 任務完成率趨勢圖 (V3 Line/Mixed)
+**用途**: 每日/每週運營監控，查看任務趨勢與完成率。
 
 | 設定項 (Setting) | 值 (Value) | 備註 |
 | :--- | :--- | :--- |
-| **Dataset** | `L5 Task Periodic V2 Pivot` | Cube: `cube_l5_task_periodic_v2_pivot.js` |
-| **Chart Type** | **Pivot Table v2** | |
-| **Rows** | `region`, `plant`, `line` | 依需求拖拉組織層級 |
-| **Columns** | `vxType` (V1/V3) | |
-| **Metrics** | `doneCount`, `totalTask`, `accTodoDoing` | |
-| **Time Range** | Last Day / Last Week | 支援完整時間篩選 |
+| **Dataset** | `L5TaskPeriodic` | 最新 V3 穩定版 |
+| **X-Axis** | `periodName` (週期/日期名) | 顯示 W1, Jan., 2026-01-08 等 |
+| **Sort By** | `periodSortOrder` | 必須選 **Ascending** (升冪) 以確保日期排序正確 |
+| **Metrics** | `doneRate` (完成率), `totalQty` | 使用 Bitmap 運算後之百分比 |
+
+### B. L5 任務明細狀態表 (V3 Pivot Table)
+**用途**: 結合 Pivot 結構，查看各地區、各階段(Todo/Doing/Done)的詳細任務分佈。
+
+| 設定項 (Setting) | 值 (Value) | 備註 |
+| :--- | :--- | :--- |
+| **Dataset** | `L5TaskPeriodicPivot` | 專為表格優化之長表模型 |
+| **Rows** | `diffRegion`, `diffPlant`, `statusName` | 階層式堆疊展示 |
+| **Metrics** | `taskQty` (任務量), `taskPct` (%) | |
+| **Filtering** | 必須對準 `snapshotDate` | 確保 11 個週期資料完整跳出 |
+
+---
+
+## 4. Dashboard 篩選器配置 (Native Filters)
+
+為了解決效能與連動問題，請遵循以下配置 SOP：
+
+1.  **資料來源選取**：
+    *   所有篩選器（地區、廠區、日期等）的 **「Filter Value Source (Dataset)」** 務必選擇 `DimMfgFilter`。
+2.  **日期篩選器對應 (Mapping)**：
+    *   將 Date 篩選器的目標對準所有 Dataset 的 **`snapshotDate` (日期篩選/基準日期)**。
+    *   **⚠️ 警告**：切勿對準 `realSnapshotDate`，否則選取日期後歷史資料會被篩除。
+3.  **排序優化**：
+    *   在日期篩選器內設定 `Sort: DESC`，確保選單最上方顯示的是最新的日期。
+
+---
+
+## 5. 常見問題排除 (Troubleshooting)
+
+### Q: 為什麼點了日期後，圖表突然縮到只剩下一個點？
+*   **原因**：篩選器對準了 `實際快照日期` 而非 `日期篩選(基準日期)`。
+*   **解法**：修改 Dashboard 篩選器設定，將 Mapping 目標改回 `snapshotDate`。
+
+### Q: 為什麼選單裡看不到最新的日期？
+*   **原因**：Dataset 欄位未同步或排序未更新。
+*   **解法**：在 Dataset 頁面點擊 **"Sync columns from source"** 並確保 `DimMfgFilter` 的 SQL 包含 `ORDER BY snapshot_date DESC`。
+
+### Q: 選取日期時出現 Arrow error: Cannot convert string to type DateTime?
+*   **原因**：Clickhouse 24.3 與 ISO 時間格式不相容。
+*   **解法**：確認 Cube 定義中使用的是 `type: string` 搭配 `YYYY-MM-DD` 格式（目前 V3 已全量修復）。
