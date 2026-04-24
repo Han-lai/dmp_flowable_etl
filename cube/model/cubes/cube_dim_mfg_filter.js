@@ -1,23 +1,35 @@
 /**
- * 製造階層輕量級維度模型 (適用於 Superset Dashboard 篩選器)
- * 
- * 目的: 專門解決 Superset 下拉選單在請求不含 Measure 時，觸發複雜 CTE 導致 60 秒 Timeout 的問題。
- * 此模型在底層 ClickHouse 耗時僅需 0.1 秒，推薦掛載所有 Dashboard 篩選器。
+ * Dashboard 萬用篩選資料集 (含時間維度)
+ * 優化: 加入 ORDER BY 確保最新的日期優先出現在選單中，避免因為組合過多元件導致日期被截斷。
  */
 
 cube(`DimMfgFilter`, {
-    sql: `SELECT DISTINCT region, plant, factory, line, vx_type FROM gold.rmv_l5_task_completion`,
+    sql: `
+    SELECT DISTINCT region, plant, factory, line, vx_type, snapshot_date 
+    FROM gold.rmv_l5_task_completion
+    ORDER BY snapshot_date DESC
+    `,
     
-    title: 'Dashboard 快速篩選器專用',
-    description: '提供 Superset 極速下拉選單，避免 Network Error',
+    title: 'Dashboard 萬用篩選器 (地區/廠區/時間)',
+    description: '提供 Superset 極速下拉選單，並優化日期排序',
 
     dimensions: {
-        id: { sql: `concat(region, '_', plant, '_', factory, '_', line, '_', vx_type)`, type: `string`, primaryKey: true },
+        id: { 
+            sql: `concat(region, '_', plant, '_', factory, '_', line, '_', vx_type, '_', toString(snapshot_date))`, 
+            type: `string`, 
+            primaryKey: true 
+        },
         
-        region: { type: `string`, sql: `region`, title: '地區' },
-        plant: { type: `string`, sql: `plant`, title: '廠區' },
-        factory: { type: `string`, sql: `factory`, title: '工廠' },
-        line: { type: `string`, sql: `line`, title: '線體' },
-        vxType: { type: `string`, sql: `vx_type`, title: 'Vx 類型' }
+        snapshotDate: { 
+            type: `string`, 
+            sql: `formatDateTime(snapshot_date, '%Y-%m-%d')`, 
+            title: '日期篩選' 
+        },
+        
+        diffRegion: { type: `string`, sql: `region`, title: '地區' },
+        diffPlant: { type: `string`, sql: `plant`, title: '廠區' },
+        diffFactory: { type: `string`, sql: `factory`, title: '工廠' },
+        diffLine: { type: `string`, sql: `line`, title: '線體' },
+        diffVxType: { type: `string`, sql: `vx_type`, title: 'Vx 類型' }
     }
 });

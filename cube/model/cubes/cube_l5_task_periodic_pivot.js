@@ -1,8 +1,9 @@
 /**
  * L5 任務完成率 Cube - Pivot 版 (V3 Bitmap Version)
  * 
- * 目的: 結合 "核心邏輯" (Time Machine, 寬表計算) 與 "Pivot 結構" (長表展示)。
- * 更新: 全面升級至 Bitmap 函數，對齊 gold.rmv_l5_task_completion 結構。
+ * 修正: 
+ * 1. 確保 filter_date (snapshotDate) 在所有 UNION 分支中都指向 anchor_dt，避免篩選時過濾掉歷史資料。
+ * 2. Day 粒度調整為回溯 7 天 (INTERVAL 6 DAY)。
  */
 
 cube(`L5TaskPeriodicPivot`, {
@@ -14,7 +15,7 @@ cube(`L5TaskPeriodicPivot`, {
                 today() as sys_today
             FROM gold.rmv_l5_task_completion
             WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter('snapshot_date')}
+                ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d')")}
             )
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
@@ -45,11 +46,11 @@ cube(`L5TaskPeriodicPivot`, {
         ),
 
         v2_wide_metrics AS (
-            -- A. Month: 加總當月所有任務
+            -- A. Month: 當月累積
             SELECT 
                 'Month' as granularity, formatDateTime(anchor_dt, '%b.') as period_name, 1 as sort_order,
                 vx_type, region, plant, factory, line, 
-                anchor_dt as filter_date, anchor_dt as snapshot_date_real,
+                formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, formatDateTime(anchor_dt, '%Y-%m-%d') as snapshot_date_real,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
                 bitmapCardinality(bitmapAndnot(groupBitmapMergeState(todo), bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done)))) as todo_qty, 
                 bitmapCardinality(bitmapAndnot(groupBitmapMergeState(doing), groupBitmapMergeState(done))) as doing_qty,
@@ -63,14 +64,14 @@ cube(`L5TaskPeriodicPivot`, {
 
             UNION ALL
 
-            -- B. Week: 加總當週所有任務
+            -- B. Week: 包含當週與前兩週 (共三週)
             SELECT 
                 'Week' as granularity, concat('W', toString(toISOWeek(snapshot_date))) as period_name,
                 CASE WHEN toISOWeek(snapshot_date) = toISOWeek(anchor_dt) THEN 2
                      WHEN toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 7 DAY) THEN 3
                      ELSE 4 END as sort_order,
                 vx_type, region, plant, factory, line,
-                anchor_dt as filter_date, max(snapshot_date) as snapshot_date_real,
+                formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, max(formatDateTime(snapshot_date, '%Y-%m-%d')) as snapshot_date_real,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
                 bitmapCardinality(bitmapAndnot(groupBitmapMergeState(todo), bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done)))) as todo_qty, 
                 bitmapCardinality(bitmapAndnot(groupBitmapMergeState(doing), groupBitmapMergeState(done))) as doing_qty,
@@ -88,12 +89,12 @@ cube(`L5TaskPeriodicPivot`, {
 
             UNION ALL
 
-            -- C. Day: 當日任務，Acc 使用 7 天滾動總量(來自金層 acc 狀態)
+            -- C. Day: 前 7 天數值
             SELECT 
                 'Day' as granularity, toString(snapshot_date) as period_name,
                 5 + dateDiff('day', snapshot_date, anchor_dt) as sort_order,
                 vx_type, region, plant, factory, line,
-                anchor_dt as filter_date, snapshot_date as snapshot_date_real,
+                formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, formatDateTime(snapshot_date, '%Y-%m-%d') as snapshot_date_real,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
                 bitmapCardinality(bitmapAndnot(groupBitmapMergeState(todo), bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done)))) as todo_qty, 
                 bitmapCardinality(bitmapAndnot(groupBitmapMergeState(doing), groupBitmapMergeState(done))) as doing_qty,
@@ -102,7 +103,7 @@ cube(`L5TaskPeriodicPivot`, {
                 bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
             FROM base
-            WHERE snapshot_date BETWEEN (anchor_dt - INTERVAL 13 DAY) AND anchor_dt
+            WHERE snapshot_date BETWEEN (anchor_dt - INTERVAL 6 DAY) AND anchor_dt
             GROUP BY granularity, period_name, sort_order, vx_type, region, plant, factory, line, anchor_dt, snapshot_date
         )
 
@@ -128,7 +129,7 @@ cube(`L5TaskPeriodicPivot`, {
     `,
 
     title: 'L5 任務完成率 (Pivot)',
-    description: '結合核心邏輯與 Pivot 結構，對接 V3 Bitmap 架構供狀態報表使用',
+    description: '修正篩選邏輯，確保過渡基準日期 (Anchor) 能夠帶出歷史資料',
 
     measures: {
         taskQty: { type: `sum`, sql: `task_qty`, title: 'Task Qty' },
@@ -138,8 +139,8 @@ cube(`L5TaskPeriodicPivot`, {
 
     dimensions: {
         id: { sql: `concat(toString(snapshot_date_real), '_', region, '_', plant, '_', factory, '_', line, '_', vx_type, '_', status_name, '_', period_name)`, type: `string`, primaryKey: true },
-        snapshotDate: { type: `time`, sql: `filter_date`, title: '日期篩選(決定 Anchor)' },
-        realSnapshotDate: { type: `time`, sql: `snapshot_date_real`, title: '實際資料日期' },
+        snapshotDate: { type: `string`, sql: `filter_date`, title: '日期篩選(基準日期)' },
+        realSnapshotDate: { type: `string`, sql: `snapshot_date_real`, title: '實際快照日期' },
         granularity: { type: `string`, sql: `granularity`, title: '時間粒度' },
         periodName: { type: `string`, sql: `period_name`, title: '週期名稱' },
         statusName: { type: `string`, sql: `status_name`, title: '任務狀態' },
