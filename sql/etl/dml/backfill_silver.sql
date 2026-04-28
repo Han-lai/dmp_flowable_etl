@@ -16,9 +16,10 @@ SELECT
     toDate(COALESCE(t.START_TIME_, t.CLAIM_TIME_, t.END_TIME_)) AS task_primary_date,
     toDate(COALESCE(t.START_TIME_, t.CLAIM_TIME_, t.END_TIME_)) AS task_create_date,
 
+    -- V4 Cohort 邏輯: 永久鎖死在開單日當天的表現
     CASE 
-        WHEN t.END_TIME_ IS NOT NULL AND toDate(t.END_TIME_) != toDate('1970-01-01') THEN 'DONE'
-        WHEN t.ASSIGNEE_ IS NOT NULL AND t.ASSIGNEE_ != '' THEN 'DOING'
+        WHEN t.END_TIME_ IS NOT NULL AND toDate(t.END_TIME_) = toDate(t.START_TIME_) THEN 'DONE'
+        WHEN t.CLAIM_TIME_ IS NOT NULL AND toDate(t.CLAIM_TIME_) = toDate(t.START_TIME_) THEN 'DOING'
         ELSE 'TODO'
     END AS task_status,
     
