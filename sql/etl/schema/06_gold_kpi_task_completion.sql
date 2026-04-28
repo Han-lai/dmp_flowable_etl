@@ -1,4 +1,4 @@
-﻿-- ========================================
+-- ========================================
 -- 步驟 6: Gold Layer - KPI Task Completion (V3 Bitmap Architecture)
 -- 內容: 2-Tier Gold Architecture
 --   6a. rmv_l5_milestone_phys       - Todo/Doing/Done Bitmap 里程碑 (中間表)
@@ -22,9 +22,15 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_milestone_phys (
     plant         String,
     factory       String,
     line          String,
-    todo       AggregateFunction(groupBitmap, UInt64),
-    doing      AggregateFunction(groupBitmap, UInt64),
-    done       AggregateFunction(groupBitmap, UInt64),
+    todo_daily       AggregateFunction(groupBitmap, UInt64),
+    doing_daily      AggregateFunction(groupBitmap, UInt64),
+    done_daily       AggregateFunction(groupBitmap, UInt64),
+    todo_weekly      AggregateFunction(groupBitmap, UInt64),
+    doing_weekly     AggregateFunction(groupBitmap, UInt64),
+    done_weekly      AggregateFunction(groupBitmap, UInt64),
+    todo_monthly     AggregateFunction(groupBitmap, UInt64),
+    doing_monthly    AggregateFunction(groupBitmap, UInt64),
+    done_monthly     AggregateFunction(groupBitmap, UInt64),
     _refresh_time SimpleAggregateFunction(max, DateTime64(3))
 )
 ENGINE = AggregatingMergeTree()
@@ -68,9 +74,15 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     factory        String,
     line           String,
     total_task  AggregateFunction(groupBitmap, UInt64),
-    todo        AggregateFunction(groupBitmap, UInt64),
-    doing       AggregateFunction(groupBitmap, UInt64),
-    done        AggregateFunction(groupBitmap, UInt64),
+    todo_daily  AggregateFunction(groupBitmap, UInt64),
+    doing_daily AggregateFunction(groupBitmap, UInt64),
+    done_daily  AggregateFunction(groupBitmap, UInt64),
+    todo_weekly  AggregateFunction(groupBitmap, UInt64),
+    doing_weekly AggregateFunction(groupBitmap, UInt64),
+    done_weekly  AggregateFunction(groupBitmap, UInt64),
+    todo_monthly  AggregateFunction(groupBitmap, UInt64),
+    doing_monthly AggregateFunction(groupBitmap, UInt64),
+    done_monthly  AggregateFunction(groupBitmap, UInt64),
     acc         AggregateFunction(groupBitmap, UInt64),
     _refresh_time  SimpleAggregateFunction(max, DateTime64(3))
 )
@@ -89,9 +101,15 @@ SELECT
     vx_type,
     region, plant, factory, line,
     total_task,
-    todo,
-    doing,
-    done,
+    todo_daily,
+    doing_daily,
+    done_daily,
+    todo_weekly,
+    doing_weekly,
+    done_weekly,
+    todo_monthly,
+    doing_monthly,
+    done_monthly,
     acc,
     _refresh_time
 FROM gold.rmv_l5_task_completion_phys;

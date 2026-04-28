@@ -53,10 +53,10 @@ cube(`L5TaskPeriodicPivot`, {
                 vx_type, region, plant, factory, line, 
                 formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, formatDateTime(anchor_dt, '%Y-%m-%d') as snapshot_date_real,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
-                bitmapCardinality(groupBitmapMergeState(todo)) as todo_qty, 
-                bitmapCardinality(groupBitmapMergeState(doing)) as doing_qty,
-                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done))) as doing_done_qty, 
-                bitmapCardinality(groupBitmapMergeState(done)) as done_qty, 
+                bitmapCardinality(groupBitmapMergeState(todo_monthly)) as todo_qty, 
+                bitmapCardinality(groupBitmapMergeState(doing_monthly)) as doing_qty,
+                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_monthly), groupBitmapMergeState(done_monthly))) as doing_done_qty, 
+                bitmapCardinality(groupBitmapMergeState(done_monthly)) as done_qty, 
                 bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
             FROM base
@@ -74,10 +74,10 @@ cube(`L5TaskPeriodicPivot`, {
                 vx_type, region, plant, factory, line,
                 formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, max(formatDateTime(snapshot_date, '%Y-%m-%d')) as snapshot_date_real,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
-                bitmapCardinality(groupBitmapMergeState(todo)) as todo_qty, 
-                bitmapCardinality(groupBitmapMergeState(doing)) as doing_qty,
-                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done))) as doing_done_qty, 
-                bitmapCardinality(groupBitmapMergeState(done)) as done_qty, 
+                bitmapCardinality(groupBitmapMergeState(todo_weekly)) as todo_qty, 
+                bitmapCardinality(groupBitmapMergeState(doing_weekly)) as doing_qty,
+                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_weekly), groupBitmapMergeState(done_weekly))) as doing_done_qty, 
+                bitmapCardinality(groupBitmapMergeState(done_weekly)) as done_qty, 
                 bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
             FROM base
@@ -97,10 +97,10 @@ cube(`L5TaskPeriodicPivot`, {
                 vx_type, region, plant, factory, line,
                 formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, formatDateTime(snapshot_date, '%Y-%m-%d') as snapshot_date_real,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
-                bitmapCardinality(groupBitmapMergeState(todo)) as todo_qty, 
-                bitmapCardinality(groupBitmapMergeState(doing)) as doing_qty,
-                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing), groupBitmapMergeState(done))) as doing_done_qty, 
-                bitmapCardinality(groupBitmapMergeState(done)) as done_qty, 
+                bitmapCardinality(groupBitmapMergeState(todo_daily)) as todo_qty, 
+                bitmapCardinality(groupBitmapMergeState(doing_daily)) as doing_qty,
+                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_daily), groupBitmapMergeState(done_daily))) as doing_done_qty, 
+                bitmapCardinality(groupBitmapMergeState(done_daily)) as done_qty, 
                 bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
             FROM base
