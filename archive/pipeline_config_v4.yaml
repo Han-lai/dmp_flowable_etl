@@ -1,0 +1,33 @@
+# DMP Flowable V4 Computation Pipeline Configuration (Activity Mode)
+# 架構: silver.mv_fact_task_vx_v4 (獨立 V4 Silver) → V4 Gold Tables
+# 說明: V4 Silver 與既有 silver.mv_fact_task_vx 完全隔離，
+#       套用 V4 bypass 邏輯 (SYSTEM assignee = system_bypass)
+
+# Tables to clear during a global --reset (V4 only)
+reset_targets:
+  - "silver.mv_fact_task_vx_v4"
+  - "gold.rmv_l5_milestone_v4_phys"
+  - "gold.rmv_l5_acc_v4_phys"
+  - "gold.rmv_l5_task_completion_v4_phys"
+
+# Computation Stages:
+pipeline_stages:
+  - name: "Stage 3a: V4 Silver Fact Table (Bypass V4 Logic)"
+    description: "寫入 mv_fact_task_vx_v4，套用 SYSTEM assignee bypass 規則，不影響既有 silver 表"
+    steps:
+      - phase_id: "silver_facts_v4"
+        template: "backfill_silver_v4.sql"
+        target_table: "silver.mv_fact_task_vx_v4"
+
+  - name: "Stage 3b: V4 Activity KPI Calculation"
+    description: "從 mv_fact_task_vx_v4 計算 V4 Activity-based Milestone 和 WIP (Acc)"
+    steps:
+      - phase_id: "gold_milestone_v4"
+        template: "backfill_gold_milestone_v4.sql"
+        target_table: "gold.rmv_l5_milestone_v4_phys"
+      - phase_id: "gold_acc_v4"
+        template: "backfill_gold_acc_v4.sql"
+        target_table: "gold.rmv_l5_acc_v4_phys"
+      - phase_id: "gold_unified_v4"
+        template: "backfill_gold_v4.sql"
+        target_table: "gold.rmv_l5_task_completion_v4_phys"

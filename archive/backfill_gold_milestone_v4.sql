@@ -1,8 +1,8 @@
--- Phase 4a (V4.2 同梯次版): Gold Layer Milestone Aggregation
+-- Phase 4a (V4.2修正-含空補償): Gold Layer Milestone Aggregation
 -- 目的: 加入 COALESCE 確保 NULL 領取時間也能正確計入 Todo
 -- 變數: {start_ts}, {end_ts}
 
-INSERT INTO gold.rmv_l5_milestone_phys
+INSERT INTO gold.rmv_l5_milestone_v4_phys
 SELECT
     task_start_date AS snapshot_date,
     vx_type, region, plant, factory, line,
@@ -25,7 +25,7 @@ SELECT
     ) AS done,
 
     now() AS _refresh_time
-FROM silver.mv_fact_task_vx FINAL
+FROM silver.mv_fact_task_vx_v4 FINAL
 WHERE is_excluded = 0
   AND task_start_date >= toDate('{start_ts}')
   AND task_start_date <= toDate('{end_ts}')

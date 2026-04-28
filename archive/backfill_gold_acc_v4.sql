@@ -1,14 +1,14 @@
--- Phase 4b (V4.1 Cohort 版): Gold Layer ACC Aggregation (Same-day Cohort WIP)
+-- Phase 4b (V4.1): Gold Layer ACC Aggregation (Same-day Cohort WIP)
 -- 目的: 統計「過去 7 天內新開單，且目前尚未結案」的任務總數
 -- 變數: {start_ts}, {end_ts}
 
-INSERT INTO gold.rmv_l5_acc_phys
+INSERT INTO gold.rmv_l5_acc_v4_phys
 SELECT
     toDate(active_date_raw) AS snapshot_date,
     vx_type, region, plant, factory, line,
     groupBitmapState(cityHash64(task_id)) AS acc,
     now() AS _refresh_time
-FROM silver.mv_fact_task_vx FINAL
+FROM silver.mv_fact_task_vx_v4 FINAL
 ARRAY JOIN arrayDistinct(
     -- 僅從 task_start_date 開始展開，且限制在開單後的 7 天內
     range(toUInt32(task_start_date), toUInt32(least(COALESCE(task_end_date, today() + 1), task_start_date + 7)))
