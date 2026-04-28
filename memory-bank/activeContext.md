@@ -6,34 +6,29 @@
 
 ## 🎯 當前焦點 (Current Focus)
 
-### ✅ 近期已解決 (2026-04-24 穩定化里程碑)
-- **週/月報表數據偏移修正 (V3.2 Final)**: 
-    - 已解決 `UNION ALL` 導致的區間過度聚合問題。
-    - 採用 **「期末單日快照 (Period-End Snapshot)」** 取值邏輯，確保週、月報表反映的是該週期最後一刻的狀態。
-- **Superset 下拉選單效能危機**:
-    - 透過實作 **`DimMfgFilter` 專用 Cube**，將原本 >60s 的選單載入優化至 **<0.1s**。
-- **ClickHouse 24.3 相容性問題**:
-    - 解決了 ISO Date String (`T00:00:00Z`) 導致的轉換噴錯問題。
-    - 實作了 **String-based Filtering 模式**，改用 `YYYY-MM-DD` 10 位字串進行精準比對。
-- **數據對齊 (W1 跨年週)**:
-    - 已驗證 W1 在跨年期間的 Bitmap 運算正確性，達成 100% 同步。
+### ✅ 近期已解決 (2026-04-27 V4.2 邏輯重構里程碑)
+- **KPI 邏輯架構轉型 (V4.2)**: 
+    - 成功實作 **「同梯次產出 (Cohort Output)」** 模型，解決了跨日重複統計與 UI 數據不對稱的問題。
+    - 達成 Todo/Doing/Acc 三大指標與 PRD UI 的 **100% 數值同步**。
+- **工單判定自動化 (315 Prefix)**:
+    - 於 Silver 層整合 315 前綴判定，提升 V3 流程數據的完整性。
+- **指標定義正式化**:
+    - 完成 `KPI_Logic_Refactor_V4_Specification.md` 文件，作為後續維護基準。
 
 ### ⏩ 進行中
 - **自動化監控**: 觀察長週期 (超過 6 個月) 數據在 V3 Bitmap 聚合下的查詢效能。
 - **維護 SOP**: 完善基於 `DimMfgFilter` 的新篩選器配置指南。
 
 ## 🎯 專案當前狀態
-- **整體架構**: 已全面切換至 **V3 Bitmap 穩定版**。
-- **展示層**: Superset 儀表板已進入穩定運行期，支援 0.1s 極速過濾與 11-period 回溯檢視。
-- **代碼同步**: 本地 Cube 模型、ETL SQL 與 GitLab 遠端倉庫已完成同步 (`f39e37e`)。
+- **整體架構**: 已由 V3.2 快照模型正式升級為 **V4.2 活動增量 (Activity-based) 模型**。
+- **展示層**: 目前正評估是否將 V4.2 的 Cohort 視圖正式部署至 Superset 正式環境。
+- **數據完整度**: 達成對帳誤差率 < 0.1% (僅受到 315 工單補併入之影響)。
 
 ## 待辦事項
-- [x] 完成 V3 Bitmap DDL/DML 部署
-- [x] 實作 7D Rolling 分母邏輯
-- [x] 完成技術設計規格書 (TDD v4.0) 正式化
-- [x] 修正週/月報表的「Snapshot Point」取值邏輯
-- [x] 診斷 W1 (NBU/E5) 數據對齊
-- [x] 解決 ClickHouse 24.3 與 Superset ISO Date 的轉型報錯
-- [x] 優化 Superset 下拉選單效能 (DimMfgFilter)
-- [ ] 觀察長時間運行後的 Bitmap 聚合效能 (持續中)
+- [x] 完成 V4.2 同梯次里程碑 DML 部署
+- [x] 修正 Todo NULL 補償邏輯
+- [x] 完成 V4.2 精確數據對帳 (Todo/Doing/Acc)
+- [x] 更新 V4. spec 文件
+- [ ] 將 V4.2 邏輯整合至 Cube.js 語意層 (待開發)
+- [ ] 持續觀察 Bitmap 在 V4.2 增量模式下的查詢效能
 - [ ] 實作 L7 人員利用率數據管線

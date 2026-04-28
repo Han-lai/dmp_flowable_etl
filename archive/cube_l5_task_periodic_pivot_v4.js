@@ -7,22 +7,22 @@
  * 3. V4 邏輯下，Todo/Doing/Done 為互斥狀態，不需要使用複雜的 bitmapAndnot 進行排他計算。
  */
 
-cube(`L5TaskPeriodicPivot`, {
+cube(`L5TaskPeriodicPivotV4`, {
     sql: `
     WITH 
         params AS (
             SELECT 
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
-            FROM gold.rmv_l5_task_completion_phys
+            FROM gold.rmv_l5_task_completion_v4_phys
             WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d')")}
+                ${FILTER_PARAMS.L5TaskPeriodicPivotV4.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d')")}
             )
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffVxType.filter('vx_type')}
         ),
         calc_anchor AS (
             SELECT 
@@ -35,15 +35,15 @@ cube(`L5TaskPeriodicPivot`, {
         ),
         base AS (
             SELECT *
-            FROM gold.rmv_l5_task_completion_phys
+            FROM gold.rmv_l5_task_completion_v4_phys
             CROSS JOIN calc_anchor
             WHERE snapshot_date >= toStartOfMonth(anchor_dt) - INTERVAL 1 MONTH
               AND snapshot_date <= toLastDayOfMonth(anchor_dt) + INTERVAL 1 MONTH
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivotV4.diffVxType.filter('vx_type')}
         ),
 
         v4_wide_metrics AS (
@@ -129,7 +129,7 @@ cube(`L5TaskPeriodicPivot`, {
     ) AS pivoted_result
     `,
 
-    title: 'L5 任務完成率 (Pivot)',
+    title: 'L5 任務完成率 (Pivot) - V4 版',
     description: 'V4 同梯次 Cohort 版 Pivot 視圖，指標已簡化互斥。',
 
     measures: {

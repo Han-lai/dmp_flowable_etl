@@ -1,9 +1,9 @@
--- Phase 3b: Silver Fact Table (Time-Bounded)
--- 目標表: silver.mv_fact_task_vx
+-- Phase 3b (V4): Silver Fact Table V4 (Time-Bounded)
+-- 目標表: silver.mv_fact_task_vx_v4 (獨立，不影響既有 mv_fact_task_vx)
 -- Bypass 邏輯: 對齊 MSSQL TaskBypass 規則 — assignee_name = 'SYSTEM' 一律排除
 -- Variables: {start_ts}, {end_ts}
 
-INSERT INTO silver.mv_fact_task_vx
+INSERT INTO silver.mv_fact_task_vx_v4
 SELECT
     t.ID_ AS task_id,
     t.START_TIME_ AS task_start_time,

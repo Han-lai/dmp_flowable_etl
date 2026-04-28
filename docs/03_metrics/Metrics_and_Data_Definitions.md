@@ -1,8 +1,8 @@
-﻿# DMP Flowable 業務指標與數據定義 (Business Metrics & Data Definitions)
+# DMP Flowable 業務指標與數據定義 (Business Metrics & Data Definitions)
 
 **文件編號**: 03-MTR-001  
-**版本**: 5.1  
-**最後更新**: 2026-04-16  
+**版本**: 5.2  
+**最後更新**: 2026-04-28  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering  
 **定位**: 本文件為系統的業務語義辭典，記載 L5 任務指標的精確定義、演進歷程、五階維度血緣與查帳對齊基準。ETL 技術執行細節（SQL 邏輯、管線階段）請見 `docs/03_metrics/ETL_Transformation_Pipeline.md`。
@@ -16,14 +16,14 @@ L5 報表核心圍繞「任務狀態」與「所在時間區間」進行多維�
 ### 1.1 任務狀態與時間顆粒 (Status & Time Granularity)
 報表固定展示以下六種項目 (Item)，**不可新增或調整順序**：
 
-| Item 項目 | 說明與計算邏輯 |
+| Item 項目 | 說明與計算邏輯 (V4 Cohort 同梯次邏輯) |
 | :--- | :--- |
-| **Total Task** | 系統累計至今的所有任務總數 (基準分母)。 |
-| **Todo** | 快照時間點當下，處於未認領狀態的任務。 |
-| **Doing** | 快照時間點當下，已認領但尚未完成的任務。 |
-| **Done** | 快照時間點當下，已完成的任務。 |
-| **Doing + Done** | 執行率指標分子 (有進度的任務)。 |
-| **Todo + Doing (Acc)** | **累積在途量 (Accumulated)**：採 7 天滑動視窗 (Rolling 7D)。計算基準日(D)往前推6天內曾有活動，且截至 D 日尚未完成的任務總數。 |
+| **Total Task** | 該開單日 (`task_start_date`) 產生的所有任務總數 (基準分母)。 |
+| **Todo** | 開單日當天結束前，**未被認領**且未結案的任務。 |
+| **Doing** | 開單日當天結束前，**已被認領**但未結案的任務。 |
+| **Done** | 開單日當天結束前，**已經結案**的任務。 |
+| **Doing + Done** | 開單日當天有進度的任務 (分子)。 |
+| **Todo + Doing (Acc)** | **累積在途量 (Accumulated WIP)**：採 7 天滑動視窗。從開單日起算 7 天內，截至基準日(D)尚未結案的任務總數 (跨日追蹤)。 |
 
 ### 1.2 動態時間欄位解析 (Dynamic Time Columns)
 報表提供跨日、跨週、跨月的動態時序追蹤：
@@ -41,6 +41,18 @@ L5 報表核心圍繞「任務狀態」與「所在時間區間」進行多維�
 ## 2. 演進歷程與重大修正 (Evolution & Revisions)
 
 本節保留了系統指標邏輯與時俱進的重要分水嶺，供後續查帳與邏輯追溯。
+
+### 2.2 邏輯修正與優化分水嶺 (2026-04-28 V4 Cohort 核心定調)
+針對前期數據重疊與狀態漏接問題，全面導入 V4 Cohort 同梯次邏輯：
+
+1.  **同梯次互斥邏輯 (Same-day Cohort & Mutually Exclusive)**
+    *   **變更前**：任務狀態依據時間快照展開，可能在同一天內被同時標記為 Todo 與 Doing。
+    *   **變更後**：強制將所有指標綁定在「開單日 (`task_start_date`)」上，並保證 Todo、Doing、Done 百分之百互斥 (加總等於 Total Task)。
+2.  **SYSTEM 帳號全域排除 (System Bypass)**
+    *   新增 Bypass 規則：只要執行者為 `SYSTEM`，全面標記為 `is_excluded = 1` (`exclude_reason = 'system_bypass'`) 並剔除於分母外。
+3.  **NULL 與預設日期補償 (Null Date Compensation)**
+    *   修復 ClickHouse 將未結案任務的 `END_TIME_` 轉為 `1970-01-01` 導致全數誤判為 Done 的問題。
+    *   修復 `CLAIM_TIME_` 為 NULL 時掉出 Todo/Doing 判定框的缺陷 (利用 `COALESCE` 補償)。
 
 ### 2.1 邏輯修正與優化分水嶺 (2026-02-04 核心定調)
 針對前期數據不一致，確立了以下四大金律：
@@ -94,10 +106,10 @@ COALESCE(NULLIF(vd.varinst_region, ''), md.mdm_region) AS region
 
 | 落差現象 | 可能原因 | 處理方式 |
 | :--- | :--- | :--- |
-| 前台數量偏高 | 排除規則未生效 | 確認 `is_excluded = 0` 過濾是否套用；檢查 `dummy`、`bypass`、`Q_order` 等 `exclude_reason` |
-| 歷史數字今日看不一樣 | 使用了「目前最新狀態」而非快照 | 確認查詢的是 `gold.rmv_l5_task_completion` (snapshot-based)，而非直接對 Silver 做即時聚合 |
+| 前台數量偏高 | 排除規則未生效 | 確認 `is_excluded = 0` 過濾是否套用；檢查 `SYSTEM`、`dummy`、`bypass`、`Q_order` 等 `exclude_reason` |
+| 歷史數字今日看不一樣 | 使用了「目前最新狀態」而非快照 | V4 已全面升級為 Cohort 邏輯，歷史數字應鎖定開單日且不隨時間變動。 |
 | 時區偏差 | MSSQL 為 Server Local Time，ClickHouse 預設 UTC | 查詢時加 `toTimeZone(field, 'Asia/Taipei')` 或確認 ETL 中已轉換 |
-| Doing 數量異常 | `CLAIM_TIME_` 可能為 Null | Doing 判定：`task_claim_date IS NOT NULL AND snapshot_date >= task_claim_date AND (task_end_date IS NULL OR snapshot_date < task_end_date)` |
+| Doing 數量異常 | `CLAIM_TIME_` 可能為 Null | V4 已透過 `COALESCE` 將未領取的 `task_claim_date` 轉為 `1900-01-01`，確保正確歸類為 Todo 而非 Doing。 |
 
 ### 4.2 Gold 層對帳查詢（Snapshot-based，正式口徑）
 

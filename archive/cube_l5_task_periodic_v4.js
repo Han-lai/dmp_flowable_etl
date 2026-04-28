@@ -2,22 +2,22 @@
  * L5 任務完成率 Cube - 標準版 (V4.2 同梯次 Cohort 版)
  * 特色: V4 版本的 Todo, Doing, Done 已經互斥，因此不需要使用 bitmapAndnot 進行排他運算。
  */
-cube(`L5TaskPeriodic`, {
+cube(`L5TaskPeriodicV4`, {
     sql: `
     WITH
         params AS (
             SELECT
                 max(snapshot_date) as max_filtered_date,
                 today() as sys_today
-            FROM gold.rmv_l5_task_completion_phys
+            FROM gold.rmv_l5_task_completion_v4_phys
             WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d')")}
+                ${FILTER_PARAMS.L5TaskPeriodicV4.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d')")}
             )
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodic.diffVxType.filter('vx_type')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicV4.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicV4.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicV4.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicV4.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicV4.diffVxType.filter('vx_type')}
         ),
         calc_anchor AS (
             SELECT
@@ -48,7 +48,7 @@ cube(`L5TaskPeriodic`, {
             5 + dateDiff('day', snapshot_date, ca.anchor_dt) as sort_order,
             ca.anchor_dt as anchor_dt,
             total_task, todo, doing, done, acc
-        FROM gold.rmv_l5_task_completion_phys
+        FROM gold.rmv_l5_task_completion_v4_phys
         CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN (ca.anchor_dt - INTERVAL 6 DAY) AND ca.anchor_dt
 
@@ -60,7 +60,7 @@ cube(`L5TaskPeriodic`, {
                2 as sort_order,
                ca.anchor_dt as anchor_dt,
                total_task, todo, doing, done, acc
-        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        FROM gold.rmv_l5_task_completion_v4_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt, 3) AND ca.anchor_dt
 
         UNION ALL
@@ -71,7 +71,7 @@ cube(`L5TaskPeriodic`, {
                3 as sort_order,
                ca.anchor_dt as anchor_dt,
                total_task, todo, doing, done, acc
-        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        FROM gold.rmv_l5_task_completion_v4_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3)
                                 AND toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3) + INTERVAL 6 DAY
 
@@ -83,7 +83,7 @@ cube(`L5TaskPeriodic`, {
                4 as sort_order,
                ca.anchor_dt as anchor_dt,
                total_task, todo, doing, done, acc
-        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        FROM gold.rmv_l5_task_completion_v4_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3)
                                 AND toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3) + INTERVAL 6 DAY
 
@@ -95,7 +95,7 @@ cube(`L5TaskPeriodic`, {
                1 as sort_order,
                ca.anchor_dt as anchor_dt,
                total_task, todo, doing, done, acc
-        FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
+        FROM gold.rmv_l5_task_completion_v4_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfMonth(ca.anchor_dt) AND ca.anchor_dt
     )
     `,
