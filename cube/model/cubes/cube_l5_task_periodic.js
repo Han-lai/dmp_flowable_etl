@@ -47,7 +47,7 @@ cube(`L5TaskPeriodic`, {
             toString(snapshot_date) as period_name, 'Day' as granularity,
             5 + dateDiff('day', snapshot_date, ca.anchor_dt) as sort_order,
             ca.anchor_dt as anchor_dt,
-            total_task, todo, doing, done, acc
+            total_task, todo_daily as todo, doing_daily as doing, done_daily as done, acc
         FROM gold.rmv_l5_task_completion_phys
         CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN (ca.anchor_dt - INTERVAL 6 DAY) AND ca.anchor_dt
@@ -59,7 +59,7 @@ cube(`L5TaskPeriodic`, {
                concat('W', toString(toISOWeek(ca.anchor_dt))) as period_name, 'Week' as granularity,
                2 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task, todo, doing, done, acc
+               total_task, todo_weekly as todo, doing_weekly as doing, done_weekly as done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt, 3) AND ca.anchor_dt
 
@@ -70,7 +70,7 @@ cube(`L5TaskPeriodic`, {
                concat('W', toString(toISOWeek(ca.anchor_dt - INTERVAL 7 DAY))) as period_name, 'Week' as granularity,
                3 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task, todo, doing, done, acc
+               total_task, todo_weekly as todo, doing_weekly as doing, done_weekly as done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3)
                                 AND toStartOfWeek(ca.anchor_dt - INTERVAL 7 DAY, 3) + INTERVAL 6 DAY
@@ -82,7 +82,7 @@ cube(`L5TaskPeriodic`, {
                concat('W', toString(toISOWeek(ca.anchor_dt - INTERVAL 14 DAY))) as period_name, 'Week' as granularity,
                4 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task, todo, doing, done, acc
+               total_task, todo_weekly as todo, doing_weekly as doing, done_weekly as done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3)
                                 AND toStartOfWeek(ca.anchor_dt - INTERVAL 14 DAY, 3) + INTERVAL 6 DAY
@@ -94,7 +94,7 @@ cube(`L5TaskPeriodic`, {
                formatDateTime(ca.anchor_dt, '%b.') as period_name, 'Month' as granularity,
                1 as sort_order,
                ca.anchor_dt as anchor_dt,
-               total_task, todo, doing, done, acc
+               total_task, todo_monthly as todo, doing_monthly as doing, done_monthly as done, acc
         FROM gold.rmv_l5_task_completion_phys CROSS JOIN calc_anchor AS ca
         WHERE snapshot_date BETWEEN toStartOfMonth(ca.anchor_dt) AND ca.anchor_dt
     )

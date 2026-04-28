@@ -6,10 +6,16 @@ INSERT INTO gold.rmv_l5_task_completion_phys
 SELECT
     m.snapshot_date,
     m.vx_type, m.region, m.plant, m.factory, m.line,
-    bitmapOr(bitmapOr(m.todo, m.doing), m.done) AS total_task,
-    m.todo,
-    m.doing,
-    m.done,
+    bitmapOr(bitmapOr(m.todo_daily, m.doing_daily), m.done_daily) AS total_task,
+    m.todo_daily,
+    m.doing_daily,
+    m.done_daily,
+    m.todo_weekly,
+    m.doing_weekly,
+    m.done_weekly,
+    m.todo_monthly,
+    m.doing_monthly,
+    m.done_monthly,
     a.acc,
     now() AS _refresh_time
 FROM gold.rmv_l5_milestone_phys AS m
