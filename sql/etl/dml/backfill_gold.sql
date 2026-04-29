@@ -17,6 +17,10 @@ SELECT
     m.doing_monthly,
     m.done_monthly,
     a.acc,
+    m.calendar_year,
+    m.iso_year,
+    m.iso_week,
+    m.iso_month,
     now() AS _refresh_time
 FROM gold.rmv_l5_milestone_phys AS m
 LEFT JOIN gold.rmv_l5_acc_phys AS a 
@@ -26,5 +30,9 @@ LEFT JOIN gold.rmv_l5_acc_phys AS a
     AND m.plant = a.plant 
     AND m.factory = a.factory 
     AND m.line = a.line
+    AND m.calendar_year = a.calendar_year
+    AND m.iso_year = a.iso_year
+    AND m.iso_week = a.iso_week
+    AND m.iso_month = a.iso_month
 WHERE m.snapshot_date >= toDate('{start_ts}')
   AND m.snapshot_date <= toDate('{end_ts}');
