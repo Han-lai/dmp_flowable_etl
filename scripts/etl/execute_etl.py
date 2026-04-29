@@ -135,7 +135,7 @@ def show_status(client):
 
     # 3. Key Table Counts
     print("\n[Key Table Row Counts]")
-    for t in ["bronze.bpm_act_hi_taskinst", "silver.mv_varinst_pivoted", "silver.mv_fact_task_vx", "gold.rmv_l5_task_completion_phys"]:
+    for t in ["bronze.bpm_act_hi_taskinst", "silver.mv_varinst_pivoted", "silver.mv_fact_task_vx", "gold.rmv_l5_milestone_phys", "gold.rmv_l5_acc_phys", "gold.rmv_l5_task_completion_phys"]:
         try:
             count = client.command(f"SELECT count() FROM {t}")
             print(f" - {t:35}: {count:,} rows")
