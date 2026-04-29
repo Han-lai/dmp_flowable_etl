@@ -31,10 +31,15 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_milestone_phys (
     todo_monthly     AggregateFunction(groupBitmap, UInt64),
     doing_monthly    AggregateFunction(groupBitmap, UInt64),
     done_monthly     AggregateFunction(groupBitmap, UInt64),
+    -- [New] 週期標籤
+    calendar_year UInt16,
+    iso_year      UInt16,
+    iso_week      UInt8,
+    iso_month     UInt8,
     _refresh_time SimpleAggregateFunction(max, DateTime64(3))
 )
 ENGINE = AggregatingMergeTree()
-ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
+ORDER BY (snapshot_date, calendar_year, iso_year, iso_week, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 -- ----------------------------------------
@@ -51,10 +56,15 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_acc_phys (
     factory        String,
     line           String,
     acc         AggregateFunction(groupBitmap, UInt64),
+    -- [New] 週期標籤
+    calendar_year UInt16,
+    iso_year      UInt16,
+    iso_week      UInt8,
+    iso_month     UInt8,
     _refresh_time  SimpleAggregateFunction(max, DateTime64(3))
 )
 ENGINE = AggregatingMergeTree()
-ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
+ORDER BY (snapshot_date, calendar_year, iso_year, iso_week, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 -- ----------------------------------------
@@ -73,21 +83,26 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     plant          String,
     factory        String,
     line           String,
-    total_task  AggregateFunction(groupBitmap, UInt64),
-    todo_daily  AggregateFunction(groupBitmap, UInt64),
-    doing_daily AggregateFunction(groupBitmap, UInt64),
-    done_daily  AggregateFunction(groupBitmap, UInt64),
-    todo_weekly  AggregateFunction(groupBitmap, UInt64),
-    doing_weekly AggregateFunction(groupBitmap, UInt64),
-    done_weekly  AggregateFunction(groupBitmap, UInt64),
-    todo_monthly  AggregateFunction(groupBitmap, UInt64),
-    doing_monthly AggregateFunction(groupBitmap, UInt64),
-    done_monthly  AggregateFunction(groupBitmap, UInt64),
-    acc         AggregateFunction(groupBitmap, UInt64),
+    total_task  AggregateFunction(groupBitmap, UInt64), -- 總任務量 Bitmap (去重聯集)
+    todo_daily  AggregateFunction(groupBitmap, UInt64),  -- 當日待辦任務集合
+    doing_daily AggregateFunction(groupBitmap, UInt64), -- 當日執行中任務集合
+    done_daily  AggregateFunction(groupBitmap, UInt64), -- 當日完成任務集合
+    todo_weekly  AggregateFunction(groupBitmap, UInt64), -- 當週待辦任務集合
+    doing_weekly AggregateFunction(groupBitmap, UInt64), -- 當週執行中任務集合
+    done_weekly  AggregateFunction(groupBitmap, UInt64), -- 當週完成任務集合
+    todo_monthly  AggregateFunction(groupBitmap, UInt64), -- 當月待辦任務集合
+    doing_monthly AggregateFunction(groupBitmap, UInt64), -- 當月執行中任務集合
+    done_monthly  AggregateFunction(groupBitmap, UInt64), -- 當月完成任務集合
+    acc         AggregateFunction(groupBitmap, UInt64), -- 7 天滾動累計任務集合
+    -- [New] 週期標籤
+    calendar_year UInt16,
+    iso_year      UInt16,
+    iso_week      UInt8,
+    iso_month     UInt8,
     _refresh_time  SimpleAggregateFunction(max, DateTime64(3))
 )
 ENGINE = AggregatingMergeTree()
-ORDER BY (snapshot_date, vx_type, region, plant, factory, line)
+ORDER BY (snapshot_date, calendar_year, iso_year, iso_week, vx_type, region, plant, factory, line)
 TTL snapshot_date + INTERVAL 1 YEAR;
 
 -- ----------------------------------------
@@ -111,6 +126,10 @@ SELECT
     doing_monthly,
     done_monthly,
     acc,
+    calendar_year,
+    iso_year,
+    iso_week,
+    iso_month,
     _refresh_time
 FROM gold.rmv_l5_task_completion_phys;
 

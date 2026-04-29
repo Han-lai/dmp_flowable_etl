@@ -1,15 +1,18 @@
 /**
  * L5 任務完成率 Cube - Pivot 版 (V4.2 同梯次 Cohort 版)
+ * 目的：將 TODO, DOING, DONE 等多個指標從「欄位 (Measures)」轉換為「列 (Status Name)」。
+ * 商業意義：方便前端表格直接呈現狀態對比，支持單一圖表顯示所有狀態的百分比。
  * 
- * 修正: 
+ * 技術優化: 
  * 1. 確保 filter_date (snapshotDate) 在所有 UNION 分支中都指向 anchor_dt，避免篩選時過濾掉歷史資料。
  * 2. Day 粒度調整為回溯 7 天 (INTERVAL 6 DAY)。
- * 3. V4 邏輯下，Todo/Doing/Done 為互斥狀態，不需要使用複雜的 bitmapAndnot 進行排他計算。
+ * 3. V4 邏輯下，Todo/Doing/Done 為互斥狀態，數據精確對齊。
  */
 
 cube(`L5TaskPeriodicPivot`, {
     sql: `
     WITH 
+        -- [1] 參數提取：鎖定使用者選擇的基準日
         params AS (
             SELECT 
                 max(snapshot_date) as max_filtered_date,
@@ -33,6 +36,7 @@ cube(`L5TaskPeriodicPivot`, {
                 sys_today
             FROM params
         ),
+        -- [2] 基礎數據擷取：預先過濾回溯所需的 3 個月視窗，提升後續 UNION 效率
         base AS (
             SELECT *
             FROM gold.rmv_l5_task_completion_phys
@@ -46,6 +50,7 @@ cube(`L5TaskPeriodicPivot`, {
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
         ),
 
+        -- [3] 指標展平 (Wide Format)：計算各粒度的數值
         v4_wide_metrics AS (
             -- A. Month: 當月累積
             SELECT 
@@ -60,12 +65,12 @@ cube(`L5TaskPeriodicPivot`, {
                 bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
                 bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
             FROM base
-            WHERE snapshot_date >= toStartOfMonth(anchor_dt) AND snapshot_date <= anchor_dt
+            WHERE snapshot_date >= toStartOfMonth(anchor_dt) AND snapshot_date <= toLastDayOfMonth(anchor_dt)
             GROUP BY vx_type, region, plant, factory, line, anchor_dt, period_name
 
             UNION ALL
 
-            -- B. Week: 包含當週與前兩週 (共三週)
+            -- B. Week: 本週與前兩週
             SELECT 
                 'Week' as granularity, concat('W', toString(toISOWeek(snapshot_date))) as period_name,
                 CASE WHEN toISOWeek(snapshot_date) = toISOWeek(anchor_dt) THEN 2
@@ -82,15 +87,15 @@ cube(`L5TaskPeriodicPivot`, {
                 bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
             FROM base
             WHERE (
-                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt) AND snapshot_date <= anchor_dt) OR 
-                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 7 DAY)) OR
-                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 14 DAY))
+                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt) AND toISOYear(snapshot_date) = toISOYear(anchor_dt)) OR 
+                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 7 DAY) AND toISOYear(snapshot_date) = toISOYear(anchor_dt - INTERVAL 7 DAY)) OR
+                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 14 DAY) AND toISOYear(snapshot_date) = toISOYear(anchor_dt - INTERVAL 14 DAY))
             )
             GROUP BY granularity, period_name, sort_order, vx_type, region, plant, factory, line, anchor_dt
 
             UNION ALL
 
-            -- C. Day: 前 7 天數值
+            -- C. Day: 前 7 天趨勢
             SELECT 
                 'Day' as granularity, toString(snapshot_date) as period_name,
                 5 + dateDiff('day', snapshot_date, anchor_dt) as sort_order,
@@ -108,6 +113,7 @@ cube(`L5TaskPeriodicPivot`, {
             GROUP BY granularity, period_name, sort_order, vx_type, region, plant, factory, line, anchor_dt, snapshot_date
         )
 
+    -- [4] 數據轉置 (Pivot)：將寬表轉為窄表 (Long Format)
     SELECT * FROM (
         SELECT vx_type, region, plant, factory, line, filter_date, snapshot_date_real, granularity, period_name, sort_order as period_sort,
             '1. Total Task' as status_name, total_qty as task_qty, 100.0 as task_pct, 1 as status_sort FROM v4_wide_metrics
@@ -130,7 +136,7 @@ cube(`L5TaskPeriodicPivot`, {
     `,
 
     title: 'L5 任務完成率 (Pivot)',
-    description: 'V4 同梯次 Cohort 版 Pivot 視圖，指標已簡化互斥。',
+    description: 'V4 同梯次 Cohort 版 Pivot 視圖，支持狀態列展示。',
 
     measures: {
         taskQty: { type: `sum`, sql: `task_qty`, title: 'Task Qty' },
@@ -144,8 +150,10 @@ cube(`L5TaskPeriodicPivot`, {
         realSnapshotDate: { type: `string`, sql: `snapshot_date_real`, title: '實際快照日期' },
         granularity: { type: `string`, sql: `granularity`, title: '時間粒度' },
         periodName: { type: `string`, sql: `period_name`, title: '週期名稱' },
-        statusName: { type: `string`, sql: `status_name`, title: '任務狀態' },
+        statusName: { type: `string`, sql: `status_name`, title: '任務狀態', description: 'TODO, DOING, DONE 等結算狀態名稱' },
         sortOrder: { type: `number`, sql: `status_sort`, title: '狀態排序 (Hidden)' },
+        
+        // [製造維度項]
         diffVxType: { type: `string`, sql: `vx_type`, title: 'Vx 類型' },
         diffRegion: { type: `string`, sql: `region`, title: '地區' },
         diffPlant: { type: `string`, sql: `plant`, title: '廠區' },

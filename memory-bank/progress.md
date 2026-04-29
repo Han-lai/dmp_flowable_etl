@@ -1,48 +1,41 @@
 # 專案進度 (Progress)
 
 ## 項目概述
-DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至 V3 (Gold Bitmap) 架構，旨在解決數據膨脹問題並實現 100% 報表一致性。
+DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至 V4.3 (Super Silver) 架構，旨在建立高品質、高精確度的統一任務事實表，達成 KPI 指標與 UI 明細的 100% 同步。
 
 ## 已完成里程碑 (Milestones)
 
-### 2026-04-21: V3 Bitmap 架構正式上線 (穩定版 V3.2)
-- **核心遷移**: 物理表結構全面切換為 `AggregateFunction(groupBitmap, UInt64)`。
-- **數據對齊**: 達成 W51 (31筆) 與 W52 (46筆) 的 100% 報表同步。
-- **技術文件正式化 (v4.0)**: 
-    - 完成交付規格式的 TDD (Technical Design Document)。
-    - 合併所有核心 SQL 與效能基準壓測報告。
-    - 實作「如何新增指標」的 6 步驟開發 SOP。
-    - 建立全目錄（Architecture/Metrics/Monitoring）網狀連結。
+### 2026-04-29: V4.3 超級事實表大統一 (Super Silver Architecture)
+- **架構整合**: 成功將「UI 明細 V2」的功能（L4 編號、11 個業務變數、時效指標）合併回核心事實表 `silver.mv_fact_task_vx`。
+- **資料精確度優化**: 
+    - 實作了 **`argMax` 去重關聯**，解決了 `LEFT JOIN` 變數表時產生的資料虛胖問題，數據精度與目標 100% 吻合。
+    - 修正了 **315** 工單分類邏輯。
+- **專案清理**: 移除所有過時的測試 DML 與 Schema 檔案，完成 ETL 資料夾與管線邏輯的標準化。
+- **語義層對接**: 建立 `L5TaskDetailsSuper` Cube，正式支援前端明細鑽取。
 
-### 2026-04-24: Superset 儀表板穩定化與效能優化
-- **解決轉型報錯**: 透過 String-based filtering 徹底解決 ClickHouse 24.3 對 ISO 格式的相容性問題。
-- **立竿見影的優化**: 新增 `DimMfgFilter` 專用選單資料集，將 Dashboard 下拉選單響應速度從 **>60s 降低至 0.1s**。
-- **跨時段報表穩定**: 實作 Anchor Date (基準日期) 聯動邏輯，穩定實現「7天 trending + 3週對比 + 1個月累積」的單一視圖。
+### 2026-04-29: V4.2 終極版 - 跨年週對帳與週期感知優化
+- **100% 數據對齊**: 成功解決 CNE WJ2 NBU E5 W1 的對帳落差，達成 TODO: 12 / DONE: 440 的原始對齊。
+- **週期感知 (Period-Aware) 邏輯**: 在 Cube.js 語意層實作自動邊界補齊，解決跨年週期數據被切斷的問題。
+- **全量數據回填**: 完成 2025-09 至 2026-01 的歷史回填，確保資料與 2025 年末的業務週期完全接軌。
 
-### 2026-04-28: V4.2 邏輯正式上線與 UI 獨立明細表架構
-- **正式上線 (Production Deployment)**: 完成 V4 同梯次邏輯的合併，執行了完整的 `--reset` 與 `--backfill`，並將 Cube.js 語意層切換為輕量直接查詢 (移除 BitmapAndnot)。
-- **UI 專用明細架構**: 為了供應前端 31 欄的細緻需求 (如 `sapPlant`, `scheduleNumber` 等)，建立了一套完全獨立的明細表架構 (`silver.mv_ui_varinst_pivoted` 與 `silver.mv_fact_ui_task_details`)，成功與 KPI 運算管線解耦。
-- **文件更新**: 完善了 `Metrics_and_Data_Definitions.md` 的業務定義與查帳對齊基準，並新增 `UI_Detail_Fields_Mapping.md` 指南。
-
-### 2026-04-27: V4.2 KPI 邏輯重構 (同梯次分析模式)
-- **核心轉換**: 從「快照累積」模式轉型為 **「當日開單同梯次 (Same-day Cohort) 分析」**。
-- **互斥優先級**: 實作 `Done > Doing > Todo` 判定，徹底解決一筆任務在不同指標重複出現的問題。
-- **100% 數據對齊**: 達成 **Todo / Doing / Acc (WIP)** 三大熱指標與 PRD UI 的完全同步。
-- **工單系統對齊**: 於 Silver 層正式導入 **`315` 工單前綴** 判定規則，提升 V3 流程捕捉完整度。
-- **技術修正**: 實作 `COALESCE` 空值補償，解決 NULL Claim Time 導致的數據遺漏。
+### 2026-04-28: 多粒度梯次 (Multi-Granularity Cohort) 正式上線
+- **指標定義升級**: 實現了「週期結算」邏輯，讓週/月報表能反映任務在週期結束時的真實狀態。
+- **架構優化**: 在 Gold 層導入多粒度 Bitmap 欄位 (`daily`, `weekly`, `monthly`)。
 
 ## 當前狀態項目 (Status)
 
 | 模組 | 狀態 | 備註 |
 | :--- | :--- | :--- |
-| **Gold Layer ETL** | ✅ V4.2 | 已完成同梯次活動分析邏輯重構並正式上線 |
-| **UI Detail Layer** | ✅ 已建立 | 建立獨立的 31 欄寬表供前端使用，與 KPI 管線解耦 |
-| **技術文件 (TDD)** | ✅ 最新版 | 業務指標與前端對照文件已同步更新 |
-| **Cube.js Model** | ✅ V4.2 | 移除複雜交集，完全對接互斥的 V4 指標 |
-| **Superset Dashboard** | ✅ 運作中 | 達成 0.1s 選單響應與 11-period 視圖 |
+| **Silver Fact Layer** | ✅ V4.3 | 超級事實表 (Super Silver)，包含 L4、業務變數與時效 |
+| **Gold Layer ETL** | ✅ V4.2 | 支援週期感知 (Period-Aware) 與多粒度 Bitmap |
+| **DML 效能** | ✅ 已優化 | 實作 argMax 去重，確保 JOIN 後不產生重複數據 |
+| **ETL 檔案清理** | ✅ 已完成 | 僅保留 `execute_etl.py` 與核心 SQL 模板 |
+| **Cube.js Model** | ✅ V4.3 | 新增 `L5TaskDetailsSuper` 用於正式明細鑽取 |
 
 ## 待辦事項 (Todo)
-- [x] 完成 V4.2 同梯次邏輯合併與 Cube 整合。
-- [x] 建立前端 UI 專屬明細寬表。
-- [ ] 建立自動化回填 (Backfill) 監控機制。
-- [ ] 實作 L7 人員利用率數據管線。
+- [x] 解決 W1 跨年數據對帳落差。
+- [x] **將 UI 明細邏輯整合進核心 Fact Table (V4.3 升級)**。
+- [x] **實作 DML argMax 去重優化，解決資料重複問題**。
+- [x] **清理過時 ETL 程式碼與檔案**。
+- [ ] 提交並推送所有 V4.3 邏輯變更至版本控制。
+- [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能。

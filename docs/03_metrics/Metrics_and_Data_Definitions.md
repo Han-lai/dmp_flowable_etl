@@ -1,8 +1,8 @@
 # DMP Flowable 業務指標與數據定義 (Business Metrics & Data Definitions)
 
 **文件編號**: 03-MTR-001  
-**版本**: 5.2  
-**最後更新**: 2026-04-28  
+**版本**: 5.3  
+**最後更新**: 2026-04-29  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering  
 **定位**: 本文件為系統的業務語義辭典，記載 L5 任務指標的精確定義、演進歷程、五階維度血緣與查帳對齊基準。ETL 技術執行細節（SQL 邏輯、管線階段）請見 `docs/03_metrics/ETL_Transformation_Pipeline.md`。
@@ -16,16 +16,25 @@ L5 報表核心圍繞「任務狀態」與「所在時間區間」進行多維�
 ### 1.1 任務狀態與時間顆粒 (Status & Time Granularity)
 報表固定展示以下六種項目 (Item)，**不可新增或調整順序**：
 
-| Item 項目 | 說明與計算邏輯 (V4 Cohort 同梯次邏輯) |
+| Item 項目 | 說明與計算邏輯 (V4.2 Period-Aware 週期感知邏輯) |
 | :--- | :--- |
-| **Total Task** | 該開單日 (`task_start_date`) 產生的所有任務總數 (基準分母)。 |
-| **Todo** | 開單日當天結束前，**未被認領**且未結案的任務。 |
-| **Doing** | 開單日當天結束前，**已被認領**但未結案的任務。 |
-| **Done** | 開單日當天結束前，**已經結案**的任務。 |
-| **Doing + Done** | 開單日當天有進度的任務 (分子)。 |
+| **Total Task** | 該開單日 (`task_start_date`) 產生的任務總數。所有時間粒度的分母基準一致。 |
+| **Todo** | **結算點尚未被領取**的任務。依報表粒度不同，結算點分別為：<br>● **日**: 開單當天 23:59:59<br>● **週**: 該 ISO 週週日 23:59:59<br>● **月**: 該曆月底 23:59:59 |
+| **Doing** | **結算點已被領取但未完工**的任務。 |
+| **Done** | **結算點已經結案**的任務。 |
+| **Doing + Done** | 該週期結算點有進度的任務 (分子)。 |
 | **Todo + Doing (Acc)** | **累積在途量 (Accumulated WIP)**：採 7 天滑動視窗。從開單日起算 7 天內，截至基準日(D)尚未結案的任務總數 (跨日追蹤)。 |
 
-### 1.2 動態時間欄位解析 (Dynamic Time Columns)
+### 1.2 週期結算邊界 (Temporal Evaluation Boundaries)
+V4.2 導入了「週期感知」邏輯，系統會根據查詢的粒度自動擴展結算範圍，解決跨年/跨月數據斷層問題：
+
+| 報表粒度 | 結算時間點 (Evaluation Point) | 數據範圍感知 |
+| :--- | :--- | :--- |
+| **Daily** | 當日 23:59:59 | 僅包含開單當天完成的數量。 |
+| **Weekly** | **該週週日 23:59:59** | 自動包含 12/29~01/04 (W1) 的跨年完成任務。 |
+| **Monthly** | **該月最後一秒 23:59:59** | 結算至 12/31 23:59:59 的最終狀態。 |
+
+### 1.3 動態時間欄位解析 (Dynamic Time Columns)
 報表提供跨日、跨週、跨月的動態時序追蹤：
 
 | 欄位名稱 (Pattern) | 說明與動態邏輯 |
@@ -42,7 +51,20 @@ L5 報表核心圍繞「任務狀態」與「所在時間區間」進行多維�
 
 本節保留了系統指標邏輯與時俱進的重要分水嶺，供後續查帳與邏輯追溯。
 
-### 2.2 邏輯修正與優化分水嶺 (2026-04-28 V4 Cohort 核心定調)
+### 2.2 邏輯修正與優化分水嶺 (2026-04-29 V4.2 週期感知重構)
+針對跨年對帳落差與週/月結算邏輯不一的問題，進行終極重構：
+
+1.  **跨年對帳對齊 (Year-End Alignment)**
+    *   **問題**：W1 (12/29~01/04) 的任務在舊系統中會被 12/31 切斷，導致 TODO/DONE 數量與 MSSQL 不符。
+    *   **修正**：實作「週期感知」查詢。當查詢 W1 時，系統會自動將結算邊界延伸至 01/04，確保達成 TODO: 12 / DONE: 440 的原始對齊。
+2.  **雙軌年份設計 (Dual-Year Indexing)**
+    *   Gold 層導入 `calendar_year` (曆年) 與 `iso_year` (ISO週年)。
+    *   **月報表**：篩選 `calendar_year`，確保包含 12/29-12/31。
+    *   **週報表**：篩選 `iso_year`，確保 W1 數據完整呈現。
+3.  **多粒度結算 Bitmap (Multi-Granularity Bitmaps)**
+    *   物理表儲存 `_daily`, `_weekly`, `_monthly` 三套 Bitmap，預先計算不同邊界下的狀態，達成秒級響應。
+
+### 2.3 邏輯修正與優化分水嶺 (2026-04-28 V4.1 核心定調)
 針對前期數據重疊與狀態漏接問題，全面導入 V4 Cohort 同梯次邏輯：
 
 1.  **同梯次互斥邏輯 (Same-day Cohort & Mutually Exclusive)**
@@ -116,15 +138,17 @@ COALESCE(NULLIF(vd.varinst_region, ''), md.mdm_region) AS region
 > **重要**: Gold 層採用「時點快照」判定狀態。`snapshot_date` 是任務在 Start/Claim/End 三個事件日期上展開的快照，**不等同**於 `silver.mv_fact_task_vx.task_status` 的當前狀態欄位。正式對帳應以 Gold 層為準。
 
 ```sql
--- 驗證特定日期下，V3 NBU 各線體的 Todo/Doing/Done 分佈
+-- 驗證 W1 (12/29 ~ 01/04) 在結算點 01/04 時的 Todo/Doing/Done 分佈 (V4.2 標竿)
 SELECT
-    snapshot_date, vx_type, plant, factory, line,
-    total_task, todo_count, doing_count, done_count, acc_todo_doing
+    iso_year, iso_week,
+    bitmapCardinality(groupBitmapMergeState(total_task)) as total,
+    bitmapCardinality(groupBitmapMergeState(todo_weekly)) as todo,
+    bitmapCardinality(groupBitmapMergeState(doing_weekly)) as doing,
+    bitmapCardinality(groupBitmapMergeState(done_weekly)) as done
 FROM gold.rmv_l5_task_completion
-WHERE snapshot_date = '2025-12-31'
-  AND vx_type = 'V3'
-  AND factory = 'NBU'
-ORDER BY line;
+WHERE (iso_year = 2026 AND iso_week = 1)
+  AND vx_type = 'V3' AND line = 'E5'
+GROUP BY iso_year, iso_week;
 ```
 
 ### 4.3 Silver 層輔助查詢（任務清單稽核）

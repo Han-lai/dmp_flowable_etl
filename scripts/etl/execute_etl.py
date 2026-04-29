@@ -299,13 +299,29 @@ def main():
             print(f"Error reading status: {e}")
             sys.exit(1)
 
-    # 2. Daily Mode Logic
+    # 2. Reset Mode
+    if args.reset:
+        try:
+            client = get_client(is_low_ram=args.low_ram)
+            print("Reset Mode: Truncating tables and clearing checkpoints...")
+            for table in PIPELINE_CONFIG.get('reset_targets', []):
+                print(f"  Truncating {table}...")
+                client.command(f"TRUNCATE TABLE IF EXISTS {table}")
+            print("  Clearing ETL checkpoints...")
+            client.command("TRUNCATE TABLE IF EXISTS ops_metrics.etl_checkpoint")
+            print("  Reset Completed.")
+            if not args.backfill: return
+        except Exception as e:
+            print(f"Reset Error: {e}")
+            sys.exit(1)
+
+    # 3. Daily Mode Logic
     if args.daily:
         args.backfill = True
         args.start = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
         print(f"Daily Mode: Focus on last 7 days from {args.start}")
 
-    # 3. Computation Mode
+    # 4. Computation Mode
     if args.backfill:
         try:
             client = get_client(is_low_ram=args.low_ram)

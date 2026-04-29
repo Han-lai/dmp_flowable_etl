@@ -13,20 +13,37 @@
 
 -- DROP TABLE IF EXISTS silver.mv_varinst_pivoted;
 
-CREATE TABLE IF NOT EXISTS silver.mv_varinst_pivoted (
-    PROC_INST_ID_ String,
-    varinst_region String,
-    varinst_plant String,
-    varinst_factory String,
-    varinst_lineName String,
-    varinst_moNumber String,
-    varinst_autoComplete String,
-    _refresh_time DateTime64(3)
+-- Silver Layer: Variable Pivoted Table
+-- 目的：將 BPM 流程中的動態變數攤平為結構化欄位，方便事實表進行維度過濾與鑽取
+CREATE TABLE IF NOT EXISTS silver.mv_varinst_pivoted
+(
+    `PROC_INST_ID_` String,           -- 流程實例 ID (唯一識別碼)
+    -- [業務維度欄位]
+    `varinst_region` String,          -- 區域 (Manual Input)
+    `varinst_plant` String,           -- 廠別 (Manual Input)
+    `varinst_factory` String,         -- 工廠 (Manual Input)
+    `varinst_lineName` String,        -- 線別名稱 (核心關聯維度)
+    
+    -- [業務變數 (11 欄)]
+    `varinst_moNumber` String,        -- 工單號碼
+    `varinst_modelName` String,       -- 機種名稱
+    `varinst_deliveryArea` String,    -- 交付區域
+    `varinst_scheduleNumber` String,  -- 排程編號
+    `varinst_sapPlant` String,        -- SAP 廠別
+    `varinst_sapProductGroup` String, -- SAP 產品組
+    `varinst_pallet` String,          -- 棧板 ID
+    `varinst_transferNo` String,      -- 轉單編號
+    `varinst_qBlockEventId` String,   -- Q-Block 事件 ID
+    `varinst_defectSn` String,        -- 不良品序號
+    `varinst_time` String,            -- 介面自定義時間
+    
+    `varinst_autoComplete` String,    -- 自動完成旗標
+    `_refresh_time` DateTime64(3)     -- 資料最後重新整理時間
 )
-ENGINE = ReplacingMergeTree(_refresh_time)
-ORDER BY (PROC_INST_ID_)
-TTL toDate(_refresh_time) + INTERVAL 1 YEAR
-SETTINGS allow_nullable_key = 1;
+ENGINE = ReplacingMergeTree(_refresh_time) -- 確保同一個流程 ID 僅保留最新變數狀態
+ORDER BY PROC_INST_ID_                     -- 以流程 ID 排序，優化 Join 與 argMax 效能
+TTL toDate(_refresh_time) + toIntervalYear(1) -- 資料保存期限：一年 (基於維護時間)
+SETTINGS allow_nullable_key = 1, index_granularity = 8192;
 
 -- -- 驗證
 -- SELECT 'mv_varinst_pivoted' AS table_name, count() AS row_count 
@@ -78,9 +95,3 @@ LEFT JOIN bronze.common_mdm_mfg_plant_master pm ON pa.MFG_PLANT_ID = pm.MFG_PLAN
 LEFT JOIN bronze.common_mdm_factory_area_master fa ON pa.FACTORY = fa.FACTORY
 LEFT JOIN bronze.common_mdm_mfg_site_master sm ON fa.MFG_SITE = sm.MFG_SITE
 WHERE ld.LINE_NAME IS NOT NULL AND ld.LINE_NAME != '';
-
--- -- 驗證
--- SELECT 'mv_dim_mfg_five_level' AS table_name, count() AS row_count 
--- FROM silver.mv_dim_mfg_five_level;
-
--- SELECT 'Silver Layer 1 完成' AS status;
