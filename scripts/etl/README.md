@@ -35,10 +35,10 @@
 
 ---
 
-### 4. `optimize_tables.py` - 資料唯一性維護工具 (NEW)
-針對 `ReplacingMergeTree` 引擎的自動維護工具。
-*   **功能**: 批次對所有 Bronze/Silver/Gold 表執行 `OPTIMIZE TABLE ... FINAL`。
-*   **目的**: 強制 ClickHouse 合併背景分片，移除因多次同步產生的重複記錄。
+### 4. 資料去重與唯一性維護 (V4.3 更新)
+目前架構已經不再需要額外的 `optimize_tables.py` 腳本。
+*   **功能**: 所有 Silver 層事實表均採用 `ReplacingMergeTree`，並在 SQL 層面透過 `argMax(..., _refresh_time)` 與 `GROUP BY` 進行查詢時去重。
+*   **目的**: 徹底解決了歷史變更記錄導致的資料膨脹問題，確保資料與前端 UI 100% 精準對齊。
 
 ---
 
