@@ -46,69 +46,38 @@ def audit_done_details(date, region, plant, factory, line, vx_type, status='done
     print(f" Hierarchy: {region} / {plant} / {factory} / {line} | VX: {vx_type}")
     print(f"{'='*100}\n")
 
-    # Build date filter mirroring Gold milestone ARRAY JOIN logic exactly.
+    # Build date filter mirroring Gold milestone V4 Cohort logic exactly.
     # Silver stores NULL (via NULLIF) for missing claim/end dates — not epoch.
-    # Gold only counts a task's state on the dates in its lifecycle [start, claim, end].
+    # Gold anchors all metrics to task_start_date (Same-day Cohort).
     if status == 'done':
-        # Matches Gold: task_end_date IS NOT NULL AND snapshot_date >= task_end_date
-        # Since tasks ending before snapshot_date cannot touch snapshot_date via start/claim,
-        # this reduces to: task_end_date = snapshot_date
+        # Matches Gold: task_end_date = task_start_date
         date_filter = (
-            f"AND task_end_date IS NOT NULL\n"
+            f"AND task_start_date = '{date}'\n"
             f"      AND task_end_date = '{date}'"
         )
     elif status == 'todo':
-        # Matches Gold: snapshot_date < COALESCE(task_claim_date, task_end_date, tomorrow)
-        # Task must start on snapshot_date (only start is in ARRAY on a not-yet-claimed task)
+        # Matches Gold: claim_date is missing or != start_date
         date_filter = (
             f"AND task_start_date = '{date}'\n"
-            f"      AND COALESCE(task_claim_date, task_end_date, toDate('9999-12-31')) > '{date}'"
+            f"      AND COALESCE(task_claim_date, toDate('1900-01-01')) != '{date}'\n"
+            f"      AND (task_end_date IS NULL OR task_end_date != '{date}')"
         )
     elif status == 'doing':
-        # Matches Gold: claim IS NOT NULL AND snapshot >= claim AND (end IS NULL OR snapshot < end)
-        # Task must touch snapshot_date via start or claim date
+        # Matches Gold: claim_date = start_date, but not ended on start_date
         date_filter = (
-            f"AND (task_start_date = '{date}' OR task_claim_date = '{date}')\n"
-            f"      AND task_claim_date IS NOT NULL AND task_claim_date <= '{date}'\n"
-            f"      AND (task_end_date IS NULL OR task_end_date > '{date}')"
+            f"AND task_start_date = '{date}'\n"
+            f"      AND task_claim_date = '{date}'\n"
+            f"      AND (task_end_date IS NULL OR task_end_date != '{date}')"
         )
     else:  # all
-        # Union: any task whose lifecycle touches snapshot_date (mirrors ARRAY JOIN source set)
+        # All tasks opened on that day (task_start_date)
         date_filter = (
-            f"AND (task_start_date = '{date}' OR task_claim_date = '{date}' OR task_end_date = '{date}')"
+            f"AND task_start_date = '{date}'"
         )
 
     # 2. Detailed Query
     detail_sql = f"""
-    SELECT
-        task_id,
-        task_start_time,
-        task_claim_time,
-        task_end_time,
-        task_start_date,
-        task_claim_date,
-        task_end_date,
-        task_primary_date,
-        task_create_date,
-        task_status,
-        vx_type,
-        region,
-        plant,
-        factory,
-        line,
-        region_source,
-        plant_source,
-        factory_source,
-        line_source,
-        is_excluded,
-        exclude_reason,
-        assignee_code,
-        assignee_name,
-        task_definition_key,
-        task_name,
-        mo_number,
-        proc_inst_id,
-        _mview_update_time
+    SELECT *
     FROM silver.mv_fact_task_vx FINAL
     WHERE is_excluded = 0
       {filter_sql}
@@ -121,17 +90,7 @@ def audit_done_details(date, region, plant, factory, line, vx_type, status='done
         print(f"No tasks found for this criteria.")
         return
 
-    df = pd.DataFrame(res_detail.result_rows, columns=[
-        'task_id', 'task_start_time', 'task_claim_time', 'task_end_time',
-        'task_start_date', 'task_claim_date', 'task_end_date', 'task_primary_date',
-        'task_create_date', 'task_status', 'vx_type',
-        'region', 'plant', 'factory', 'line',
-        'region_source', 'plant_source', 'factory_source', 'line_source',
-        'is_excluded', 'exclude_reason',
-        'assignee_code', 'assignee_name',
-        'task_definition_key', 'task_name', 'mo_number', 'proc_inst_id',
-        '_mview_update_time'
-    ])
+    df = pd.DataFrame(res_detail.result_rows, columns=res_detail.column_names)
     
     print(f"Total {status_label} Tasks found: {len(df)}")
     
