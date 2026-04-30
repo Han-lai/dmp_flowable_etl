@@ -25,5 +25,5 @@
 - [Grafana_Dashboard_Setup.md](05_monitoring/Grafana_Dashboard_Setup.md): 維運監控。Grafana 面板配置與系統健康指標說明。
 
 ---
-*最後重整日期: 2026-04-16*
+*最後重整日期: 2026-04-30*  
 *維護單位: AIT / Data Engineering*

@@ -61,6 +61,10 @@ cube(`L5TaskDetails`, {
             duration_min,
             processing_time_min,
 
+            -- [執行者資訊]
+            assignee_code,
+            assignee_name,
+
             -- [L4 流程資訊]
             l4_process_id,
             l4_process_name
@@ -190,6 +194,43 @@ cube(`L5TaskDetails`, {
             sql: `sap_product_group`,
             type: `string`,
             title: `SAP 產品組`
+        },
+
+        pallet: {
+            sql: `pallet`,
+            type: `string`,
+            title: `棧板編號`
+        },
+
+        transferNo: {
+            sql: `transfer_no`,
+            type: `string`,
+            title: `轉單編號`
+        },
+
+        qblockEventId: {
+            sql: `qblock_event_id`,
+            type: `string`,
+            title: `Q-Block 事件 ID`
+        },
+
+        defectSn: {
+            sql: `defect_sn`,
+            type: `string`,
+            title: `不良品 SN`
+        },
+
+        // --- 執行者資訊 ---
+        assigneeCode: {
+            sql: `assignee_code`,
+            type: `string`,
+            title: `處理人代碼`
+        },
+
+        assigneeName: {
+            sql: `assignee_name`,
+            type: `string`,
+            title: `處理人姓名`
         },
 
         // --- L4 流程資訊 ---
