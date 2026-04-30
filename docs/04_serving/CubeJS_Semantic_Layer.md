@@ -1,8 +1,7 @@
 # Cube.js 語義層定位與模型應用說明
 
 **文件編號**: 04-SRV-001  
-**版本**: 1.0  
-**最後更新**: 2026-04-14  
+**最後更新**: 2026-04-30  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering
 
@@ -30,7 +29,44 @@ Serving Layer (FastAPI / Node.js / Superset)
 
 ---
 
-## 2. 數據建模定義 (Data Schema)
+## 2. Cube 模型總覽 (Model Overview)
+
+本專案目前共實作四個 Cube 模型，各司其職：
+
+| Cube 名稱 | 資料來源 | 主要用途 |
+| :--- | :--- | :--- |
+| **`L5TaskPeriodic`** | `gold.rmv_l5_task_completion` | KPI 聚合主模型，提供日/週/月三種粒度的完成率指標 |
+| **`L5TaskPeriodicPivot`** | `gold.rmv_l5_task_completion` | Pivot 表格專用長表模型，適合 Superset Pivot Table |
+| **`DimMfgFilter`** | `gold.rmv_l5_task_completion` | 輕量化篩選選單，提供 Superset Native Filter 的極速下拉選單 |
+| **`L5TaskDetails`** | `silver.mv_fact_task_vx FINAL` | 明細下鑽模型，提供工單層級的任務明細查詢 |
+
+---
+
+## 3. 數據建模定義 (Data Schema)
+
+### 3.0 DimMfgFilter — 篩選選單模型
+
+**設計動機**：若讓 Superset 篩選器直接查詢主模型，選單載入超過 60 秒且觸發 Network Error。`DimMfgFilter` 僅提取不重複的維度組合，查詢速度提升至 **< 0.1s**。
+
+```javascript
+// cube_dim_mfg_filter.js 核心 SQL
+SELECT DISTINCT region, plant, factory, line, vx_type, snapshot_date
+FROM gold.rmv_l5_task_completion
+ORDER BY snapshot_date DESC  -- 確保最新日期優先顯示
+```
+
+| 維度名稱 | 欄位名 | 說明 |
+| :--- | :--- | :--- |
+| **日期篩選** | `snapshotDate` | 格式化為 `YYYY-MM-DD` 字串，用於 Superset Date Filter |
+| **地區** | `diffRegion` | 帶 `diff` 前綴，支援跨 Dataset 篩選聯動 |
+| **廠區** | `diffPlant` | 同上 |
+| **工廠** | `diffFactory` | 同上 |
+| **線體** | `diffLine` | 同上 |
+| **Vx 類型** | `diffVxType` | V1 / V2 / V3 |
+
+**使用規則**：Superset 所有篩選器（地區、廠區、日期）的 Filter Value Source 一律選擇 `DimMfgFilter`，不可使用主模型。
+
+---
 
 模型基於 `gold.rmv_l5_task_completion` 定義，專門針對 L5 任務完成率場景優化。
 
@@ -38,13 +74,13 @@ Serving Layer (FastAPI / Node.js / Superset)
 
 | 度量名稱 | 核心 SQL / 指標邏輯 | 說明 |
 | :--- | :--- | :--- |
-| **Total Tasks** | `sum(total_task)` | 視窗內累計總任務數 (分母) |
-| **Todo Qty** | `sum(todo_count)` | 未認領任務數 |
-| **Doing Qty** | `sum(doing_count)` | 進行中任務數 |
-| **Done Qty** | `sum(done_count)` | 已完結任務數 |
-| **Acc Qty** | `sum(acc_todo_doing)` | **累積在途量**：7 日滾動在途唯一任務數 |
-| **Done Rate** | `done_qty / total_qty` | 結案率 |
-| **Acc Rate** | `acc_qty / acc_total_qty` | **累積負載率** (以 7 日滑動總量為分母) |
+| **Total Tasks** | `bitmapCardinality(groupBitmapMergeState(total_task))` | 視窗內累計總任務數 (分母) |
+| **Todo Qty** | `bitmapCardinality(groupBitmapMergeState(todo))` | 未認領任務數 |
+| **Doing Qty** | `bitmapCardinality(groupBitmapMergeState(doing))` | 進行中任務數 |
+| **Done Qty** | `bitmapCardinality(groupBitmapMergeState(done))` | 已完結任務數 |
+| **Acc Qty** | `bitmapCardinality(groupBitmapMergeState(acc))` | **累積在途量**：7 日滾動在途唯一任務數 |
+| **Done Rate** | `doneQty * 100.0 / nullIf(totalQty, 0)` | 結案率 |
+| **Acc Rate** | `accQty * 100.0 / nullIf(totalQty, 0)` | **累積負載率** (以 7 日滑動總量為分母) |
 
 ### 2.2 核心維度 (Dimensions)
 
@@ -65,19 +101,19 @@ Serving Layer (FastAPI / Node.js / Superset)
 cube(`L5TaskPeriodic`, {
   sql: `SELECT * FROM gold.rmv_l5_task_completion`,
 
-  measures: {
-    totalQty: { type: `sum`, sql: `total_task`, title: '總任務數' },
-    todoQty: { type: `sum`, sql: `todo_count`, title: '待辦數' },
-    doingQty: { type: `sum`, sql: `doing_count`, title: '進行中' },
-    doneQty: { type: `sum`, sql: `done_count`, title: '已完成' },
+    // [數量指標]：使用 groupBitmapMergeState 將多行 Bitmap 進行聯集，再計算基數 (Cardinality)
+    totalQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(total_task))`, title: '總任務數' },
+    todoQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(todo))`, title: '待辦數' },
+    doingQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(doing))`, title: '進行中' },
+    doneQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(done))`, title: '已完成' },
     
     // 累積在途量 (ACC) 核心度量
-    accQty: { type: `sum`, sql: `acc_todo_doing`, title: '累積在途(Acc)' },
+    accQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(acc))`, title: '累積在途(Acc)' },
     
     // 比率計算範例
     doneRate: {
       type: `number`,
-      sql: `round(sum(done_qty) * 100.0 / nullIf(sum(total_qty), 0), 2)`,
+      sql: `round(${doneQty} * 100.0 / nullIf(${totalQty}, 0), 2)`,
       title: '完成率%'
     }
   },
@@ -128,6 +164,31 @@ cube(`L5TaskPeriodic`, {
 
 ---
 
+## 5. 明細下鑽 (Drill-through) 模型: L5TaskDetails
+
+除了 KPI 流量表外，系統另外提供一個專用於明細查看的 Cube 模型 `L5TaskDetails`，支援從看板直接下鑽至單筆工單。
+
+### 5.1 主要用途
+- 在 Superset 圖表中點擊任意小計數字，直接跳轉至該廠線/工廠/線體在該時間區間內的任務明細清單。
+- 無需返回原始資料庫，直接由 Cube.js 提供經語義轉換後的明細。
+
+### 5.2 提供欄位
+
+| 欄位名稱 | 內容說明 |
+| :--- | :--- |
+| `task_id` | 任務唯一識別碼 |
+| `proc_inst_id` | 流程實例 ID |
+| `task_name` | 節點名稱 |
+| `vx_type` | 流程類型 (V1/V2/V3) |
+| `region` / `plant` / `factory` / `line` | 製造五階維度 |
+| `task_status` | 目前任務狀態 |
+| `task_start_time` / `task_claim_time` / `task_end_time` | 任務三大時間節點 |
+| `assignee_name` | 執行者姓名 |
+| `mo_number` 等 11 欄 | 工單號碼、機種、棧板等業務擴充變數 |
+| `is_excluded` / `exclude_reason` | 排除狀態與原因 |
+
+---
+
 **相關文件**:
 - 系統架構總覽: `docs/01_architecture/Architecture_Overview.md`
 - ETL 管線細節: `docs/03_metrics/ETL_Transformation_Pipeline.md`
@@ -136,4 +197,5 @@ cube(`L5TaskPeriodic`, {
 ---
 
 **文件負責人**: AIT / Data Engineering  
-**審核狀態**: 已對照 `cube/model/cubes/cube_l5_task_periodic.js` 實作校對。
+**審核狀態**: 已對照 `cube/model/cubes/cube_l5_task_periodic.js` 與 `cube_l5_task_details.js` 實作校對。  
+**最後審核日期**: 2026-04-30

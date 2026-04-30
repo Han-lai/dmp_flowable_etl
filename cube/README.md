@@ -1,7 +1,7 @@
 # Cube.js 語意層
 
-> **最後更新**: 2026-02-24  
-> **資料來源**: `gold.rmv_l5_task_completion_v2`
+> **最後更新**: 2026-04-30
+> **資料來源**: `gold.rmv_l5_task_completion` (V4.3 Bitmap Cohort版)
 
 ## 架構
 
@@ -10,9 +10,9 @@ ClickHouse (Gold Layer)
         │
         ▼
     Cube.js
-    ├── REST API (port 4002)
-    ├── Playground (port 4003)
-    └── Model (2 個 Active Cube)
+    ├── REST API (port 4000)
+    ├── Playground (port 4000)
+    └── Model (4 個 Active Cube)
         │
         ▼
     Superset Dashboard
@@ -22,75 +22,35 @@ ClickHouse (Gold Layer)
 
 ```text
 cube/
-├── README.md                    # 本檔案 (建模邏輯說明)
-└── model/                       # Cube.js 語義模型定義 (核心零件)
+├── README.md                    # 本檔案
+└── model/                       # Cube.js 語義模型定義
     ├── cubes/                   # 資料立方體定義
-    │   ├── cube_l5_task_periodic_v2.js         # ✅ L5 週期報表 (Active)
-    │   ├── cube_l5_task_periodic_v2_pivot.js   # ✅ L5 狀態比較 (Active)
-    │   └── ...
+    │   ├── cube_l5_task_periodic.js    # ✅ L5 週期報表 (Active)
+    │   ├── cube_l5_task_details.js     # ✅ L5 任務明細下鑽 (Active)
+    │   └── cube_dim_mfg_filter.js      # ✅ 維度選單模型 (Active)
     └── views/                   # 預定義視圖
 ```
 
 > [!NOTE]
-> **部署檔案 (Infrastructure)** 已移至 `infra/cube/` 目錄下管理。
+> **部署檔案 (Infrastructure)** 與**詳細的模型欄位規格**，已統一移至以下文件集中管理：
+> - 模型語義與聚合邏輯：`docs/04_serving/CubeJS_Semantic_Layer.md`
+> - 部署與設定指引：`docs/04_serving/Superset_Chart_Guide.md`
 
 ## Active Models
 
-### 1. `cube_l5_task_periodic_v2.js` — 週期性報表
-- **資料來源**: `gold.rmv_l5_task_completion_v2`
-- **功能**: L5 任務完成率週期報表
-- **特色**:
-  - 7 天滾動分母（避免週末波動）
-  - Triple-OR 時間篩選（相容 Dashboard / Chart 不同格式）
-  - 動態時間模式（D0 / W-pattern / Month）
+本專案目前使用 4 個核心模型，詳細的維度與度量定義（包含 `bitmapCardinality` 計算邏輯）請詳見 [CubeJS_Semantic_Layer.md](../../docs/04_serving/CubeJS_Semantic_Layer.md)。
 
-### 2. `cube_l5_task_periodic_v2_pivot.js` — 狀態比較報表
-- **資料來源**: `gold.rmv_l5_task_completion_v2`
-- **功能**: L5 任務狀態比較（Pivot 展開）
-- **特色**:
-  - 結合 V2 進階邏輯與 Pivot 結構
-  - 支援 6 種狀態橫向比較
-  - 支援歷史時點回溯查詢
+1. **`L5TaskPeriodic`**: 處理日/週/月三種粒度的 Bitmap 完成率。
+2. **`L5TaskPeriodicPivot`**: 處理 Superset Pivot Table 報表。
+3. **`L5TaskDetails`**: 處理前端明細下鑽，包含 11 個業務變數與 Assignee。
+4. **`DimMfgFilter`**: 專門用於加速 Superset 篩選選單。
 
-## 快速開始
+## 環境設定參考
 
-### 啟動
-
-```powershell
-cd cube
-docker compose up -d
-```
-
-### 存取 Playground
-
-瀏覽器開啟：http://localhost:4003
-
-### API 測試
-
-```bash
-curl http://localhost:4002/cubejs-api/v1/load \
-  -H "Authorization: dmp_flowable_cube_secret_key_2026" \
-  -G --data-urlencode 'query={"measures":["L5TaskPeriodicV2.totalTask"]}'
-```
-
-## 環境設定
-
-| 變數 | 預設值 | 說明 |
+| 變數 | 預期設定 | 說明 |
 |------|--------|------|
 | `CUBEJS_DB_TYPE` | `clickhouse` | 資料庫類型 |
-| `CUBEJS_DB_HOST` | `10.136.218.207` | ClickHouse 主機 |
-| `CUBEJS_DB_PORT` | `8121` | ClickHouse HTTP Port |
+| `CUBEJS_DB_HOST` | `10.146.206.76` | ClickHouse 主機 |
+| `CUBEJS_DB_PORT` | `8123` | ClickHouse HTTP Port |
 | `CUBEJS_DB_USER` | `default` | 使用者 |
-| `CUBEJS_DB_NAME` | `silver` | 預設 DB |
-| `CUBEJS_API_SECRET` | (見 .env.example) | API 金鑰（生產環境請更換） |
-
-## 注意事項
-
-1. **ClickHouse 連線**: 確保 ClickHouse 允許來自 Docker 容器的連線
-2. **API Secret**: 生產環境請更換 `CUBEJS_API_SECRET`
-3. **Cube 重啟**: 修改 Model 後需要重啟 Cube.js 服務
-4. **時區**: 預設使用 UTC，如需調整請設定 `CUBEJS_SCHEDULED_REFRESH_TIMEZONE`
-
-## 詳細模型說明
-
-請參閱 [README_L5_DASHBOARD_CUBE.md](model/cubes/README_L5_DASHBOARD_CUBE.md)。
+| `CUBEJS_DB_NAME` | `default` | 預設 DB |
