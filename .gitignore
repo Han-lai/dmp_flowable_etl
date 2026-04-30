@@ -42,6 +42,7 @@ output_*.md
 tmp_*
 
 # Documentation Exclusions (Historical/Work-in-progress)
+archive/
 docs/archive/
 docs/reports/
 # Validation scripts (excluded from Git for deployment)
