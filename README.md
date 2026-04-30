@@ -11,7 +11,7 @@
 *   **獎牌管線架構 (Medallion Architecture)**
     *   **Bronze 層**: 採用 Native ODBC Driver 18 結合 Adaptive Batching 進行高速抽取，繞過 JDBC 驅動死鎖問題。
     *   **Silver 層**: 執行 EAV 架構轉置 (Pivot) 與五階製造維度對齊，並實作 10 日滑動視窗避免 OOM。
-    *   **Gold 層**: 導入 **「物理化分離聚合架構」**，將 Todo/Doing/Done 里程碑與 7 日滾動 ACC 運算完全卸載至後台 ETL 批次處理。
+    *   **Gold 層**: 導入 **「V4.3 Bitmap Cohort 物理化架構」**，全面捨棄耗能的 `ARRAY JOIN`，透過 `groupBitmapStateIf` 將 Todo/Doing/Done 同日結算與 7 日滾動 ACC 運算完全卸載至後台 ETL 批次處理。
 *   **伺服器護城河 (Cube.js Semantic Gateway)**
     *   為解決高併發 OOM 瓶頸，全面禁止前端直連資料庫。透過 Cube.js 語意層進行 SQL 翻譯與結果快取攔截，將資料庫負載降低逾 98%。
 
