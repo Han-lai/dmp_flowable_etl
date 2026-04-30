@@ -1,8 +1,7 @@
 # ETL 轉換管線技術細節 (Bronze → Silver → Gold)
 
 **文件編號**: 03-ETL-001  
-**版本**: 1.0  
-**最後更新**: 2026-04-14  
+**最後更新**: 2026-04-30  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering
 
@@ -103,11 +102,21 @@ SELECT
     argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'factory')     AS varinst_factory,
     argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'lineName')    AS varinst_lineName,
     argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'moNumber')    AS varinst_moNumber,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'modelName')   AS varinst_modelName,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'deliveryArea') AS varinst_deliveryArea,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'scheduleNumber') AS varinst_scheduleNumber,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'sapPlant')    AS varinst_sapPlant,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'sapProductGroup') AS varinst_sapProductGroup,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'pallet')      AS varinst_pallet,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'transferNo')  AS varinst_transferNo,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'qBlockEventId') AS varinst_qBlockEventId,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'defectSn')    AS varinst_defectSn,
+    argMaxIf(v.TEXT_, v.REV_, v.NAME_ = 'time')        AS varinst_time,
     argMaxIf(if(v.LONG_ = 1,'true','false'), v.REV_,
              v.NAME_ = 'autoComplete')                 AS varinst_autoComplete
 FROM bronze.bpm_act_hi_varinst v
 INNER JOIN target_procs t ON v.PROC_INST_ID_ = t.PROC_INST_ID_
-WHERE v.NAME_ IN ('region','plant','factory','lineName','moNumber','autoComplete')
+WHERE v.NAME_ IN ('region','plant','factory','lineName','moNumber','modelName','deliveryArea','scheduleNumber','sapPlant','sapProductGroup','pallet','transferNo','qBlockEventId','defectSn','time','autoComplete')
   AND v.CREATE_TIME_ >= parseDateTimeBestEffort('{start_ts}') - INTERVAL 180 DAY
   AND v.CREATE_TIME_ <= '{end_ts}'
 GROUP BY v.PROC_INST_ID_
@@ -231,52 +240,37 @@ WHERE task_id IN (
 
 ### 5.1 目的
 
-將核心事實表的任務生命週期事件，展開為每日快照，計算 Todo / Doing / Done 三種狀態計數。
+將核心事實表的任務生命週期事件，預聚合為「同日結算 (Same-Day Cohort)」的 Bitmap 快照，計算 Todo / Doing / Done 三種狀態集合。
 
-### 5.2 核心邏輯：ARRAY JOIN 展開
+### 5.2 核心邏輯：開單日錨定 (Cohort)
 
-每個任務最多有 3 個時間點（Start / Claim / End），透過 `ARRAY JOIN` 將一列任務展開為最多 3 列快照：
+V4.3 架構捨棄了耗費資源的 `ARRAY JOIN`，改採嚴格的開單日錨定邏輯。每筆任務只會在 `task_start_date` 當天出現一次：
 
 ```sql
 FROM silver.mv_fact_task_vx FINAL
-ARRAY JOIN arrayDistinct(arrayFilter(
-    d -> d IS NOT NULL,
-    [task_start_date, task_claim_date, task_end_date]
-)) AS snapshot_date
+GROUP BY task_start_date AS snapshot_date
 ```
 
-### 5.3 狀態判定公式
+### 5.3 狀態判定公式 (Bitmap)
 
-快照展開後，在該 `snapshot_date` 時間點上判定任務狀態：
+在 `task_start_date` 這個唯一的快照點上，透過 `groupBitmapStateIf` 搭配 `cityHash64(task_id)`，將符合條件的任務 ID 寫入 Bitmap：
 
+```sql
+-- Todo: 當日開單，但未被領取（或非當日領取）
+todo_daily = groupBitmapStateIf(cityHash64(task_id), 
+    COALESCE(task_claim_date, toDate('1900-01-01')) != task_start_date 
+    AND (task_end_date IS NULL OR task_end_date != task_start_date))
+
+-- Doing: 當日開單且當日領取，但非當日完工
+doing_daily = groupBitmapStateIf(cityHash64(task_id), 
+    task_claim_date = task_start_date 
+    AND (task_end_date IS NULL OR task_end_date != task_start_date))
+
+-- Done: 當日開單，且當日完結 (Same-Day Completion)
+done_daily = groupBitmapStateIf(cityHash64(task_id), 
+    task_end_date = task_start_date)
 ```
-Todo  = snapshot_date < COALESCE(task_claim_date, task_end_date, today()+1)
-        (尚未被任何人認領)
-
-Doing = task_claim_date IS NOT NULL
-        AND snapshot_date >= task_claim_date
-        AND (task_end_date IS NULL OR snapshot_date < task_end_date)
-        (已認領但尚未完結)
-
-Done  = task_end_date IS NOT NULL
-        AND snapshot_date >= task_end_date
-        (已完結)
-```
-
-### 5.4 輸出欄位
-
-| 欄位          | 說明                        |
-| :------------ | :-------------------------- |
-| `snapshot_date` | 快照日期（Date）           |
-| `vx_type`     | V1 / V2 / V3               |
-| `region`      | 區域代碼                    |
-| `plant`       | 廠區代碼                    |
-| `factory`     | 工廠代碼                    |
-| `line`        | 線體代碼                    |
-| `total_task`  | 當日該維度下的任務總數       |
-| `todo_count`  | 待辦任務數                  |
-| `doing_count` | 進行中任務數                |
-| `done_count`  | 已完成任務數                |
+> **注意**：另外還有 `_weekly` 與 `_monthly` 系列 Bitmap，會根據 ISO 週與自然月邊界自動判斷。
 
 ---
 
@@ -284,44 +278,28 @@ Done  = task_end_date IS NOT NULL
 
 ### 6.1 目的
 
-計算 7 日滾動視窗內仍處於在途（Todo + Doing）狀態的**唯一**任務數量（ACC, Accumulated）。此指標需跨日去重，運算成本遠高於 Milestone，因此獨立計算。
+計算 7 日滾動視窗內仍處於在途（Todo + Doing）狀態的任務集合（ACC, Accumulated）。此指標為跨日追蹤，因此獨立運算。
 
 ### 6.2 核心邏輯：range() 展開活躍日期
 
-不同於 Milestone 的事件日期展開，ACC 將每個任務展開為「活躍期間」的連續日期，最多展開 7 天：
+ACC 需要追蹤 7 天，因此仍使用 `range()` 與 `ARRAY JOIN` 將任務展開為最多 7 天的活躍日期：
 
 ```sql
-FROM silver.mv_fact_task_vx FINAL
-ARRAY JOIN arrayMap(
-    d -> toDate(d),
-    range(
-        toUInt32(task_start_date),
-        toUInt32(least(
-            COALESCE(task_end_date, today() + 2),   -- 未完結則到今天後一天
-            task_start_date + 7,                    -- 最多展開 7 天
-            toDate('{end_ts}') + 1                  -- 不超過視窗上限
-        ))
-    )
-) AS active_date
-WHERE is_excluded = 0
-  AND active_date >= toDate('{start_ts}')
-  AND active_date <= toDate('{end_ts}')
-  AND (task_end_date IS NULL OR task_end_date > active_date)  -- 過濾已完結的日期
+ARRAY JOIN arrayDistinct(
+    range(toUInt32(task_start_date), toUInt32(least(COALESCE(task_end_date, today() + 1), task_start_date + 7)))
+) AS active_date_raw
+WHERE (task_end_date IS NULL OR task_end_date > toDate(active_date_raw))
 ```
 
-展開後，使用 `uniqExact` 精確去重：
+展開後，同樣使用 `groupBitmapState` 寫入 Bitmap，避免了使用 `uniqExact` 造成的無法跨維度疊加問題：
 
 ```sql
 SELECT
-    active_date AS snapshot_date,
-    vx_type, region, plant, factory, line,
-    uniqExact(task_id) AS acc_todo_doing
-GROUP BY active_date, vx_type, region, plant, factory, line
+    toDate(active_date_raw) AS snapshot_date,
+    ...
+    groupBitmapState(cityHash64(task_id)) AS acc
+GROUP BY snapshot_date, ...
 ```
-
-### 6.3 為何使用 range() 而非 JOIN
-
-`range()` 產生日期序列後 `ARRAY JOIN` 展開，在 ClickHouse 的 columnar 引擎下效能遠優於傳統的 Date Range CROSS JOIN，同時避免大量中間表佔用記憶體。
 
 ---
 
@@ -329,56 +307,29 @@ GROUP BY active_date, vx_type, region, plant, factory, line
 
 ### 7.1 目的
 
-將 Milestone（Todo/Doing/Done）與 ACC（7日在途量）兩個獨立計算結果，透過 `FULL OUTER JOIN` 合併至最終金層主表。
+將 Milestone（Todo/Doing/Done）與 ACC（7日在途量）兩個獨立計算結果，透過 `LEFT JOIN` 合併至最終金層實體表 `rmv_l5_task_completion_phys`。
 
-### 7.2 核心邏輯
+### 7.2 核心邏輯 (Bitmap 合併)
+
+由於底層儲存改為 Bitmap，總任務數 `total_task` 不再是整數相加，而是使用 `bitmapOr` 將子狀態做聯集：
 
 ```sql
 INSERT INTO gold.rmv_l5_task_completion_phys
 SELECT
-    COALESCE(m.snapshot_date, a.snapshot_date) AS snapshot_date,
-    COALESCE(m.vx_type,  a.vx_type)  AS vx_type,
-    COALESCE(m.region,   a.region)   AS region,
-    COALESCE(m.plant,    a.plant)    AS plant,
-    COALESCE(m.factory,  a.factory)  AS factory,
-    COALESCE(m.line,     a.line)     AS line,
-    COALESCE(m.total_task,    0) AS total_task,
-    COALESCE(m.todo_count,    0) AS todo_count,
-    COALESCE(m.doing_count,   0) AS doing_count,
-    COALESCE(m.done_count,    0) AS done_count,
-    COALESCE(a.acc_todo_doing, 0) AS acc_todo_doing
-FROM (
-    SELECT * FROM gold.rmv_l5_milestone_phys FINAL
-    WHERE snapshot_date >= toDate('{start_ts}')
-      AND snapshot_date <= toDate('{end_ts}')
-) m
-FULL OUTER JOIN (
-    SELECT * FROM gold.rmv_l5_acc_phys FINAL
-    WHERE snapshot_date >= toDate('{start_ts}')
-      AND snapshot_date <= toDate('{end_ts}')
-) a ON m.snapshot_date = a.snapshot_date
-   AND m.vx_type = a.vx_type  AND m.region = a.region
-   AND m.plant   = a.plant    AND m.factory = a.factory
-   AND m.line    = a.line;
+    m.snapshot_date,
+    ...
+    bitmapOr(bitmapOr(m.todo_daily, m.doing_daily), m.done_daily) AS total_task,
+    m.todo_daily, m.doing_daily, m.done_daily,
+    ...
+    a.acc
+FROM gold.rmv_l5_milestone_phys AS m
+LEFT JOIN gold.rmv_l5_acc_phys AS a 
+    ON m.snapshot_date = a.snapshot_date AND ...
 ```
 
-### 7.3 為何使用 FULL OUTER JOIN
+### 7.3 BI 對接視圖
 
-| 情境 | 說明 |
-| :--- | :--- |
-| 只有 Milestone，無 ACC | 某線體當日有任務快照，但任務均早於 7 日前完結，不計入 ACC |
-| 只有 ACC，無 Milestone | 理論上不應發生，但 FULL OUTER JOIN 確保不遺失 |
-| 兩者皆有 | 正常情況，直接合併 |
-
-### 7.4 BI 對接視圖
-
-應用層（Cube.js / FastAPI）統一透過視圖讀取，確保 `ReplacingMergeTree` 去重已完成：
-
-```sql
--- 定義於 sql/etl/schema/06_gold_kpi_task_completion.sql
-CREATE VIEW gold.rmv_l5_task_completion AS
-SELECT * FROM gold.rmv_l5_task_completion_phys FINAL;
-```
+應用層（Cube.js / FastAPI）透過 `rmv_l5_task_completion` 讀取時，透過 `bitmapCardinality(groupBitmapMergeState(...))` 進行毫秒級的精確去重與聚合。
 
 ---
 
@@ -491,7 +442,6 @@ ORDER BY line;
 | 執行引擎原始碼 | `scripts/etl/execute_etl.py` |
 | 業務指標定義 | `docs/03_metrics/Metrics_and_Data_Definitions.md` |
 | 系統架構總覽 | `docs/01_architecture/Architecture_Overview.md` |
-| 完整技術設計文件 | `docs/DMP_Flowable_Technical_Documentation.md` → §3~§6 |
 
 ---
 
