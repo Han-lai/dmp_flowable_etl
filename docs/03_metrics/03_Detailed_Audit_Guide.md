@@ -8,29 +8,20 @@
 
 本系統採用 **獎牌管線架構 (Medallion Architecture)**，數據經過 Bronze (落地) → Silver (清洗) → Gold (物理化快照) 三層轉換。
 
-### 1.1 金層快照展開機制 (Gold Layer Milestone Expansion)
+### 1.1 金層同梯次結算機制 (Gold Layer Same-Day Cohort)
 
-根據金層實作規格（`sql/etl/dml/backfill_gold_milestone.sql`），每一筆任務會依據其生命週期內的 **三個非 NULL 時間點** 展開為快照列：
+根據最新的 V4.3 架構，所有任務狀態結算皆採用 **Same-Day Cohort (同梯次)** 邏輯。這代表：
 
-| 時間點 | 欄位 | Gold 狀態條件 |
-| :--- | :--- | :--- |
-| 任務開始 (Start) | `task_start_date` | snapshot_date < COALESCE(claim, end, tomorrow) → **Todo** |
-| 任務認領 (Claim) | `task_claim_date` | claim ≤ snapshot_date < end → **Doing** |
-| 任務結束 (End) | `task_end_date` | snapshot_date ≥ end → **Done** |
+1. **錨定起點**：所有的任務皆以其開單日 (`task_start_date`) 作為唯一歸屬梯次。
+2. **狀態互斥**：在任何時間粒度（日/週/月）下，一個任務在該週期末只會處於 `Todo`、`Doing`、`Done` 的其中「唯一一種」狀態。
+   - `Todo` + `Doing` + `Done` = 該梯次總任務數 (`Total`)。
+3. **高效去重**：由於採用 ClickHouse Bitmap (例如 `groupBitmapMergeState`)，不僅大幅提升查詢效能，也徹底解決了跨天重複計算的問題。系統已廢棄舊版的 `ARRAY JOIN` 展開邏輯。
 
-**關鍵特性**：
-- Silver 層以 `NULLIF` 將未發生的 claim/end 轉為 `NULL`（非 epoch）。
-- Gold 的 ARRAY JOIN 僅在任務有事件的日期建立快照，不對每天都建立。
-- 因此同一筆任務在不同快照日可能分別計入 Todo、Doing、Done 三個 Bitmap，週/月彙總為 **各狀態 Bitmap 聯集**，而非各狀態互斥計數。
-
-### 1.2 UI 與 Gold 彙總差異說明
+### 1.2 UI 與 Gold 彙總對齊說明
 
 | 彙總粒度 | Gold 計算方式 | UI 計算方式 | 預期行為 |
 | :--- | :--- | :--- | :--- |
-| **日** | 當日各狀態 Bitmap 計數 | 相同 | 應一致 |
-| **週/月** | 週期內各狀態 Bitmap **聯集** | 週期末最終狀態（推測） | **必然差異** |
-
-週/月層級的 Gold Todo/Doing/Acc 遠大於 UI，是因為 Gold 將整個週期內曾處於該狀態的任務全部聯集，而非只看週期末的狀態快照。**日級別的比對才是有效的跨系統驗證基礎。**
+| **日 / 週 / 月** | 依據 `task_start_date` 歸屬梯次，計算各狀態互斥的 Bitmap 基數 (Cardinality) | 以相同的起點日查詢，展示最終生命週期狀態 | **完全一致 (100% Alignment)** |
 
 > **排除規則與 Vx 分類定義**：ClickHouse 端的完整排除條件（bypass / system_node / Q_order / R_order / notify_task / dummy_task）及 Vx 版本歸屬邏輯，詳見 [ETL_Transformation_Pipeline.md](ETL_Transformation_Pipeline.md) §3.3（Vx）及 §3.5（排除規則）。以下對帳均以 `is_excluded = 0` 為前提。
 
@@ -40,9 +31,9 @@
 
 ### 方法一：使用 ClickHouse SQL 指令 (快速查詢)
 
-> **注意**：Silver 層透過 `NULLIF(toDate(...), toDate('1970-01-01'))` 將未發生的時間欄位儲存為 `NULL`，查詢條件須使用 `IS NULL` / `IS NOT NULL`。
+> **注意**：Silver 層透過 `NULLIF(toDate(...), toDate('1970-01-01'))` 將未發生的時間欄位儲存為 `NULL`，查詢條件須使用 `IS NULL` / `IS NOT NULL`。所有的過濾條件皆以 `task_start_date` 作為梯次基準（Cohort Date）。
 
-**查詢 Done（結案）任務**：快照日當天結案的任務。
+**查詢 Done（已結案）任務**：開單日為該日，且在同一天內完成的任務。
 
 ```sql
 SELECT
@@ -63,7 +54,7 @@ WHERE is_excluded = 0
 ORDER BY task_end_time DESC;
 ```
 
-**查詢 Todo（待認領）任務**：快照日當天啟動、尚未認領的任務。
+**查詢 Todo（待認領）任務**：開單日為該日，但在當天結束前尚未被認領的任務。
 
 ```sql
 SELECT task_id, task_start_time, task_claim_time, task_end_time,
@@ -82,7 +73,7 @@ WHERE is_excluded = 0
 ORDER BY task_start_time DESC;
 ```
 
-**查詢 Doing（進行中）任務**：快照日已認領、尚未結案的任務。
+**查詢 Doing（進行中）任務**：開單日為該日，並在當天已被認領，但當天尚未結案的任務。
 
 ```sql
 SELECT task_id, task_start_time, task_claim_time, task_end_time,
@@ -101,7 +92,7 @@ WHERE is_excluded = 0
 ORDER BY task_claim_time DESC;
 ```
 
-**日級別 Gold 計數驗證（一次查三個狀態）**：
+**日級別 Gold 計數驗證（以同梯次 Cohort 一次查三個互斥狀態）**：
 
 ```sql
 SELECT
@@ -132,6 +123,59 @@ python scripts/etl/audit_done_details.py --date "2025-12-25" --region CNE --plan
 ```
 
 `--status` 支援 `done`（預設）、`todo`、`doing`、`all`，CSV 輸出至 `scratch/audit_{status}_{region}_{plant}_{factory}_{line}_{date}.csv`。
+
+
+
+---
+
+## 3. 查帳對齊基準與異常排查 (Verification Reference)
+
+當前台 (Superset / Excel) 數據與後台 (ClickHouse) 出現落差時的單一真理核對口徑。
+
+### 4.1 核心核對準則
+
+| 落差現象 | 可能原因 | 處理方式 |
+| :--- | :--- | :--- |
+| 前台數量偏高 | 排除規則未生效 | 確認 `is_excluded = 0` 過濾是否套用；檢查 `SYSTEM`、`dummy`、`bypass`、`Q_order` 等 `exclude_reason` |
+| 歷史數字今日看不一樣 | 使用了「目前最新狀態」而非快照 | 系統已全面升級為任務歸屬對齊邏輯，歷史數字應鎖定開單日且不隨時間變動。 |
+| 時區偏差 | MSSQL 為 Server Local Time，ClickHouse 預設 UTC | 查詢時加 `toTimeZone(field, 'Asia/Taipei')` 或確認 ETL 中已轉換 |
+| Doing 數量異常 | `CLAIM_TIME_` 可能為 Null | V4 已透過 `COALESCE` 將未領取的 `task_claim_date` 轉為 `1900-01-01`，確保正確歸類為 Todo 而非 Doing。 |
+
+### 4.2 Gold 層對帳查詢（Snapshot-based，正式口徑）
+
+> **重要**: Gold 層採用「時點快照」判定狀態。`snapshot_date` 是任務在 Start/Claim/End 三個事件日期上展開的快照，**不等同**於 `silver.mv_fact_task_vx.task_status` 的當前狀態欄位。正式對帳應以 Gold 層為準。
+
+```sql
+-- 驗證 W1 (12/29 ~ 01/04) 在結算點 01/04 時的 Todo/Doing/Done 分佈
+SELECT
+    iso_year, iso_week,
+    bitmapCardinality(groupBitmapMergeState(total_task)) as total,
+    bitmapCardinality(groupBitmapMergeState(todo_weekly)) as todo,
+    bitmapCardinality(groupBitmapMergeState(doing_weekly)) as doing,
+    bitmapCardinality(groupBitmapMergeState(done_weekly)) as done
+FROM gold.rmv_l5_task_completion
+WHERE (iso_year = 2026 AND iso_week = 1)
+  AND vx_type = 'V3' AND line = 'E5'
+GROUP BY iso_year, iso_week;
+```
+
+### 4.3 Silver 層輔助查詢（任務清單稽核）
+
+> 此查詢用於稽核特定維度下原始任務清單（非快照），`task_status` 欄位為任務**目前最新狀態**，適合確認資料是否正確寫入 Silver，不適合用於重現歷史報表數字。
+
+```sql
+SELECT task_id, task_status, vx_type, plant, factory, line,
+       task_start_date, task_claim_date, task_end_date,
+       is_excluded, exclude_reason
+FROM silver.mv_fact_task_vx FINAL
+WHERE is_excluded = 0
+  AND vx_type = 'V3' AND factory = 'NBU'
+  AND task_start_date >= '2025-12-01'
+  AND task_start_date <= '2025-12-31'
+ORDER BY task_start_date DESC
+```
+
+
 
 ---
 
