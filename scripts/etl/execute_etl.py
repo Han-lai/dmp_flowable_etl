@@ -142,6 +142,23 @@ def show_status(client):
         except:
             print(f" - {t:35}: (Not created)")
 
+def generate_windows(start_str, end_str, step_days):
+    """Generates time windows for data chunking."""
+    start_dtobj = datetime.datetime.strptime(start_str, "%Y-%m-%d")
+    end_dtobj = datetime.datetime.strptime(end_str, "%Y-%m-%d") + datetime.timedelta(days=1, seconds=-1)
+    
+    windows = []
+    curr = start_dtobj
+    while curr <= end_dtobj:
+        next_curr = curr + datetime.timedelta(days=step_days)
+        if next_curr > end_dtobj + datetime.timedelta(seconds=1):
+            next_curr = end_dtobj + datetime.timedelta(seconds=1)
+        
+        e = next_curr - datetime.timedelta(seconds=1)
+        windows.append((curr, e))
+        curr = next_curr
+    return windows
+
 def execute_computation_pipeline(client, args):
     """Core Engine for Safe Low-RAM Time-Bounded Computing."""
     print("\n" + "="*80)
@@ -177,20 +194,8 @@ def execute_computation_pipeline(client, args):
         client.command("TRUNCATE TABLE IF EXISTS ops_metrics.etl_checkpoint")
         print("    Tables and checkpoints cleared.")
 
-    # Window Generation (Using datetime for finer granularity)
-    start_dtobj = datetime.datetime.strptime(args.start, "%Y-%m-%d")
-    end_dtobj = datetime.datetime.strptime(args.end, "%Y-%m-%d") + datetime.timedelta(days=1, seconds=-1)
-    
-    windows = []
-    curr = start_dtobj
-    while curr <= end_dtobj:
-        next_curr = curr + datetime.timedelta(days=args.step_days)
-        if next_curr > end_dtobj + datetime.timedelta(seconds=1):
-            next_curr = end_dtobj + datetime.timedelta(seconds=1)
-        
-        e = next_curr - datetime.timedelta(seconds=1)
-        windows.append((curr, e))
-        curr = next_curr
+    # Window Generation
+    windows = generate_windows(args.start, args.end, args.step_days)
 
     # Templates are loaded dynamically from pipeline_config.yaml (see loop below)
 
