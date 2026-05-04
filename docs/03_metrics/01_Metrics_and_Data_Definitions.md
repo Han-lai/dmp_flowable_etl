@@ -4,7 +4,7 @@
 **最後更新**: 2026-04-30  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering  
-**定位**: 本文件為系統的業務語義辭典，記載 L5 任務指標的精確定義、演進歷程、五階維度血緣與查帳對齊基準。ETL 技術執行細節（SQL 邏輯、管線階段）請見 `docs/03_metrics/ETL_Transformation_Pipeline.md`。
+**定位**: 本文件為系統的業務語義辭典，記載 L5 任務指標的精確定義、演進歷程、五階維度血緣與查帳對齊基準。ETL 技術執行細節（SQL 邏輯、管線階段）請見 `02_02_ETL_Transformation_Pipeline.md`。
 
 ---
 
@@ -119,74 +119,111 @@ COALESCE(NULLIF(vd.varinst_region, ''), md.mdm_region) AS region
 
 ---
 
-## 4. 查帳對齊基準 (Field Verification Reference)
+## 4. 前端明細表欄位對照 (UI Detail Fields Mapping)
 
-當前台 (Superset / Excel) 數據與後台 (ClickHouse) 出現落差時的單一真理核對口徑。
 
-### 4.1 核心核對準則
 
-| 落差現象 | 可能原因 | 處理方式 |
+所有欄位皆已實作於 `cube/model/cubes/cube_l5_task_details.js`，可直接供 Superset 或 API 查詢使用。
+
+### 4.1 識別與流程資訊
+
+| 業務名稱 (Display Name) | Cube 欄位名 | 來源欄位 | 備註 |
+| :--- | :--- | :--- | :--- |
+| **任務 ID** | `taskId` | `task_id` | Flowable 原生 ID，設為 Primary Key |
+| **流程實例 ID** | `procInstId` | `proc_inst_id` | 一張工單下所有節點共享同一 ID |
+| **任務定義 Key** | `taskDefinitionKey` | `task_definition_key` | 例如 `V3_Task_01`，用於分辨業務節點 |
+| **任務名稱** | `taskName` | `task_name` | 節點前台顯示名稱 |
+| **處理人代碼** | `assigneeCode` | `assignee_code` | 系統中的 `ASSIGNEE_` 帳號/工號 |
+| **處理人姓名** | `assigneeName` | `assignee_name` | 透過 HR 系統轉換的中文姓名 |
+| **L4 流程 ID** | `l4ProcessId` | `l4_process_id` | 來源：`ACT_HI_PROCINST.BUSINESS_STATUS_` |
+| **L4 流程名稱** | `l4ProcessName` | `l4_process_name` | 來源：`ACT_HI_PROCDEF.NAME_` |
+
+### 4.2 時間軸
+
+| 業務名稱 (Display Name) | Cube 欄位名 | 來源欄位 | 備註 |
+| :--- | :--- | :--- | :--- |
+| **開單日期** | `taskStartDate` | `task_start_date` | 任務被觸發的日期 (Date) |
+| **簽收日期** | `taskClaimDate` | `task_claim_date` | 人員點擊認領的日期 |
+| **完成日期** | `taskEndDate` | `task_end_date` | 任務結案的日期 |
+| **開單時間** | — | `task_start_time` | 完整時間戳記 (DateTime) |
+| **接單時間** | — | `task_claim_time` | 已過濾 1970 假日期 |
+| **完工時間** | — | `task_end_time` | 任務完工時間戳記 |
+
+### 4.3 狀態結算 (對齊 KPI Cube)
+
+| 業務名稱 (Display Name) | Cube 欄位名 | 說明 |
 | :--- | :--- | :--- |
-| 前台數量偏高 | 排除規則未生效 | 確認 `is_excluded = 0` 過濾是否套用；檢查 `SYSTEM`、`dummy`、`bypass`、`Q_order` 等 `exclude_reason` |
-| 歷史數字今日看不一樣 | 使用了「目前最新狀態」而非快照 | 系統已全面升級為任務歸屬對齊邏輯，歷史數字應鎖定開單日且不隨時間變動。 |
-| 時區偏差 | MSSQL 為 Server Local Time，ClickHouse 預設 UTC | 查詢時加 `toTimeZone(field, 'Asia/Taipei')` 或確認 ETL 中已轉換 |
-| Doing 數量異常 | `CLAIM_TIME_` 可能為 Null | V4 已透過 `COALESCE` 將未領取的 `task_claim_date` 轉為 `1900-01-01`，確保正確歸類為 Todo 而非 Doing。 |
+| **日結算狀態** | `statusDaily` | 開單當日 23:59 結算 → 對應 KPI Cube 的 `todo_daily/doing_daily/done_daily` |
+| **週結算狀態** | `statusWeekly` | 開單週的週日 23:59 結算 → 對應 KPI Cube 的 `todo_weekly/doing_weekly/done_weekly` |
+| **月結算狀態** | `statusMonthly` | 開單月的月底 23:59 結算 → 對應 KPI Cube 的 `todo_monthly/doing_monthly/done_monthly` |
 
-### 4.2 Gold 層對帳查詢（Snapshot-based，正式口徑）
+### 4.4 製造維度
 
-> **重要**: Gold 層採用「時點快照」判定狀態。`snapshot_date` 是任務在 Start/Claim/End 三個事件日期上展開的快照，**不等同**於 `silver.mv_fact_task_vx.task_status` 的當前狀態欄位。正式對帳應以 Gold 層為準。
+| 業務名稱 (Display Name) | Cube 欄位名 | 範例值 |
+| :--- | :--- | :--- |
+| **業務分類** | `vxType` | V1 / V2 / V3 |
+| **區域** | `region` | CNE |
+| **廠別** | `plant` | WJ2 |
+| **工廠** | `factory` | NBU |
+| **線別** | `line` | E5 |
 
-```sql
--- 驗證 W1 (12/29 ~ 01/04) 在結算點 01/04 時的 Todo/Doing/Done 分佈
-SELECT
-    iso_year, iso_week,
-    bitmapCardinality(groupBitmapMergeState(total_task)) as total,
-    bitmapCardinality(groupBitmapMergeState(todo_weekly)) as todo,
-    bitmapCardinality(groupBitmapMergeState(doing_weekly)) as doing,
-    bitmapCardinality(groupBitmapMergeState(done_weekly)) as done
-FROM gold.rmv_l5_task_completion
-WHERE (iso_year = 2026 AND iso_week = 1)
-  AND vx_type = 'V3' AND line = 'E5'
-GROUP BY iso_year, iso_week;
+### 4.5 業務擴充變數 (全量 11 欄)
+
+| 業務名稱 (Display Name) | Cube 欄位名 | 來源變數 (NAME_) |
+| :--- | :--- | :--- |
+| **工單號** | `moNumber` | `moNumber` |
+| **機種** | `modelName` | `modelName` |
+| **交付區域** | `deliveryArea` | `deliveryArea` |
+| **排程編號** | `scheduleNumber` | `scheduleNumber` |
+| **SAP 廠別** | `sapPlant` | `sapPlant` |
+| **SAP 產品組** | `sapProductGroup` | `sapProductGroup` |
+| **棧板編號** | `pallet` | `pallet` |
+| **轉單編號** | `transferNo` | `transferNo` |
+| **Q-Block 事件 ID** | `qblockEventId` | `qBlockEventId` |
+| **不良品 SN** | `defectSn` | `defectSn` |
+
+### 4.6 效能指標
+
+| 業務名稱 (Display Name) | Cube 欄位名 | 計算邏輯 |
+| :--- | :--- | :--- |
+| **總持續時間 (分鐘)** | `durationMin` | `(task_end_time - task_start_time) / 60` |
+| **實際處理時間 (分鐘)** | `processingTimeMin` | `(task_end_time - task_claim_time) / 60` |
+
+---
+
+## 5. 明細架構說明 (Detail Implementation Architecture)
+
+### 5.1 資料流架構
+
+```
+silver.mv_fact_task_vx FINAL
+        │
+        │  (cube_l5_task_details.js)
+        │  WHERE is_excluded = 0
+        ▼
+Cube.js L5TaskDetails Cube
+        │
+        ▼
+Superset 明細表 / API 下鑽查詢
 ```
 
-### 4.3 Silver 層輔助查詢（任務清單稽核）
+### 5.2 設計原則
 
-> 此查詢用於稽核特定維度下原始任務清單（非快照），`task_status` 欄位為任務**目前最新狀態**，適合確認資料是否正確寫入 Silver，不適合用於重現歷史報表數字。
-
-```sql
-SELECT task_id, task_status, vx_type, plant, factory, line,
-       task_start_date, task_claim_date, task_end_date,
-       is_excluded, exclude_reason
-FROM silver.mv_fact_task_vx FINAL
-WHERE is_excluded = 0
-  AND vx_type = 'V3' AND factory = 'NBU'
-  AND task_start_date >= '2025-12-01'
-  AND task_start_date <= '2025-12-31'
-ORDER BY task_start_date DESC
-```
+*   **KPI 與明細解耦**：`L5TaskDetails` 為純明細模型，不做時間序列聚合。所有 KPI 指標請使用 `L5TaskPeriodic` Cube。
+*   **去重保障**：使用 `FINAL` 關鍵字確保從 ReplacingMergeTree 讀取去重後的唯一版本，避免重複明細。
+*   **自動排除**：查詢時自動過濾 `is_excluded = 1` 的系統自動任務（如 SYSTEM 帳號、autoComplete 節點）。
+*   **業務變數與人員來源**：業務擴充變數（工單號、機種等）與人員姓名（HR 關聯）皆已在 Silver 層 ETL 過程中透過 `backfill_silver.sql` 合併，不需在查詢時另行 JOIN。
 
 
-## 5. SQL 實作規格參考 (Implementation SQL References)
-
-本節的 SQL 實作細節已整併至 [ETL_Transformation_Pipeline.md](ETL_Transformation_Pipeline.md)，作為唯一維護來源。各主題對應章節如下：
-
-| 主題 | 參考位置 |
-| :--- | :--- |
-| Vx 版本歸屬判定 SQL | `ETL_Transformation_Pipeline.md` §3.3 |
-| 資料排除規則 SQL | `ETL_Transformation_Pipeline.md` §3.5 |
-| 快照展開與狀態計算 SQL | `ETL_Transformation_Pipeline.md` §5.2-5.3 |
-| ACC 七日滾動 SQL | `ETL_Transformation_Pipeline.md` §6.2 |
-| SQL 模板原始碼 | `sql/etl/dml/backfill_*.sql` |
 
 ---
 
 **相關文件**:
-- 完整管線執行細節 → `docs/03_metrics/ETL_Transformation_Pipeline.md`
+- 完整管線執行細節 → `02_02_ETL_Transformation_Pipeline.md`
+- 查帳與驗證指南 → `03_Detailed_Audit_Guide.md`
 - SQL 原始模板 → `sql/etl/dml/backfill_*.sql`
 
 ---
 
-**文件負責人**: AIT / Data Engineering  
-**審核狀態**: §1~§4 已對照程式碼驗證完成；§5 SQL 實作已整併至 ETL_Transformation_Pipeline.md。  
+**文件負責人**: AIT / Data Engineering
 **最後審核日期**: 2026-04-30
