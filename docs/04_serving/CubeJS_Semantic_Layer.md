@@ -79,8 +79,10 @@ ORDER BY snapshot_date DESC  -- 確保最新日期優先顯示
 | **Doing Qty** | `bitmapCardinality(groupBitmapMergeState(doing))` | 進行中任務數 |
 | **Done Qty** | `bitmapCardinality(groupBitmapMergeState(done))` | 已完結任務數 |
 | **Acc Qty** | `bitmapCardinality(groupBitmapMergeState(acc))` | **累積在途量**：7 日滾動在途唯一任務數 |
+| **Acc Total Qty** | `bitmapCardinality(groupBitmapMergeState(acc_total_task))` | **7日滾動總任務數**：用於日維度 Acc Rate 的分母 |
 | **Done Rate** | `doneQty * 100.0 / nullIf(totalQty, 0)` | 結案率 |
-| **Acc Rate** | `accQty * 100.0 / nullIf(totalQty, 0)` | **累積負載率** (以 7 日滑動總量為分母) |
+| **Acc Rate** | (見說明) | **累積負載率/落後率**：<br>1. **日維度**: `accQty / accTotalQty` (7日滾動積壓率)<br>2. **週/月維度**: `(todoQty + doingQty) / totalQty` (週期落後率) |
+
 
 ### 2.2 核心維度 (Dimensions)
 

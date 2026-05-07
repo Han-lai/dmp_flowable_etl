@@ -17,12 +17,14 @@ SELECT
     m.doing_monthly,
     m.done_monthly,
     a.acc,
+    a.acc_total_task, -- 新增
     m.calendar_year,
     m.iso_year,
     m.iso_week,
     m.iso_month,
     now() AS _refresh_time
 FROM gold.rmv_l5_milestone_phys AS m
+
 LEFT JOIN gold.rmv_l5_acc_phys AS a 
     ON m.snapshot_date = a.snapshot_date 
     AND m.vx_type = a.vx_type 

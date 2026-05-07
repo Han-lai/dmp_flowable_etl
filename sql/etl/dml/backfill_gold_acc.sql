@@ -7,7 +7,10 @@ INSERT INTO gold.rmv_l5_acc_phys
 SELECT
     toDate(active_date_raw) AS snapshot_date,
     vx_type, region, plant, factory, line,
-    groupBitmapState(cityHash64(task_id)) AS acc,
+    -- acc: 7 日內開單且「在該 snapshot_date 尚未結案」的任務
+    groupBitmapStateIf(cityHash64(task_id), task_end_date IS NULL OR task_end_date > toDate(active_date_raw)) AS acc,
+    -- acc_total_task: 只要是在 7 日內開單的任務 (不管結案了沒)
+    groupBitmapState(cityHash64(task_id)) AS acc_total_task,
     -- [New] 週期標籤
     toYear(snapshot_date) AS calendar_year,
     toISOYear(snapshot_date) AS iso_year,
@@ -16,14 +19,11 @@ SELECT
     now() AS _refresh_time
 FROM silver.mv_fact_task_vx FINAL
 ARRAY JOIN arrayDistinct(
-    -- 僅從 task_start_date 開始展開，且限制在開單後的 7 天內 (Rolling Window 處理)
-    range(toUInt32(task_start_date), toUInt32(least(COALESCE(task_end_date, today() + 1), task_start_date + 7)))
+    -- 重要：這裡要固定展開 7 天，不受到 task_end_date 限制
+    range(toUInt32(task_start_date), toUInt32(task_start_date + 7))
 ) AS active_date_raw
 WHERE is_excluded = 0
   AND toDate(active_date_raw) >= toDate('{start_ts}')
   AND toDate(active_date_raw) <= toDate('{end_ts}')
-  -- 排除已經結案的狀態 (只抓 Todo + Doing)
-  -- 根據 V4 邏輯，如果當天開單當天結案，則不應進入 ACC (因為它是純 Done)
-  -- 這裡透過 task_end_date > active_date 確保排除掉當天完工的任務
-  AND (task_end_date IS NULL OR task_end_date > toDate(active_date_raw))
 GROUP BY snapshot_date, calendar_year, iso_year, iso_week, iso_month, vx_type, region, plant, factory, line;
+

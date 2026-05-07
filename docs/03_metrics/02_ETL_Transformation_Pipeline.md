@@ -50,7 +50,7 @@ Stage 2b▼  backfill_exclusion.sql
         │
         ├─── Stage 5 ▼  backfill_gold_acc.sql
         │              gold.rmv_l5_acc_phys
-        │              (range() 展開活躍日期，7 日滾動 uniqExact)
+        │              (range() 展開活躍日期，計算 7 日滾動在途 acc 與總量 acc_total_task)
         │
 Stage 6 ▼  backfill_gold.sql
         gold.rmv_l5_task_completion_phys
@@ -278,7 +278,7 @@ done_daily = groupBitmapStateIf(cityHash64(task_id),
 
 ### 6.1 目的
 
-計算 7 日滾動視窗內仍處於在途（Todo + Doing）狀態的任務集合（ACC, Accumulated）。此指標為跨日追蹤，因此獨立運算。
+計算 7 日滾動視窗內仍處於在途（Todo + Doing）狀態的任務集合（ACC, Accumulated），以及該滾動視窗內的總開單任務集合（Acc Total Task）。
 
 ### 6.2 核心邏輯：range() 展開活躍日期
 
@@ -297,7 +297,8 @@ WHERE (task_end_date IS NULL OR task_end_date > toDate(active_date_raw))
 SELECT
     toDate(active_date_raw) AS snapshot_date,
     ...
-    groupBitmapState(cityHash64(task_id)) AS acc
+    groupBitmapStateIf(cityHash64(task_id), task_end_date IS NULL OR task_end_date > toDate(active_date_raw)) AS acc,
+    groupBitmapState(cityHash64(task_id)) AS acc_total_task
 GROUP BY snapshot_date, ...
 ```
 
