@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_acc_phys (
     factory        String,
     line           String,
     acc         AggregateFunction(groupBitmap, UInt64),
+    acc_total_task AggregateFunction(groupBitmap, UInt64), -- 新增
+
     -- [New] 週期標籤
     calendar_year UInt16,
     iso_year      UInt16,
@@ -94,6 +96,8 @@ CREATE TABLE IF NOT EXISTS gold.rmv_l5_task_completion_phys (
     doing_monthly AggregateFunction(groupBitmap, UInt64), -- 當月執行中任務集合
     done_monthly  AggregateFunction(groupBitmap, UInt64), -- 當月完成任務集合
     acc         AggregateFunction(groupBitmap, UInt64), -- 7 天滾動累計任務集合
+    acc_total_task AggregateFunction(groupBitmap, UInt64), -- 新增
+
     -- [New] 週期標籤
     calendar_year UInt16,
     iso_year      UInt16,
@@ -126,6 +130,8 @@ SELECT
     doing_monthly,
     done_monthly,
     acc,
+    acc_total_task, -- 新增
+
     calendar_year,
     iso_year,
     iso_week,

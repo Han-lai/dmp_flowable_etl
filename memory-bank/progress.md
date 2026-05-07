@@ -5,6 +5,14 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 ## 已完成里程碑 (Milestones)
 
+### 2026-05-07: 累積負載率 (Acc Rate) 指標優化
+- **滾動分母實作**: 在 Gold 層新增 `acc_total_task` 欄位，實作 7 日滾動總開單量計算，徹底解決週末或低開單量時 Acc Rate 超過 100% 的數據震盪問題。
+- **維度感知 (Dimension-Aware) 邏輯**: 
+    - **日維度**: 採 7 日滾動積壓邏輯。
+    - **週/月維度**: 採週期結算 (Period-End Settlement) 邏輯，確保與 Done Rate 指標在同時間粒度下邏輯一致。
+- **Cube.js 優化**: 修改 `accRate` 度量，利用 `any(granularity)` 實作動態公式切換，解決 SQL 聚合錯誤。
+- **全量回填**: 完成 2025-01 至今的所有歷史數據重整，確保生產環境指標精確。
+
 ### 2026-04-29: V4.3 超級事實表大統一 (Super Silver Architecture)
 - **架構整合**: 成功將「UI 明細 V2」的功能（L4 編號、11 個業務變數、時效指標）合併回核心事實表 `silver.mv_fact_task_vx`。
 - **資料精確度優化**: 

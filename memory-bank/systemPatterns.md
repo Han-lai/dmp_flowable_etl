@@ -58,6 +58,13 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
 - **邏輯**: 每個任務在 Silver 層預計算 `status_daily`, `status_weekly`, `status_monthly`。
 - **用途**: 支援 Gold 層按不同週期粒度進行 Bitmap 聚合，解決跨週期狀態偏移問題。
 
+### 6. 指標分母對齊模式 (Denominator Alignment - 2026-05-07)
+- **問題**: `Acc Rate` (積壓率) 分母若採用「當日開單量」，在週末或低產量日會因分母極小導致數據飆升至數倍。
+- **解法**: 
+    - **日維度**: 分母改用 **7 日滾動總開單量 (`acc_total_task`)**，使分子分母時間窗口一致。
+    - **週/月維度**: 採用 **週期結算邏輯**，公式切換為 `(todo + doing) / total_task`。
+- **實作**: 在 Cube.js 中使用 `CASE WHEN any(granularity) = 'Day' THEN ...` 實作維度感知 (Dimension-Aware) 指標。
+
 ## Cube.js 設計模式
 
 ### 1. L5TaskDetailsSuper (超級明細鑽取)
