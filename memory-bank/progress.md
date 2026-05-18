@@ -5,6 +5,11 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 ## 已完成里程碑 (Milestones)
 
+### 2026-05-18: 機房新伺服器 (REDACTED_IP:8122) 部署與全量資料對帳
+- **腳本連線大更新**: 將專案中所有核心 Python 腳本（連線設定）由舊主機全面安全移轉至新主機 `REDACTED_IP:8122`，採用 `default/default` 憑證。
+- **跨伺服器秒級資料搬移**: 利用 ClickHouse 遠端直連函式 `remote()`，成功將 **53,388,806 筆** 核心 Bronze 資料在 3 分鐘內高速轉入新資料庫，完美避開 MSSQL 來源端無索引引發的 ODBC 分批超時限制。
+- **ETL 完整重算與業務對帳**: 完成 `silver` 及 `gold` 兩層 `--reset` 重建與 Backfill 計算，比對 WJ2 廠區 `2025-12-31` 的 Todo(9)、Doing(5)、Done(186) 指標，數據達成 **0 誤差對齊**，證明新伺服器隨時可投入正式生產！
+
 ### 2026-05-07: 累積負載率 (Acc Rate) 指標優化
 - **滾動分母實作**: 在 Gold 層新增 `acc_total_task` 欄位，實作 7 日滾動總開單量計算，徹底解決週末或低開單量時 Acc Rate 超過 100% 的數據震盪問題。
 - **維度感知 (Dimension-Aware) 邏輯**: 
