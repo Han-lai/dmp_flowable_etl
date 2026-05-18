@@ -9,10 +9,10 @@
 
 ---
 
-## 專案狀態: V4.3 Final (UI Detail Optimized)
-- **核心架構**: 獨立 UI 明細事實表 (`mv_fact_ui_task_details_v2`) + 週期感知 (Period-Aware) Bitmap。
-- **數據進度**: 成功對齊 W1 (12/440) 數據落差，並完成 2025-09~2026-01 的 1.47M 筆明細回填。
-- **關鍵改進**: 支援 L4 流程編號 (`BUSINESS_STATUS_`)、11 個業務變數、以及分鐘級時效指標。
+## 專案狀態: V4.3 Final (Deployed & Verified on New Server Farm)
+- **連線配置**: 已全面移轉至新 ClickHouse 伺服器 `10.136.218.207:8122 (default / default)`。
+- **數據進度**: 藉由跨伺服器串流遷移 5,300 萬筆原始歷史資料，並完成全量 `--reset` 重算。
+- **關鍵改進**: 完成新舊伺服器對帳，`2025-12-31` 業務指標 Todo(9) / Doing(5) / Done(186) 達到 0 誤差契合！
 
 ---
 

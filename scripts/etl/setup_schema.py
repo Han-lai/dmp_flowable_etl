@@ -80,7 +80,7 @@ def execute_sql_file(client, sql_file: Path, description: str, force=False):
         stripped = line.strip()
         if stripped.startswith('--'): continue
         current.append(line)
-        if stripped.endswith(';'):
+        if stripped.split('--')[0].strip().endswith(';'):
             stmt = '\n'.join(current).strip()
             if stmt and stmt != ';':
                 statements.append(stmt)

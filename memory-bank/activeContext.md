@@ -1,10 +1,19 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-05-07
+**最後更新**: 2026-05-18
 
 ---
 
 ## 🎯 當前焦點 (Current Focus)
+
+### ✅ 近期已解決 (2026-05-18 機房新伺服器部署與全量資料對帳)
+- **新伺服器連線配置切換**:
+    - 將 `setup_schema.py`、`execute_etl.py`、`sync_unified_odbc.py`、`audit_done_details.py` 的預設連線資料庫全部改為新環境 `10.136.218.207:8122 (default / default)`。
+- **跨伺服器秒級資料遷移 (Cross-Server Streaming)**:
+    - 由於 MSSQL 生產端無索引導致 ODBC 增量同步超時，改採 ClickHouse `remote()` 原生串流技術，在 3 分鐘內將 **5,300 萬筆原始 Bronze 資料** 無損遷移至新伺服器！
+- **Silver/Gold 全量重算與 100% 對帳**:
+    - 以 `--reset` 方式徹底清空並重建新環境，重算後進行業務對帳。
+    - **對帳結果 100% 一致**：WJ2 WJ-S28 線在 `2025-12-31` 的日結算數值與手冊文件精確契合（Todo: 9, Doing: 5, Done: 186, Total: 200）。
 
 ### ✅ 近期已解決 (2026-05-07 Acc Rate 指標優化)
 - **積壓率分母優化 (7-Day Rolling Denominator)**:

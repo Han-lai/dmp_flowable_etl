@@ -105,7 +105,7 @@ taskinst:
   target: "bronze.bpm_act_hi_taskinst"
   time_col: "LAST_UPDATED_TIME_"
   strategy: "batch"
-  step_days: 10
+  step_days: 2
   engine_ddl: >
     ID_ String, REV_ Int32, PROC_DEF_ID_ String, TASK_DEF_KEY_ String, PROC_INST_ID_ String, EXECUTION_ID_ String, NAME_ String, ASSIGNEE_ String, START_TIME_ DateTime, CLAIM_TIME_ DateTime, END_TIME_ DateTime, DURATION_ Int64, DELETE_REASON_ String, LAST_UPDATED_TIME_ DateTime
   columns: "ID_, REV_, PROC_DEF_ID_, TASK_DEF_KEY_, PROC_INST_ID_, EXECUTION_ID_, NAME_, ASSIGNEE_, START_TIME_, CLAIM_TIME_, END_TIME_, DURATION_, DELETE_REASON_, LAST_UPDATED_TIME_"
@@ -115,7 +115,7 @@ varinst:
   target: "bronze.bpm_act_hi_varinst"
   time_col: "CREATE_TIME_"
   strategy: "batch"
-  step_days: 10
+  step_days: 2
   engine_ddl: "PROC_INST_ID_ String, TASK_ID_ String, NAME_ String, TEXT_ String, REV_ Int32, LONG_ Int64, CREATE_TIME_ DateTime"
   columns: "PROC_INST_ID_, TASK_ID_, NAME_, TEXT_, REV_, LONG_, CREATE_TIME_"
 
@@ -124,7 +124,7 @@ procinst:
   target: "bronze.bpm_act_hi_procinst"
   time_col: "START_TIME_"
   strategy: "batch"
-  step_days: 10
+  step_days: 2
   engine_ddl: "ID_ String, REV_ Int32, PROC_INST_ID_ String, BUSINESS_KEY_ String, PROC_DEF_ID_ String, START_TIME_ DateTime, END_TIME_ DateTime, DURATION_ Decimal(18,3), START_USER_ID_ String, START_ACT_ID_ String, END_ACT_ID_ String, SUPER_PROCESS_INSTANCE_ID_ String, DELETE_REASON_ String, TENANT_ID_ String, NAME_ String, CALLBACK_ID_ String, CALLBACK_TYPE_ String, REFERENCE_ID_ String, REFERENCE_TYPE_ String, PROPAGATED_STAGE_INST_ID_ String, BUSINESS_STATUS_ String"
   columns: "*"
 
@@ -133,6 +133,6 @@ identitylink:
   target: "bronze.bpm_act_hi_identitylink"
   time_col: "CREATE_TIME_"
   strategy: "batch"
-  step_days: 10
+  step_days: 2
   engine_ddl: "USER_ID_ String, TYPE_ String, TASK_ID_ String, CREATE_TIME_ DateTime"
   columns: "USER_ID_, TYPE_, TASK_ID_, CREATE_TIME_"
