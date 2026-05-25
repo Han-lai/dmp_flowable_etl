@@ -19,7 +19,7 @@ cube(`L5TaskPeriodicPivot`, {
                 today() as sys_today
             FROM gold.rmv_l5_task_completion_phys
             WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("formatDateTime(snapshot_date, '%Y-%m-%d')")}
+                ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("snapshot_date")}
             )
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
@@ -36,13 +36,16 @@ cube(`L5TaskPeriodicPivot`, {
                 sys_today
             FROM params
         ),
+        -- [1.5] 💡 優化關鍵：將 anchor_dt 轉為單一常數的 CTE，供 Scalar Subquery 調用，還原主鍵索引
+        anchor AS (
+            SELECT anchor_dt FROM calc_anchor LIMIT 1
+        ),
         -- [2] 基礎數據擷取：預先過濾回溯所需的 3 個月視窗，提升後續 UNION 效率
         base AS (
-            SELECT *
+            SELECT *, (SELECT anchor_dt FROM anchor) as anchor_dt
             FROM gold.rmv_l5_task_completion_phys
-            CROSS JOIN calc_anchor
-            WHERE snapshot_date >= toStartOfMonth(anchor_dt) - INTERVAL 1 MONTH
-              AND snapshot_date <= toLastDayOfMonth(anchor_dt) + INTERVAL 1 MONTH
+            WHERE snapshot_date >= toStartOfMonth((SELECT anchor_dt FROM anchor)) - INTERVAL 1 MONTH
+              AND snapshot_date <= toLastDayOfMonth((SELECT anchor_dt FROM anchor)) + INTERVAL 1 MONTH
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
