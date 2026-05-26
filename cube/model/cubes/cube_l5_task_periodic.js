@@ -157,7 +157,11 @@ cube(`L5TaskPeriodic`, {
         },
         accQty: {
             type: `number`,
-            sql: `groupBitmapMerge(acc)`,
+            sql: `
+            CASE 
+                WHEN any(granularity) = 'Day' THEN bitmapCardinality(groupBitmapMergeState(acc))
+                ELSE bitmapCardinality(bitmapOr(groupBitmapMergeState(todo), groupBitmapMergeState(doing)))
+            END`,
             title: 'QTY: Todo+Doing(Acc)'
         },
         accTotalQty: {
