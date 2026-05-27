@@ -3,117 +3,90 @@
  * 目的：將 TODO, DOING, DONE 等多個指標從「欄位 (Measures)」轉換為「列 (Status Name)」。
  * 商業意義：方便前端表格直接呈現狀態對比，支持單一圖表顯示所有狀態的百分比。
  * 
- * 技術優化: 
- * 1. 確保 filter_date (snapshotDate) 在所有 UNION 分支中都指向 anchor_dt，避免篩選時過濾掉歷史資料。
- * 2. Day 粒度調整為回溯 7 天 (INTERVAL 6 DAY)。
- * 3. V4 邏輯下，Todo/Doing/Done 為互斥狀態，數據精確對齊。
+ * [Changelog]
+ * - 2026-05-26: 
+ *   1. [架構大躍進 - 方案C] 捨棄即時的 Bitmap 運算，改為讀取 ETL 預聚合的整數彙總表 (gold.rmv_l5_task_summary)。
+ *   2. [寬表優化] 直接從預聚合表選取所需欄位，不再需要透過 CROSS JOIN 與繁重的 bitmap 運算去兜出寬表，效能極大幅提升。
  */
 
 cube(`L5TaskPeriodicPivot`, {
     sql: `
     WITH 
         -- [1] 參數提取：鎖定使用者選擇的基準日
-        params AS (
-            SELECT 
-                max(snapshot_date) as max_filtered_date,
-                today() as sys_today
-            FROM gold.rmv_l5_task_completion_phys
-            WHERE (
-                ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("snapshot_date")}
-            )
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
-              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
-        ),
-        calc_anchor AS (
+        (
             SELECT 
                 CASE 
-                    WHEN max_filtered_date >= sys_today THEN sys_today 
-                    ELSE max_filtered_date
-                END as anchor_dt,
-                sys_today
-            FROM params
-        ),
-        -- [1.5] 💡 優化關鍵：將 anchor_dt 轉為單一常數的 CTE，供 Scalar Subquery 調用，還原主鍵索引
-        anchor AS (
-            SELECT anchor_dt FROM calc_anchor LIMIT 1
-        ),
-        -- [2] 基礎數據擷取：預先過濾回溯所需的 3 個月視窗，提升後續 UNION 效率
-        base AS (
-            SELECT *, (SELECT anchor_dt FROM anchor) as anchor_dt
+                    WHEN max(snapshot_date) >= today() THEN today() 
+                    ELSE max(snapshot_date)
+                END
             FROM gold.rmv_l5_task_completion_phys
-            WHERE snapshot_date >= toStartOfMonth((SELECT anchor_dt FROM anchor)) - INTERVAL 1 MONTH
-              AND snapshot_date <= toLastDayOfMonth((SELECT anchor_dt FROM anchor)) + INTERVAL 1 MONTH
+            WHERE 1=1
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.snapshotDate.filter("snapshot_date")}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
               AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
-        ),
+        ) AS anchor_dt,
 
-        -- [3] 指標展平 (Wide Format)：計算各粒度的數值
+        -- [3] 指標展平 (Wide Format)：從預聚合表讀取
         v4_wide_metrics AS (
             -- A. Month: 當月累積
             SELECT 
-                'Month' as granularity, formatDateTime(anchor_dt, '%b.') as period_name, 1 as sort_order,
+                'Month' as granularity, period_name, 1 as sort_order,
                 vx_type, region, plant, factory, line, 
-                formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, formatDateTime(anchor_dt, '%Y-%m-%d') as snapshot_date_real,
-                bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
-                bitmapCardinality(groupBitmapMergeState(todo_monthly)) as todo_qty, 
-                bitmapCardinality(groupBitmapMergeState(doing_monthly)) as doing_qty,
-                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_monthly), groupBitmapMergeState(done_monthly))) as doing_done_qty, 
-                bitmapCardinality(groupBitmapMergeState(done_monthly)) as done_qty, 
-                bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
-                bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
-            FROM base
-            WHERE snapshot_date >= toStartOfMonth(anchor_dt) AND snapshot_date <= toLastDayOfMonth(anchor_dt)
-            GROUP BY vx_type, region, plant, factory, line, anchor_dt, period_name
+                anchor_dt as filter_date, snapshot_date as snapshot_date_real,
+                total_qty, todo_qty, doing_qty, doing_done_qty, done_qty, acc_qty, acc_total_qty
+            FROM gold.rmv_l5_task_summary FINAL
+            WHERE period_type = 'Month'
+              AND period_key = formatDateTime(anchor_dt, '%Y-%m')
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
 
             UNION ALL
 
             -- B. Week: 本週與前兩週
             SELECT 
-                'Week' as granularity, concat('W', toString(toISOWeek(snapshot_date))) as period_name,
-                CASE WHEN toISOWeek(snapshot_date) = toISOWeek(anchor_dt) THEN 2
-                     WHEN toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 7 DAY) THEN 3
+                'Week' as granularity, period_name,
+                CASE WHEN period_key = concat(toString(toISOYear(anchor_dt)), '-W', lpad(toString(toISOWeek(anchor_dt)), 2, '0')) THEN 2
+                     WHEN period_key = concat(toString(toISOYear(anchor_dt - INTERVAL 7 DAY)), '-W', lpad(toString(toISOWeek(anchor_dt - INTERVAL 7 DAY)), 2, '0')) THEN 3
                      ELSE 4 END as sort_order,
                 vx_type, region, plant, factory, line,
-                formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, max(formatDateTime(snapshot_date, '%Y-%m-%d')) as snapshot_date_real,
-                bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
-                bitmapCardinality(groupBitmapMergeState(todo_weekly)) as todo_qty, 
-                bitmapCardinality(groupBitmapMergeState(doing_weekly)) as doing_qty,
-                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_weekly), groupBitmapMergeState(done_weekly))) as doing_done_qty, 
-                bitmapCardinality(groupBitmapMergeState(done_weekly)) as done_qty, 
-                bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
-                bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
-            FROM base
-            WHERE (
-                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt) AND toISOYear(snapshot_date) = toISOYear(anchor_dt)) OR 
-                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 7 DAY) AND toISOYear(snapshot_date) = toISOYear(anchor_dt - INTERVAL 7 DAY)) OR
-                (toISOWeek(snapshot_date) = toISOWeek(anchor_dt - INTERVAL 14 DAY) AND toISOYear(snapshot_date) = toISOYear(anchor_dt - INTERVAL 14 DAY))
-            )
-            GROUP BY granularity, period_name, sort_order, vx_type, region, plant, factory, line, anchor_dt
+                anchor_dt as filter_date, snapshot_date as snapshot_date_real,
+                total_qty, todo_qty, doing_qty, doing_done_qty, done_qty, acc_qty, acc_total_qty
+            FROM gold.rmv_l5_task_summary FINAL
+            WHERE period_type = 'Week'
+              AND (
+                  period_key = concat(toString(toISOYear(anchor_dt)), '-W', lpad(toString(toISOWeek(anchor_dt)), 2, '0')) OR
+                  period_key = concat(toString(toISOYear(anchor_dt - INTERVAL 7 DAY)), '-W', lpad(toString(toISOWeek(anchor_dt - INTERVAL 7 DAY)), 2, '0')) OR
+                  period_key = concat(toString(toISOYear(anchor_dt - INTERVAL 14 DAY)), '-W', lpad(toString(toISOWeek(anchor_dt - INTERVAL 14 DAY)), 2, '0'))
+              )
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
 
             UNION ALL
 
             -- C. Day: 前 7 天趨勢
             SELECT 
-                'Day' as granularity, toString(snapshot_date) as period_name,
+                'Day' as granularity, period_name,
                 5 + dateDiff('day', snapshot_date, anchor_dt) as sort_order,
                 vx_type, region, plant, factory, line,
-                formatDateTime(anchor_dt, '%Y-%m-%d') as filter_date, formatDateTime(snapshot_date, '%Y-%m-%d') as snapshot_date_real,
-                bitmapCardinality(groupBitmapMergeState(total_task)) as total_qty, 
-                bitmapCardinality(groupBitmapMergeState(todo_daily)) as todo_qty, 
-                bitmapCardinality(groupBitmapMergeState(doing_daily)) as doing_qty,
-                bitmapCardinality(bitmapOr(groupBitmapMergeState(doing_daily), groupBitmapMergeState(done_daily))) as doing_done_qty, 
-                bitmapCardinality(groupBitmapMergeState(done_daily)) as done_qty, 
-                bitmapCardinality(groupBitmapMergeState(acc)) as acc_qty,
-                bitmapCardinality(groupBitmapMergeState(total_task)) as acc_total_qty
-            FROM base
-            WHERE snapshot_date BETWEEN (anchor_dt - INTERVAL 6 DAY) AND anchor_dt
-            GROUP BY granularity, period_name, sort_order, vx_type, region, plant, factory, line, anchor_dt, snapshot_date
+                anchor_dt as filter_date, snapshot_date as snapshot_date_real,
+                total_qty, todo_qty, doing_qty, doing_done_qty, done_qty, acc_qty, acc_total_qty
+            FROM gold.rmv_l5_task_summary FINAL
+            WHERE period_type = 'Day'
+              AND snapshot_date BETWEEN (anchor_dt - INTERVAL 6 DAY) AND anchor_dt
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffRegion.filter('region')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffPlant.filter('plant')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffFactory.filter('factory')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffLine.filter('line')}
+              AND ${FILTER_PARAMS.L5TaskPeriodicPivot.diffVxType.filter('vx_type')}
         )
 
     -- [4] 數據轉置 (Pivot)：將寬表轉為窄表 (Long Format)

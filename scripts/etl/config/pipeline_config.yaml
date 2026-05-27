@@ -8,6 +8,7 @@ reset_targets:
   - "gold.rmv_l5_milestone_phys"
   - "gold.rmv_l5_acc_phys"
   - "gold.rmv_l5_task_completion_phys"
+  - "gold.rmv_l5_task_summary"
 
 # Computation Stages:
 # Stage 1: Initial pivoting of raw variable instances.
@@ -38,3 +39,6 @@ pipeline_stages:
       - phase_id: "gold_unified"
         template: "backfill_gold.sql"
         target_table: "gold.rmv_l5_task_completion_phys"
+      - phase_id: "gold_summary"
+        template: "backfill_gold_summary.sql"
+        target_table: "gold.rmv_l5_task_summary"
