@@ -46,6 +46,10 @@ PIPELINE_CONFIG = load_pipeline_config()
 # =================================================================
 
 def get_client(is_low_ram=False):
+    """
+    建立與 ClickHouse 資料庫的連線客體 (Client)。
+    若為低記憶體模式 (is_low_ram=True)，則將連線逾時時間縮短為 300 秒，以防查詢卡死。
+    """
     config = CH_CONFIG.copy()
     if is_low_ram:
         config['send_receive_timeout'] = 300
@@ -72,21 +76,30 @@ def get_table_metrics(client, table_name):
     return 0, 0
 
 def get_checkpoint(client, phase, start, end):
+    """
+    查詢特定 ETL 階段 (phase) 在指定時間窗格 (start~end) 是否已經執行成功。
+    用以實現斷點續傳 (Checkpointing) 機制，避免重複運算。
+    """
     try:
         res = client.query(f"SELECT status FROM ops_metrics.etl_checkpoint FINAL WHERE phase = '{phase}' AND window_start = '{start}' AND window_end = '{end}'")
         if res.result_rows:
             return res.result_rows[0][0]
-    except: pass
+    except Exception:
+        pass
     return None
 
-def update_checkpoint(client, phase, start, end, status, error="", duration_ms=0, rows=0, bytes=0):
+def update_checkpoint(client, phase, start, end, status, error="", duration_ms=0, rows=0, table_bytes=0):
+    """
+    更新 ETL 執行進度與狀態 (SUCCESS / FAILED) 至 ops_metrics.etl_checkpoint。
+    此紀錄表使用 ReplacingMergeTree 引擎，相同的階段與時間窗格紀錄會自動覆蓋更新。
+    """
     try:
         # Optimized for ReplacingMergeTree
         sql = f"""
         INSERT INTO ops_metrics.etl_checkpoint 
             (phase, window_start, window_end, status, error_msg, duration_ms, result_rows, result_bytes) 
         VALUES 
-            ('{phase}', '{start}', '{end}', '{status}', '{error[:500]}', {duration_ms}, {rows}, {bytes})
+            ('{phase}', '{start}', '{end}', '{status}', '{error[:500]}', {duration_ms}, {rows}, {table_bytes})
         """
         client.command(sql)
     except Exception as e:
@@ -105,13 +118,14 @@ def show_status(client):
     
     # 1. Watermark Tracking
     try:
-        wm_sql = "SELECT table_name, last_sync_time, sync_time, row_count FROM bronze._sync_watermark FINAL ORDER BY table_name"
+        wm_sql = "SELECT table_name, last_sync_time, min_data_time, max_data_time, sync_time, row_count FROM bronze._sync_watermark FINAL ORDER BY table_name"
         res = client.query(wm_sql)
         if res.result_rows:
-            df = pd.DataFrame(res.result_rows, columns=['Table', 'Last Source TS', 'Sync At', 'Rows'])
-            print("\n[Watermark Tracking]")
+            df = pd.DataFrame(res.result_rows, columns=['Table', 'Last Source TS', 'Min Data Time', 'Max Data Time', 'Sync At', 'Rows'])
+            print("\n[Watermark Tracking (Data ingestion status & spans)]")
             print(df.to_string(index=False))
-    except: pass
+    except Exception as e:
+        print(f"Error reading watermark status: {e}")
 
     # 2. ETL Checkpoints
     try:
@@ -135,15 +149,29 @@ def show_status(client):
 
     # 3. Key Table Counts
     print("\n[Key Table Row Counts]")
-    for t in ["bronze.bpm_act_hi_taskinst", "silver.mv_varinst_pivoted", "silver.mv_fact_task_vx", "gold.rmv_l5_milestone_phys", "gold.rmv_l5_acc_phys", "gold.rmv_l5_task_completion_phys"]:
+    
+    # Dynamically resolve target tables from config
+    target_tables = ["bronze.bpm_act_hi_taskinst"] # Always include base table
+    for stage in PIPELINE_CONFIG.get('pipeline_stages', []):
+        for step in stage.get('steps', []):
+            if step.get('target_table') and step['target_table'] not in target_tables:
+                target_tables.append(step['target_table'])
+    
+    for t in target_tables:
         try:
             count = client.command(f"SELECT count() FROM {t}")
             print(f" - {t:35}: {count:,} rows")
-        except:
+        except Exception:
             print(f" - {t:35}: (Not created)")
 
 def execute_computation_pipeline(client, args):
-    """Core Engine for Safe Low-RAM Time-Bounded Computing."""
+    """
+    Core Engine: 執行安全的、基於時間窗格 (Time-Bounded) 的核心分析管線。
+    主要特色：
+    1. 記憶體最佳化設定 (Low-RAM mode spills to disk)
+    2. 自動按天切分運算視窗 (Window Generation)
+    3. 遇到 OOM 記憶體溢出時，自動將視窗切半並遞迴處理 (Auto-Split on OOM)
+    """
     print("\n" + "="*80)
     print(f" [ Computation Engine ] Initiating Native Analytical Pipeline")
     print("="*80)
@@ -195,7 +223,12 @@ def execute_computation_pipeline(client, args):
     # Templates are loaded dynamically from pipeline_config.yaml (see loop below)
 
     def run_safe(phase_id, sql_tpl, start_dt, end_dt, target_table=None):
-        """Recursive function to process windows with auto-split on OOM (supports down to hours)."""
+        """
+        遞迴函數：安全執行單一時間窗格的 SQL 模板。
+        - 具備防重跑機制 (Skip if SUCCESS)
+        - 具備空窗格跳過機制 (Skip empty window)
+        - 遇到記憶體不足 (OOM) 時，自動將時間窗格切半並遞迴執行
+        """
         start_str = start_dt.strftime("%Y-%m-%d %H:%M:%S")
         end_str = end_dt.strftime("%Y-%m-%d %H:%M:%S")
         
@@ -226,19 +259,20 @@ def execute_computation_pipeline(client, args):
                        .replace('{end_date}', end_dt.strftime("%Y-%m-%d")) \
                        .replace('{start_ts}', start_str) \
                        .replace('{end_ts}', end_str)
+
             client.command(q)
             
             duration_ms = (time.perf_counter() - start_perf) * 1000
             
             # Capture table metrics
-            rows, bytes = 0, 0
+            rows, table_bytes = 0, 0
             if target_table:
-                rows, bytes = get_table_metrics(client, target_table)
+                rows, table_bytes = get_table_metrics(client, target_table)
             
             update_checkpoint(client, phase_id, start_str, end_str, 'SUCCESS', 
-                              duration_ms=duration_ms, rows=rows, bytes=bytes)
+                              duration_ms=duration_ms, rows=rows, table_bytes=table_bytes)
             
-            print(f"     [Success] {duration_ms/1000:.2f}s | Rows: {rows:,} | Size: {bytes:,} bytes")
+            print(f"     [Success] {duration_ms/1000:.2f}s | Rows: {rows:,} | Size: {table_bytes:,} bytes")
             time.sleep(0.5) # Breath for the server
 
         except Exception as e:
@@ -277,6 +311,14 @@ def execute_computation_pipeline(client, args):
     print("\n All calculation phases completed successfully!")
 
 def main():
+    """
+    程式進入點與命令列參數解析 (CLI Parser)。
+    支援四大模式：
+    - --status: 儀表板模式 (檢查各表筆數與水位線)
+    - --reset: 危險模式 (清空資料庫與 Checkpoint)
+    - --daily: 自動接龍模式 (Auto-Catchup, 依據 Watermark 自動補齊落差)
+    - --backfill: 手動回填模式 (依據 --start 與 --end 指定區間進行運算)
+    """
     parser = argparse.ArgumentParser(description="DMP Flowable Execution Tool")
     parser.add_argument("--backfill", action="store_true", help="Launch the Safe Calculation Pipeline")
     parser.add_argument("--daily", action="store_true", help="Auto-process last 7 days")
@@ -315,11 +357,45 @@ def main():
             print(f"Reset Error: {e}")
             sys.exit(1)
 
-    # 3. Daily Mode Logic
+    # 3. Daily (Auto-Catchup) Mode Logic
     if args.daily:
         args.backfill = True
-        args.start = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
-        print(f"Daily Mode: Focus on last 7 days from {args.start}")
+        print("\n[Auto-Catchup Mode Initiated]")
+        try:
+            client = get_client(is_low_ram=args.low_ram)
+            
+            # 3.1 Determine END: Read Data Watermark
+            wm_res = client.query("SELECT maxOrNull(last_sync_time) FROM bronze._sync_watermark FINAL WHERE table_name = 'bronze.bpm_act_hi_taskinst'")
+            if wm_res.result_rows and wm_res.result_rows[0][0]:
+                watermark_dt = wm_res.result_rows[0][0]
+                args.end = watermark_dt.strftime("%Y-%m-%d")
+                print(f"  [End] Detected Source Data Watermark: {args.end}")
+            else:
+                args.end = datetime.date.today().strftime("%Y-%m-%d")
+                print(f"  [End] No Watermark found. Using System Today: {args.end}")
+
+            # 3.2 Determine START: Read Last ETL Checkpoint
+            # We look for the last successful gold_summary run
+            cp_res = client.query("SELECT maxOrNull(window_end) FROM ops_metrics.etl_checkpoint FINAL WHERE status = 'SUCCESS' AND phase = 'gold_summary'")
+            if cp_res.result_rows and cp_res.result_rows[0][0]:
+                last_checkpoint_dt = cp_res.result_rows[0][0]
+                if isinstance(last_checkpoint_dt, str):
+                    last_checkpoint_dt = datetime.datetime.strptime(last_checkpoint_dt, "%Y-%m-%d %H:%M:%S")
+                # Start from 1 day before the last checkpoint to ensure no gaps at boundaries
+                args.start = (last_checkpoint_dt - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+                print(f"  [Start] Found Last ETL Checkpoint at {last_checkpoint_dt.strftime('%Y-%m-%d')}. Overlapping 1 day: {args.start}")
+            else:
+                # Fallback if no checkpoint exists
+                end_dtobj = datetime.datetime.strptime(args.end, "%Y-%m-%d")
+                args.start = (end_dtobj - datetime.timedelta(days=14)).strftime("%Y-%m-%d")
+                print(f"  [Start] No ETL Checkpoint found. Falling back to 14 days before watermark: {args.start}")
+
+            print(f"  -> Automatically computing gap from {args.start} to {args.end}\n")
+            
+        except Exception as e:
+            print(f"Warning: Auto-Catchup failed to detect boundaries ({e}). Falling back to static 7-day window.")
+            args.start = (datetime.date.today() - datetime.timedelta(days=7)).strftime("%Y-%m-%d")
+            args.end = datetime.date.today().strftime("%Y-%m-%d")
 
     # 4. Computation Mode
     if args.backfill:

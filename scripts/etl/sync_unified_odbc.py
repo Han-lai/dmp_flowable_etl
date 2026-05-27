@@ -46,7 +46,10 @@ logger = logging.getLogger(__name__)
 # Helper: Parse source "DB.schema.table" -> dict
 # ==========================================
 def parse_source(source_str):
-    """Parse 'APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108' into components."""
+    """
+    解析來源字串為資料庫、結構描述與資料表名稱。
+    例如將 'APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108' 解析出對應的 dict。
+    """
     parts = source_str.split(".")
     if len(parts) == 3:
         return {"db": parts[0], "schema": parts[1], "table": parts[2]}
@@ -56,11 +59,18 @@ def parse_source(source_str):
         return {"db": "APP_SRV_BPM", "schema": "dbo", "table": parts[0]}
 
 def build_odbc_conn(db_name):
-    """Build the ODBC connection string for a given database."""
+    """
+    建立針對特定資料庫的 ODBC 連線字串。
+    啟用 MARS_Connection=yes 以支援多個活躍結果集，避免連線阻塞。
+    """
     return f"DSN={ODBC_DSN};Database={db_name};Uid={MSSQL_USER};Pwd={MSSQL_PASSWORD};MARS_Connection=yes"
 
 
 def load_configs():
+    """
+    載入 YAML 設定檔 (預設為 sync_tables.yaml)，
+    包含所有需要同步的表格定義、主鍵及同步策略 (batch/full)。
+    """
     base_dir = os.path.dirname(os.path.abspath(__file__))
     
     config_name = "sync_tables.yaml"
@@ -89,7 +99,10 @@ def get_client():
 
 
 def generate_batches(start_str, end_date_str, step_days=7, step_hours=0):
-    """Generate time ranges for batch processing."""
+    """
+    依據給定的起始與結束時間，按照指定的天數或小時數切割時間區間，
+    產生批次同步用的時間對 (start, end) 列表。
+    """
     try:
         start_date = datetime.strptime(start_str, "%Y-%m-%d %H:%M:%S")
     except ValueError:
@@ -119,37 +132,65 @@ def generate_batches(start_str, end_date_str, step_days=7, step_hours=0):
 
 
 def setup_watermark_table(client):
-    sql = """
-    CREATE TABLE IF NOT EXISTS bronze._sync_watermark (
+    """
+    建立並初始化 _sync_watermark 水位線追蹤表格 (存在於 bronze 層)。
+    負責自動遷移 (Auto Migration) 加入 min/max_data_time 欄位以追蹤資料時間範圍。
+    """
+    db_name = "bronze"
+    sql = f"""
+    CREATE TABLE IF NOT EXISTS {db_name}._sync_watermark (
         table_name String,
         last_sync_time DateTime64(3),
         sync_time DateTime64(3),
         row_count UInt64,
-        duration_ms Float64
+        duration_ms Float64,
+        min_data_time Nullable(DateTime64(3)) COMMENT 'Data Minimum Timestamp',
+        max_data_time Nullable(DateTime64(3)) COMMENT 'Data Maximum Timestamp'
     ) ENGINE = ReplacingMergeTree(sync_time)
     ORDER BY (table_name)
     """
     client.command(sql)
+    
+    # Auto Migration: Ensure columns exist in case the table already existed
+    try:
+        client.command(f"ALTER TABLE {db_name}._sync_watermark ADD COLUMN IF NOT EXISTS min_data_time Nullable(DateTime64(3)) COMMENT 'Data Minimum Timestamp'")
+        client.command(f"ALTER TABLE {db_name}._sync_watermark ADD COLUMN IF NOT EXISTS max_data_time Nullable(DateTime64(3)) COMMENT 'Data Maximum Timestamp'")
+    except Exception as e:
+        logger.warning(f"Failed to auto-migrate watermark columns on {db_name}._sync_watermark: {e}")
 
 
-def update_watermark(client, table_name, last_sync_time_str, row_count, duration_ms=0):
+def update_watermark(client, table_name, last_sync_time_str, row_count, duration_ms=0, min_data_time=None, max_data_time=None):
+    """
+    當一個批次或全量同步成功後，將同步資訊寫入 watermark 表。
+    利用 ReplacingMergeTree(sync_time) 的特性，確保相同 table_name 最終只保留最新的水位資訊。
+    """
     try:
         ts_val = last_sync_time_str
         if len(ts_val) == 10:
             ts_val += " 00:00:00"
+            
+        min_val = f"CAST('{min_data_time}', 'Nullable(DateTime64(3))')" if min_data_time else "NULL"
+        max_val = f"CAST('{max_data_time}', 'Nullable(DateTime64(3))')" if max_data_time else "NULL"
+        
+        db_name = table_name.split('.')[0]
         sql = f"""
-        INSERT INTO bronze._sync_watermark (table_name, last_sync_time, sync_time, row_count, duration_ms)
-        VALUES ('{table_name}', CAST('{ts_val}', 'DateTime64(3)'), now(), {row_count}, {duration_ms})
+        INSERT INTO {db_name}._sync_watermark (table_name, last_sync_time, sync_time, row_count, duration_ms, min_data_time, max_data_time)
+        VALUES ('{table_name}', CAST('{ts_val}', 'DateTime64(3)'), now(), {row_count}, {duration_ms}, {min_val}, {max_val})
         """
         client.command(sql)
-        logger.info(f"  Watermark updated for {table_name}: {last_sync_time_str}")
+        logger.info(f"  Watermark updated for {table_name}: {last_sync_time_str} (Data min: {min_data_time}, max: {max_data_time})")
     except Exception as e:
         logger.warning(f"  Failed to update watermark: {e}")
 
 
 def get_last_watermark(client, table_name):
+    """
+    從 _sync_watermark 取得指定表格的最後同步時間。
+    使用 FINAL 關鍵字確保取得背景尚未合併前 (未經 Optimize) 的最新版本。
+    """
     try:
-        sql = f"SELECT maxOrNull(last_sync_time) FROM bronze._sync_watermark FINAL WHERE table_name = '{table_name}'"
+        db_name = table_name.split('.')[0]
+        sql = f"SELECT maxOrNull(last_sync_time) FROM {db_name}._sync_watermark FINAL WHERE table_name = '{table_name}'"
         result = client.query(sql)
         if result.result_rows and result.result_rows[0][0]:
             dt = result.result_rows[0][0]
@@ -159,12 +200,41 @@ def get_last_watermark(client, table_name):
     return None
 
 
+def query_data_min_max(client, table_name, time_col):
+    """
+    向 ClickHouse 查詢指定表格內的最小與最大資料時間，用於更新 watermark 中追蹤的實際資料跨度。
+    """
+    if not time_col:
+        return None, None
+    try:
+        # Query the minimum and maximum data time in the ClickHouse table
+        sql = f"SELECT minOrNull({time_col}), maxOrNull({time_col}) FROM {table_name}"
+        res = client.query(sql)
+        if res.result_rows and res.result_rows[0]:
+            min_dt, max_dt = res.result_rows[0][0], res.result_rows[0][1]
+            min_str = min_dt.strftime("%Y-%m-%d %H:%M:%S") if min_dt else None
+            max_str = max_dt.strftime("%Y-%m-%d %H:%M:%S") if max_dt else None
+            return min_str, max_str
+    except Exception as e:
+        logger.warning(f"Failed to query data min/max for {table_name}: {e}")
+    return None, None
+
+
 def get_source_min_time(client, config):
+    """
+    取得預設的歷史同步起點（當沒有 watermark 時作為防呆回退值使用）。
+    目前固定為 2025-01-01 00:00:00。
+    """
     logger.info("  [ODBC Safety] Using default historical floor 2025-01-01 00:00:00")
     return "2025-01-01 00:00:00"
 
 
 def sync_batch(client, config, start_str, end_str):
+    """
+    執行單次批次同步 (依賴時間區間擷取來源資料)。
+    若發生 OOM 或 Timeout 錯誤，將直接拋出例外，交由外層進行自適應切割。
+    若為一般連線錯誤則進行自動重試 (最多 3 次)，並重置 client 連線以避開死鎖。
+    """
     target = config['target']
     time_col = config['time_col']
     cols = config.get('columns', '*')
@@ -222,6 +292,11 @@ def sync_batch(client, config, start_str, end_str):
 
 
 def sync_batch_adaptive(client, config, start_str, end_str):
+    """
+    自適應批次同步機制 (Adaptive Splitting)。
+    當呼叫 sync_batch 失敗且判斷為負載過高時，會將當前時間區間對半切 (Split into two half chunks)，
+    遞迴重新嘗試，直到區間小於 30 分鐘為止。這能有效避免巨量資料造成 ODBC Buffer Overflow。
+    """
     try:
         return sync_batch(client, config, start_str, end_str)
     except Exception as e:
@@ -244,6 +319,12 @@ def sync_batch_adaptive(client, config, start_str, end_str):
 
 
 def sync_full(client, config):
+    """
+    執行全量同步策略。
+    1. 執行 TRUNCATE 清空目標表。
+    2. 若有設定 range_batches，則依據主鍵區間切割同步 (防止大表 ODBC 塞爆)。
+    3. 若無設定 range_batches，則直接做一次性的全量拉取。
+    """
     target = config['target']
     cols = config.get('columns', '*')
     source_table_ref = config['source_table_ref']
@@ -284,10 +365,11 @@ def sync_full(client, config):
             except Exception as e:
                 logger.error(f"  Batch {i} [{range_start}-{range_end}] failed: {e}")
         logger.info(f"  Total synced: {total_count:,} rows in {total_duration/1000:.2f}s")
-        update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), total_count, total_duration)
+        min_dt, max_dt = query_data_min_max(client, target, config.get('time_col'))
+        update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), total_count, total_duration, min_dt, max_dt)
         return total_count
     else:
-        start_t = time.time()
+        start_t = time.perf_counter()
         insert_sql = f"""
         INSERT INTO {target}
         SELECT {select_clause},
@@ -299,10 +381,11 @@ def sync_full(client, config):
         """
         try:
             client.command(insert_sql)
-            duration = (time.time() - start_t) * 1000
+            duration = (time.perf_counter() - start_t) * 1000
             count = client.command(f"SELECT count() FROM {target}")
             logger.info(f"  Synced {count:,} rows in {duration/1000:.2f}s")
-            update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), count, duration)
+            min_dt, max_dt = query_data_min_max(client, target, config.get('time_col'))
+            update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), count, duration, min_dt, max_dt)
         except Exception as e:
             logger.error(f"  Full sync failed: {e}")
             raise e
@@ -336,6 +419,8 @@ def main():
         config = TABLE_CONFIGS[table_key]
         config['table_key'] = table_key
         target_table = config['target']
+        config['target'] = target_table
+        
         src = parse_source(config['source'])
         conn_str = build_odbc_conn(src['db'])
 
@@ -395,7 +480,8 @@ def main():
                         session_total += batch_count
                         session_total_duration += batch_duration  # 累加時間
                         row_count = session_total
-                        update_watermark(client, target_table, end, session_total, session_total_duration)
+                        min_dt, max_dt = query_data_min_max(client, target_table, config.get('time_col'))
+                        update_watermark(client, target_table, end, session_total, session_total_duration, min_dt, max_dt)
                     else:
                         logger.info("  [DRY RUN] Would execute batch sync via Temp Engine")
 
