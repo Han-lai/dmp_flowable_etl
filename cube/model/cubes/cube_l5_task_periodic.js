@@ -22,8 +22,8 @@ cube(`L5TaskPeriodic`, {
                     WHEN max(snapshot_date) >= today() THEN today()
                     ELSE max(snapshot_date)
                 END
-            FROM gold.rmv_l5_task_completion_phys
-            WHERE 1=1
+            FROM gold.rmv_l5_task_summary FINAL
+            WHERE period_type = 'Day'
               AND ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("snapshot_date")}
               AND ${FILTER_PARAMS.L5TaskPeriodic.diffRegion.filter('region')}
               AND ${FILTER_PARAMS.L5TaskPeriodic.diffPlant.filter('plant')}
