@@ -9,10 +9,10 @@
 
 ---
 
-## 專案狀態: V4.3 Final (Deployed & Verified on New Server Farm)
-- **連線配置**: 已全面移轉至新 ClickHouse 伺服器 `REDACTED_IP:8122 (default / default)`。
-- **數據進度**: 藉由跨伺服器串流遷移 5,300 萬筆原始歷史資料，並完成全量 `--reset` 重算。
-- **關鍵改進**: 完成新舊伺服器對帳，`2025-12-31` 業務指標 Todo(9) / Doing(5) / Done(186) 達到 0 誤差契合！
+## 專案狀態: V4.4 (Phase 4 Pre-Aggregation & Windowing Fix)
+- **Phase 4 預聚合部署**: 捨棄 Cube.js 語意層的 Bitmap 即時運算，改為 ETL 階段預聚合 (Gold `rmv_l5_task_summary`)，前端查詢降級為單純的 `sum(qty)`。時間與空間複雜度從 O(N²) 降為 O(1)，單一指標查詢由 30~40 秒降至 1.5 秒 ~ 8.5 秒。
+- **增量 ETL 視窗修復**: 修正了 Incremental ETL (`backfill_gold_summary.sql`) 在聚合 `Week` 與 `Month` 時遺失歷史資料 (ACC) 的重大缺陷，透過動態邊界 `toStartOfWeek` 與 `toStartOfMonth` 確保資料正確，已完成 6 萬筆歷史聚合資料回填。
+- **連線配置**: 正式 ClickHouse 伺服器 `REDACTED_IP:8123 (default / REDACTED_PASSWORD)`。
 
 ---
 
