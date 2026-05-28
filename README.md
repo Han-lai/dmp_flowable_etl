@@ -12,6 +12,7 @@
     *   **Bronze 層**: 採用 Native ODBC Driver 18 結合 Adaptive Batching 進行高速抽取，繞過 JDBC 驅動死鎖問題。
     *   **Silver 層**: 執行 EAV 架構轉置 (Pivot) 與五階製造維度對齊，並實作 10 日滑動視窗避免 OOM。
     *   **Gold 層**: 導入 **「V4.3 Bitmap Cohort 物理化架構」**，全面捨棄耗能的 `ARRAY JOIN`，透過 `groupBitmapStateIf` 將 Todo/Doing/Done 同日結算與 7 日滾動 ACC 運算完全卸載至後台 ETL 批次處理。
+    *   **Gold Summary 層 (Stage 7)**: 新增 `gold.rmv_l5_task_summary` 預聚合整數彙總表。ETL 寫入時即完成 Bitmap → 整數轉換，Cube.js 查詢降為純 `SUM` 運算，單次指標查詢耗時從 **30+ 秒（超時）降至 0.06~0.11 秒**。
 *   **伺服器護城河 (Cube.js Semantic Gateway)**
     *   為解決高併發 OOM 瓶頸，全面禁止前端直連資料庫。透過 Cube.js 語意層進行 SQL 翻譯與結果快取攔截，將資料庫負載降低逾 98%。
 
@@ -26,7 +27,7 @@
     *   [ClickHouse_ODBC_Setup.md](docs/01_architecture/ClickHouse_ODBC_Setup.md) - Native ODBC 與資料同步規格
     *   [Deployment_Guide.md](docs/02_deployment/Deployment_Guide.md) - 環境配置、容器啟動與 ETL 維護手冊
 *   **⚙️ 業務指標與管線**
-    *   [ETL_Transformation_Pipeline.md](docs/03_metrics/ETL_Transformation_Pipeline.md) - 6 階轉換管線、視窗機制與 SQL 邏輯
+    *   [ETL_Transformation_Pipeline.md](docs/03_metrics/ETL_Transformation_Pipeline.md) - 7 階轉換管線（含 Stage 7 預聚合彙總表）、視窗機制與 SQL 邏輯
     *   [Metrics_and_Data_Definitions.md](docs/03_metrics/Metrics_and_Data_Definitions.md) - 核心業務指標 (L5/L7) 語意與規則定義
 *   **📊 展示與語意層**
     *   [CubeJS_Semantic_Layer.md](docs/04_serving/CubeJS_Semantic_Layer.md) - Cube.js 語意層定義與調度設定
@@ -70,11 +71,12 @@ python scripts/etl/execute_etl.py --backfill --start 2025-01-01 --step-days 10 -
 
 ## 4. 效能優化里程碑 (Performance Results)
 
-透過改用 **Native ODBC** 取代 JDBC Bridge、並全面套用 **Physical Gold 物理化架構**，系統達成了以下關鍵成就：
+透過改用 **Native ODBC** 取代 JDBC Bridge、並全面套用 **Physical Gold 物理化架構**與 **Stage 7 預聚合整數表**，系統達成了以下關鍵成就：
 
 1. **極速抽取**：5,300 萬筆來源資料可於 **9.7 分鐘**內完成搬運，平均吞吐量 9 萬筆/秒。
 2. **端到端高效**：自 MSSQL 抽取、Silver 清洗、至 Gold 實體化指標產出 (2,500 萬筆次運算)，全程僅需 **~10.1 分鐘**，且全程限制 RAM 於 5.5 GiB 內安全執行。
 3. **百人併發零故障**：經 `clickhouse-benchmark` 實測，在面對 100 個獨立的 Dashboard 複雜查詢並發衝擊下，P99 延遲僅 **0.39 秒**，不僅達成 100% 成功率，更較未優化前快上 **11 倍** 以上。
+4. **Cube.js 查詢 O(1) 化**：透過 Stage 7 預聚合整數表，Cube.js 前端指標查詢從 30+ 秒（超時）降至 **0.06~0.11 秒**，時間與空間複雜度由 O(N²) 降為 O(1)。
 
 ---
 

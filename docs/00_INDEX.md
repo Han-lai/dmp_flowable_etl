@@ -10,7 +10,7 @@
 - [Deployment_Guide.md](02_deployment/Deployment_Guide.md): 部署與維運手冊。包含 Docker 啟動、ETL 同步引擎 (`sync_unified_odbc.py`) 與 Watermark 增量機制之操作細節。
 
 ## 2. 資料管線與指標定義 (Pipeline & Metrics)
-- [ETL_Transformation_Pipeline.md](03_metrics/ETL_Transformation_Pipeline.md): **核心邏輯**。從 Bronze → Silver → Gold 之 6 階段轉換管線 SQL 邏輯、視窗機制與維護 SOP。
+- [ETL_Transformation_Pipeline.md](03_metrics/ETL_Transformation_Pipeline.md): **核心邏輯**。從 Bronze → Silver → Gold 之 7 階段轉換管線 SQL 邏輯（含 Stage 7 預聚合彙總表）、視窗機制與維護 SOP。
 - [Metrics_and_Data_Definitions.md](03_metrics/Metrics_and_Data_Definitions.md): 業務指標語義。六項核心指標定義、演進歷程、五階維度血緣與查帳基準。
 - [Developer_Guide_New_Metrics.md](03_metrics/04_Developer_Guide_New_Metrics.md): **核心開發手冊**。指導如何新增指標，包含 DDL/DML 撰寫規範、Pipeline 配置與自動化測試流程。
 
@@ -25,5 +25,5 @@
 - [Grafana_Dashboard_Setup.md](05_monitoring/Grafana_Dashboard_Setup.md): 維運監控。Grafana 面板配置與系統健康指標說明。
 
 ---
-*最後重整日期: 2026-04-30*  
+*最後重整日期: 2026-05-28*  
 *維護單位: AIT / Data Engineering*

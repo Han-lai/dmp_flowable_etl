@@ -145,6 +145,21 @@ python scripts/etl/audit_done_details.py --date "2025-12-25" --region CNE --plan
 
 > **重要**: Gold 層採用「時點快照」判定狀態。`snapshot_date` 是任務在 Start/Claim/End 三個事件日期上展開的快照，**不等同**於 `silver.mv_fact_task_vx.task_status` 的當前狀態欄位。正式對帳應以 Gold 層為準。
 
+**方法 A：直接讀預聚合整數表（對齊 Cube.js 口徑，推薦）**
+
+```sql
+-- 驗證 W1 (12/29 ~ 01/04) 週結算數字（對應 Cube.js 前端顯示值）
+SELECT
+    period_key, period_name,
+    total_qty, todo_qty, doing_qty, done_qty, acc_qty
+FROM gold.rmv_l5_task_summary FINAL
+WHERE period_type = 'Week'
+  AND period_key = '2026-W01'
+  AND vx_type = 'V3' AND line = 'E5';
+```
+
+**方法 B：從原始 Bitmap 計算（底層驗算，適合 debug）**
+
 ```sql
 -- 驗證 W1 (12/29 ~ 01/04) 在結算點 01/04 時的 Todo/Doing/Done 分佈
 SELECT
@@ -153,11 +168,13 @@ SELECT
     bitmapCardinality(groupBitmapMergeState(todo_weekly)) as todo,
     bitmapCardinality(groupBitmapMergeState(doing_weekly)) as doing,
     bitmapCardinality(groupBitmapMergeState(done_weekly)) as done
-FROM gold.rmv_l5_task_completion
+FROM gold.rmv_l5_task_completion_phys FINAL
 WHERE (iso_year = 2026 AND iso_week = 1)
   AND vx_type = 'V3' AND line = 'E5'
 GROUP BY iso_year, iso_week;
 ```
+
+> 方法 A 與方法 B 的結果應完全一致。若有差異，通常代表 Stage 7 (`backfill_gold_summary.sql`) 尚未針對該視窗執行完成。
 
 ### 4.3 Silver 層輔助查詢（任務清單稽核）
 
@@ -179,4 +196,4 @@ ORDER BY task_start_date DESC
 
 ---
 
-*文件更新日期: 2026-04-30*
+*文件更新日期: 2026-05-28*

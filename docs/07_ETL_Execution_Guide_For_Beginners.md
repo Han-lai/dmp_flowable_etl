@@ -84,6 +84,8 @@
                     │      7 天展開計算每日 WIP 負荷量
                     │  [F] backfill_gold.sql
                     │      Milestone + ACC 合併
+                    │  [G] backfill_gold_summary.sql
+                    │      Bitmap → 整數，按 Day/Week/Month 預聚合
                     ▼
   ┌──────────────────────────────────────┐
   │           Gold 層（KPI 結果）         │
@@ -94,29 +96,30 @@
   │      每日 WIP 負荷量 Bitmap           │
   │  rmv_l5_task_completion_phys         │
   │      Milestone + ACC 最終匯總         │
+  │  ★ rmv_l5_task_summary              │
+  │      整數預聚合彙總表（Cube.js 讀取） │
   └─────────────────┬────────────────────┘
                     │
                     │  Cube.js 語意層
                     │  cube/model/cubes/cube_l5_task_periodic.js
-                    │  讀取 Gold 層，動態聚合不同時間粒度
+                    │  讀取 rmv_l5_task_summary，直接 SUM 整數
                     ▼
   ┌──────────────────────────────────────┐
   │         Cube.js：L5TaskPeriodic      │
   │                                      │
   │  Day（最近 7 天）                     │
-  │  ├─ todo/doing/done = 日結算 Bitmap   │
-  │  └─ ACC Rate = acc ÷ acc_total_task  │
+  │  ├─ todo/doing/done = SUM 整數欄位   │
+  │  └─ ACC Rate = acc_qty ÷ acc_total   │
   │                                      │
   │  Week（當週 Wx、前一週 Wx-1、Wx-2）   │
-  │  ├─ todo/doing/done = 週結算 Bitmap   │
+  │  ├─ todo/doing/done = SUM 整數欄位   │
   │  └─ ACC Rate = (todo+doing) ÷ total  │
   │                                      │
   │  Month（當月）                        │
-  │  ├─ todo/doing/done = 月結算 Bitmap   │
+  │  ├─ todo/doing/done = SUM 整數欄位   │
   │  └─ ACC Rate = (todo+doing) ÷ total  │
   │                                      │
-  │  Bitmap 跨日聯集：groupBitmapMerge    │
-  │  確保同一個 task_id 不被重複計算       │
+  │  ETL 已完成去重，查詢端無需 Bitmap    │
   └─────────────────┬────────────────────┘
                     │
                     ▼
@@ -150,7 +153,8 @@ dmp_flowable/
     │   ├── 02_bronze_common_dims.sql    建立 Bronze 層人員/MDM 主檔表
     │   ├── 03_silver_pivot_and_hierarchy.sql  建立變數轉置暫存表
     │   ├── 04_silver_fact_tasks.sql     建立核心事實寬表
-    │   └── 06_gold_kpi_task_completion.sql    建立 Gold 層 KPI 物理表
+    │   ├── 06_gold_kpi_task_completion.sql    建立 Gold 層 KPI 物理表
+    │   └── 06b_gold_kpi_task_summary.sql     建立預聚合整數彙總表 (Cube.js 入口)
     │
     └── dml/                          ← execute_etl.py 調度
         │                               業務邏輯在這裡，維護時改這裡
@@ -169,7 +173,7 @@ dmp_flowable/
 
 ### Cube.js 的角色說明
 
-Gold 層只存**每天**的 Bitmap 快照，Cube.js 負責在查詢時動態把多天的 Bitmap **聯集**成週或月的數字，確保同一個 task_id 不被重複計算。
+Gold 層的 `rmv_l5_task_summary` 預聚合表已在 ETL 階段完成 Bitmap 去重並儲存為整數（Day / Week / Month 三種粒度）。Cube.js 在查詢時直接 `SUM` 整數欄位，不再需要即時 Bitmap 聯集運算，查詢耗時從數百毫秒降至 0.06~0.11 秒。
 
 #### 三種時間粒度
 
@@ -491,6 +495,7 @@ Step C  backfill_exclusion.sql   → 更新 silver.mv_fact_task_vx 的排除旗�
 Step D  backfill_gold_milestone  → gold.rmv_l5_milestone_phys
 Step E  backfill_gold_acc.sql    → gold.rmv_l5_acc_phys
 Step F  backfill_gold.sql        → gold.rmv_l5_task_completion_phys  (最終匯總)
+Step G  backfill_gold_summary.sql → gold.rmv_l5_task_summary  (★ Cube.js 整數預聚合)
 ```
 
 ---
@@ -609,9 +614,21 @@ multiIf(
 #### `backfill_gold.sql` — 最終 KPI 匯總
 
 **輸入**：`gold.rmv_l5_milestone_phys` + `gold.rmv_l5_acc_phys`  
-**輸出**：`gold.rmv_l5_task_completion_phys`（前端查詢的最終表）
+**輸出**：`gold.rmv_l5_task_completion_phys`（FastAPI 查詢的最終表）
 
-把 Milestone 與 ACC 兩張表用 LEFT JOIN 合併，產出供 API 直接讀取的最終 KPI 表。
+把 Milestone 與 ACC 兩張表用 LEFT JOIN 合併，產出供 FastAPI 直接讀取的最終 KPI 表。
+
+---
+
+#### `backfill_gold_summary.sql` — 預聚合整數彙總（Cube.js 入口）
+
+**輸入**：`gold.rmv_l5_task_completion_phys`（Step F 產出）  
+**輸出**：`gold.rmv_l5_task_summary`（★ Cube.js 的唯一資料來源）
+
+這是 V4.3 架構新增的最後一個步驟。把 `rmv_l5_task_completion_phys` 的 Bitmap 欄位在 ETL 寫入時即展開為整數，按 Day / Week / Month 三種粒度 × 五階維度儲存，讓 Cube.js 查詢降為純 `SUM` 運算。
+
+**為什麼需要這張表？**  
+`rmv_l5_task_completion_phys` 底層是 Bitmap，Cube.js 即時計算 `bitmapCardinality(groupBitmapMergeState(...))` 在大範圍查詢時耗時達 30~40 秒（超時）。預聚合後，同樣查詢耗時 **< 0.11 秒**。
 
 ---
 

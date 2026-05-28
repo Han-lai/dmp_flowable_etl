@@ -1,7 +1,7 @@
 # Cube.js 語義層定位與模型應用說明
 
 **文件編號**: 04-SRV-001  
-**最後更新**: 2026-04-30  
+**最後更新**: 2026-05-28  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering
 
@@ -35,8 +35,8 @@ Serving Layer (FastAPI / Node.js / Superset)
 
 | Cube 名稱 | 資料來源 | 主要用途 |
 | :--- | :--- | :--- |
-| **`L5TaskPeriodic`** | `gold.rmv_l5_task_completion` | KPI 聚合主模型，提供日/週/月三種粒度的完成率指標 |
-| **`L5TaskPeriodicPivot`** | `gold.rmv_l5_task_completion` | Pivot 表格專用長表模型，適合 Superset Pivot Table |
+| **`L5TaskPeriodic`** | `gold.rmv_l5_task_summary` | KPI 聚合主模型，提供日/週/月三種粒度的完成率指標 |
+| **`L5TaskPeriodicPivot`** | `gold.rmv_l5_task_summary` | Pivot 表格專用長表模型，適合 Superset Pivot Table |
 | **`DimMfgFilter`** | `gold.rmv_l5_task_completion` | 輕量化篩選選單，提供 Superset Native Filter 的極速下拉選單 |
 | **`L5TaskDetails`** | `silver.mv_fact_task_vx FINAL` | 明細下鑽模型，提供工單層級的任務明細查詢 |
 
@@ -72,14 +72,16 @@ ORDER BY snapshot_date DESC  -- 確保最新日期優先顯示
 
 ### 2.1 核心度量 (Measures)
 
+> **架構說明 (V4.3)**：`L5TaskPeriodic` 與 `L5TaskPeriodicPivot` 已改讀 ETL 預聚合整數表 `gold.rmv_l5_task_summary`，所有指標均以 `SUM(integer_column)` 計算，不再進行即時 Bitmap 運算。
+
 | 度量名稱 | 核心 SQL / 指標邏輯 | 說明 |
 | :--- | :--- | :--- |
-| **Total Tasks** | `bitmapCardinality(groupBitmapMergeState(total_task))` | 視窗內累計總任務數 (分母) |
-| **Todo Qty** | `bitmapCardinality(groupBitmapMergeState(todo))` | 未認領任務數 |
-| **Doing Qty** | `bitmapCardinality(groupBitmapMergeState(doing))` | 進行中任務數 |
-| **Done Qty** | `bitmapCardinality(groupBitmapMergeState(done))` | 已完結任務數 |
-| **Acc Qty** | `bitmapCardinality(groupBitmapMergeState(acc))` | **累積在途量**：7 日滾動在途唯一任務數 |
-| **Acc Total Qty** | `bitmapCardinality(groupBitmapMergeState(acc_total_task))` | **7日滾動總任務數**：用於日維度 Acc Rate 的分母 |
+| **Total Tasks** | `SUM(total_qty)` | 視窗內累計總任務數 (分母) |
+| **Todo Qty** | `SUM(todo_qty)` | 未認領任務數 |
+| **Doing Qty** | `SUM(doing_qty)` | 進行中任務數 |
+| **Done Qty** | `SUM(done_qty)` | 已完結任務數 |
+| **Acc Qty** | `SUM(acc_qty)` | **累積在途量**：7 日滾動在途唯一任務數 |
+| **Acc Total Qty** | `SUM(acc_total_qty)` | **7日滾動總任務數**：用於日維度 Acc Rate 的分母 |
 | **Done Rate** | `doneQty * 100.0 / nullIf(totalQty, 0)` | 結案率 |
 | **Acc Rate** | (見說明) | **累積負載率/落後率**：<br>1. **日維度**: `accQty / accTotalQty` (7日滾動積壓率)<br>2. **週/月維度**: `(todoQty + doingQty) / totalQty` (週期落後率) |
 
@@ -97,44 +99,56 @@ ORDER BY snapshot_date DESC  -- 確保最新日期優先顯示
 
 ## 3. Schema 程式碼塊範例 (YAML/JS)
 
-以下為符合現有 Gold Layer 欄位結構的 Cube.js JavaScript 定義片段：
+以下為 V4.3 架構下 `L5TaskPeriodic` Cube 的核心定義片段（讀取預聚合整數表）：
 
 ```javascript
 cube(`L5TaskPeriodic`, {
-  sql: `SELECT * FROM gold.rmv_l5_task_completion`,
+  // V4.3: 直接讀取 ETL 預聚合整數表，不再即時計算 Bitmap
+  sql: `
+  WITH
+      (SELECT max(snapshot_date) FROM gold.rmv_l5_task_summary FINAL WHERE period_type = 'Day'
+         AND ${FILTER_PARAMS.L5TaskPeriodic.snapshotDate.filter("snapshot_date")} ...) AS anchor_dt
+  SELECT * FROM (
+      -- Month / Week / Day 三段 UNION ALL，各自篩選對應 period_type
+      SELECT 'Month' as granularity, total_qty, todo_qty, doing_qty, done_qty, acc_qty, acc_total_qty, ...
+      FROM gold.rmv_l5_task_summary FINAL WHERE period_type = 'Month' ...
+      UNION ALL ...
+  )`,
 
-    // [數量指標]：使用 groupBitmapMergeState 將多行 Bitmap 進行聯集，再計算基數 (Cardinality)
-    totalQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(total_task))`, title: '總任務數' },
-    todoQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(todo))`, title: '待辦數' },
-    doingQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(doing))`, title: '進行中' },
-    doneQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(done))`, title: '已完成' },
-    
-    // 累積在途量 (ACC) 核心度量
-    accQty: { type: `number`, sql: `bitmapCardinality(groupBitmapMergeState(acc))`, title: '累積在途(Acc)' },
-    
-    // 比率計算範例
+  measures: {
+    // [數量指標]：直接 SUM 預聚合好的整數欄位
+    totalQty: { type: `sum`, sql: `total_qty`, title: '總任務數' },
+    todoQty:  { type: `sum`, sql: `todo_qty`,  title: '待辦數' },
+    doingQty: { type: `sum`, sql: `doing_qty`, title: '進行中' },
+    doneQty:  { type: `sum`, sql: `done_qty`,  title: '已完成' },
+    accQty:   { type: `sum`, sql: `acc_qty`,   title: '累積在途(Acc)' },
+    accTotalQty: { type: `sum`, sql: `acc_total_qty`, title: '7日滾動總量' },
+
     doneRate: {
       type: `number`,
       sql: `round(${doneQty} * 100.0 / nullIf(${totalQty}, 0), 2)`,
       title: '完成率%'
+    },
+    accRate: {
+      type: `number`,
+      // 日維度用 7 日滾動分母；週/月維度用週期總量
+      sql: `CASE WHEN any(granularity) = 'Day'
+                 THEN round(${accQty} * 100.0 / nullIf(${accTotalQty}, 0), 2)
+                 ELSE round((${todoQty} + ${doingQty}) * 100.0 / nullIf(${totalQty}, 0), 2)
+            END`,
+      title: '積壓率%'
     }
   },
 
   dimensions: {
     periodName: { type: `string`, sql: `period_name`, title: '週期' },
-    
-    // 製造五階組織維度
-    vxType: { type: `string`, sql: `vx_type`, title: 'Vx版本' },
-    region: { type: `string`, sql: `region`, title: '區域' },
-    plant: { type: `string`, sql: `plant`, title: '廠區' },
-    factory: { type: `string`, sql: `factory`, title: '工廠' },
-    line: { type: `string`, sql: `line`, title: '線體' },
-    
-    snapshotDate: {
-      type: `time`,
-      sql: `snapshot_date`,
-      title: '快照日期'
-    }
+    granularity: { type: `string`, sql: `granularity`, title: '粒度' },
+    diffVxType:  { type: `string`, sql: `vx_type`,    title: 'Vx版本' },
+    diffRegion:  { type: `string`, sql: `region`,     title: '區域' },
+    diffPlant:   { type: `string`, sql: `plant`,      title: '廠區' },
+    diffFactory: { type: `string`, sql: `factory`,    title: '工廠' },
+    diffLine:    { type: `string`, sql: `line`,       title: '線體' },
+    snapshotDate: { type: `string`, sql: `filter_date`, title: '快照日期篩選' }
   }
 });
 ```
