@@ -4,7 +4,7 @@
 
 ## 部署與掛載方式
 
-當您在任意伺服器（例如 10.146.206.76）上啟動或重新建置 ClickHouse Docker 容器時，請**務必使用 Volume ( `-v` ) 將這兩個資料夾對應掛載進去**。
+當您在任意伺服器（例如 <CLICKHOUSE_HOST>）上啟動或重新建置 ClickHouse Docker 容器時，請**務必使用 Volume ( `-v` ) 將這兩個資料夾對應掛載進去**。
 
 ### Docker Run 範例：
 

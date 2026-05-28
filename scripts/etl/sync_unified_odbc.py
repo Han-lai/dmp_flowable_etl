@@ -19,10 +19,10 @@ import clickhouse_connect
 
 # ClickHouse Configuration
 CLICKHOUSE_CONFIG = {
-    "host": os.getenv("CLICKHOUSE_HOST", "10.146.206.76"),
+    "host": os.getenv("CLICKHOUSE_HOST", "localhost"),
     "port": int(os.environ.get("CLICKHOUSE_PORT", "8123")),
     "username": os.getenv("CLICKHOUSE_USERNAME", "default"),
-    "password": os.getenv("CLICKHOUSE_PASSWORD", "1qaz2wsx3edc"),
+    "password": os.getenv("CLICKHOUSE_PASSWORD", "<CLICKHOUSE_PASSWORD>"),
     "database": os.getenv("CLICKHOUSE_DATABASE", "default"),
     "send_receive_timeout": int(os.getenv("CLICKHOUSE_TIMEOUT", "3600")), # Increased to 1 hour
     "connect_timeout": 30,

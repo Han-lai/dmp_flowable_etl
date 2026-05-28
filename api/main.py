@@ -14,10 +14,10 @@ logger = logging.getLogger("L5_API")
 
 # ClickHouse 連線設定 (直接讀取或設定預設值)
 CLICKHOUSE_CONFIG = {
-    'host': os.getenv('CLICKHOUSE_HOST', '10.146.206.76'),
+    'host': os.getenv('CLICKHOUSE_HOST', 'localhost'),
     'port': int(os.getenv('CLICKHOUSE_PORT', 8123)),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
-    'password': os.getenv('CLICKHOUSE_PASSWORD', '1qaz2wsx3edc')
+    'password': os.getenv('CLICKHOUSE_PASSWORD', '<CLICKHOUSE_PASSWORD>')
 }
 
 def get_clickhouse_client():

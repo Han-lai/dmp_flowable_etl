@@ -70,7 +70,7 @@
 
 ### ✅ 近期已解決 (2026-05-18 機房新伺服器部署與全量資料對帳)
 - **新伺服器連線配置切換**:
-    - 將 `setup_schema.py`、`execute_etl.py`、`sync_unified_odbc.py`、`audit_done_details.py` 的預設連線資料庫全部改為新環境 `10.136.218.207:8122 (default / default)`。
+    - 將 `setup_schema.py`、`execute_etl.py`、`sync_unified_odbc.py`、`audit_done_details.py` 的預設連線資料庫全部改為新環境 `<OLD_SERVER_HOST> (default / default)`。
 - **跨伺服器秒級資料遷移 (Cross-Server Streaming)**:
     - 由於 MSSQL 生產端無索引導致 ODBC 增量同步超時，改採 ClickHouse `remote()` 原生串流技術，在 3 分鐘內將 **5,300 萬筆原始 Bronze 資料** 無損遷移至新伺服器！
 - **Silver/Gold 全量重算與 100% 對帳**:

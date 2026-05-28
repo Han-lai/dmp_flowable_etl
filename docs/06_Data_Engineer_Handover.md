@@ -11,7 +11,7 @@
 1.  **安裝依賴套件**：
     在專案根目錄執行：`pip install -r requirements-dev.txt`。
 2.  **資料庫連線資訊**：
-    連線設定通常位於 `scripts/etl/` 下各 Python 檔案頂部的 `CH_CONFIG` 變數中，或透過環境變數設定。請確保您的電腦可以連通 `10.146.206.76`。
+    連線設定通常位於 `scripts/etl/` 下各 Python 檔案頂部的 `CH_CONFIG` 變數中，或透過環境變數設定。請確保您的電腦可以連通 `<CLICKHOUSE_HOST>`。
 3.  **推薦工具**：
     建議安裝 **DBeaver** 並設定 ClickHouse 驅動，方便手動執行 SQL 進行數據驗證。
 

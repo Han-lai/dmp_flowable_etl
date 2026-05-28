@@ -40,12 +40,12 @@ SELECT 'FilterRef' as granularity ... ;
 docker exec -i <容器名稱或ID> clickhouse-benchmark --user=<角色> --password=<密碼> --concurrency=<併發人數> --iterations=<查詢總次數> < queries.sql
 ```
 
-### 2.2 實務執行範例 (針對 10.146.206.76 主營運主機)
+### 2.2 實務執行範例 (針對 <CLICKHOUSE_HOST> 主營運主機)
 **進行 100 併發高壓負載測試**：
 ```bash
 docker exec -i clickhouse clickhouse-benchmark \
     --user=default \
-    --password=1qaz2wsx3edc \
+    --password=<CLICKHOUSE_PASSWORD> \
     --concurrency=100 \
     --iterations=500 \
     --randomize < /路徑/到/您的/scripts/performance/queries.sql
