@@ -3,9 +3,9 @@
 # 技術環境 - DMP Flowable
 
 ## ClickHouse
-- **Host**: REDACTED_IP (生產)
+- **Host**: <CLICKHOUSE_HOST> (生產)
 - **Port**: 8123 (生產)
-- **User**: default / password: REDACTED_PASSWORD
+- **User**: default / password: <CLICKHOUSE_PASSWORD>
 - **Database**: bronze, silver, gold
 - **Version**: v25.8 (生產)
 
@@ -38,7 +38,7 @@
 **詳細報告**: `BRONZE_OPTIMIZATION_SUMMARY.md`
 
 ## MSSQL (Source)
-- **Host**: 10.136.218.192
+- **Host**: <MSSQL_HOST>
 - **Driver**: Microsoft ODBC Driver 18 for SQL Server
 - **Databases**: APP_SRV_BPM, APP_SRV_COMMON
 

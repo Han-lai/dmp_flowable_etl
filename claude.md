@@ -12,7 +12,7 @@
 ## 專案狀態: V4.4 (Phase 4 Pre-Aggregation & Windowing Fix)
 - **Phase 4 預聚合部署**: 捨棄 Cube.js 語意層的 Bitmap 即時運算，改為 ETL 階段預聚合 (Gold `rmv_l5_task_summary`)，前端查詢降級為單純的 `sum(qty)`。時間與空間複雜度從 O(N²) 降為 O(1)，單一指標查詢由 30~40 秒降至 1.5 秒 ~ 8.5 秒。
 - **增量 ETL 視窗修復**: 修正了 Incremental ETL (`backfill_gold_summary.sql`) 在聚合 `Week` 與 `Month` 時遺失歷史資料 (ACC) 的重大缺陷，透過動態邊界 `toStartOfWeek` 與 `toStartOfMonth` 確保資料正確，已完成 6 萬筆歷史聚合資料回填。
-- **連線配置**: 正式 ClickHouse 伺服器 `REDACTED_IP:8123 (default / REDACTED_PASSWORD)`。
+- **連線配置**: 正式 ClickHouse 伺服器 `REDACTED_IP:8123 (default / <CLICKHOUSE_PASSWORD>)`。
 
 ---
 

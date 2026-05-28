@@ -419,13 +419,13 @@ python scripts/etl/execute_etl.py --reset --backfill --low-ram
 | `MSSQL_USER` | `APP_SRV_BPM` |
 | `MSSQL_PASSWORD` | `APP_SRV_BPM` |
 | `ODBC_DSN` | `MSSQL_DSN` |
-| `CLICKHOUSE_HOST` | `REDACTED_IP` |
-| `CLICKHOUSE_PASSWORD` | `REDACTED_PASSWORD` |
+| `CLICKHOUSE_HOST` | `<CLICKHOUSE_HOST>` |
+| `CLICKHOUSE_PASSWORD` | `<CLICKHOUSE_PASSWORD>` |
 
 ### ClickHouse 連線不通（Connection refused / Timeout）
 先用瀏覽器或 curl 確認服務是否正常：
 ```bash
-curl http://REDACTED_IP:8123/ping
+curl http://<CLICKHOUSE_HOST>:8123/ping
 # 成功會回傳 Ok.
 ```
 如果 ping 失敗，代表 ClickHouse 服務本身有問題，需通知 DBA 或確認 VPN 連線狀態，無法靠重跑腳本解決。
@@ -659,7 +659,7 @@ multiIf(
 
 ## 附錄：Gold 層數據驗證基準
 
-> 驗證環境：ClickHouse `REDACTED_IP:8123`  
+> 驗證環境：ClickHouse `<CLICKHOUSE_HOST>:8123`  
 > 維度篩選：`region='CNE'`、`plant='WJ2'`、`factory='NBU'`、`line='E5'`  
 > 時間區間：2025-12-25 ～ 2025-12-31  
 > 驗證腳本：`scratch/check_gold.py`

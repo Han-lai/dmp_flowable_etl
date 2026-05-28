@@ -1,7 +1,7 @@
 # ClickHouse 實體化金層架構效能與驗收報告 (Physical Gold Architecture Benchmark Report)
 
 **測試日期**: 2026-04-13
-**測試目標**: REDACTED_IP (ClickHouse 營運主機)
+**測試目標**: <CLICKHOUSE_HOST> (ClickHouse 營運主機)
 **伺服器規格**: 11 GiB Memory (Docker 容器環境)
 **壓測場景**: L5 Gold Layer 報表高併發查詢與儲存壓縮效益
 **系統架構**: 物理化金層架構 (`gold.rmv_l5_task_completion_phys` 實體聚合表)

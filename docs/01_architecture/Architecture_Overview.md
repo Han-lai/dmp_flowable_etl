@@ -49,7 +49,7 @@
                                      ▼  sync_unified_odbc.py
                                         Native ODBC Driver 18 (Adaptive Batching / Full Sync)
 ┌─────────────────────────────────────────────────────────────────────────────┐
-│  Bronze 層 (ODS 原始資料落地)         ClickHouse Server 76 (REDACTED_IP)    │
+│  Bronze 層 (ODS 原始資料落地)         ClickHouse Server 76 (<CLICKHOUSE_HOST>)    │
 │                                                                             │
 │  ┌──────────────────┐ ┌───────────────────────┐ ┌───────────────────────┐  │
 │  │ BPM 流程核心 (5表)│ │ HR 維度主檔 (6表)      │ │ MDM 製造維度 (7表)     │  │
@@ -341,7 +341,7 @@ Row-Level Security (DSC)                       適合後端程式對接
 
 | 項目              | 規格                                              |
 | :---------------- | :------------------------------------------------ |
-| **目標伺服器**    | REDACTED_IP (Docker 容器)                       |
+| **目標伺服器**    | <CLICKHOUSE_HOST> (Docker 容器)                       |
 | **部署記憶體**    | 11 GiB (實際可用約 6 GiB，需預留 OS 與 Buffer)    |
 | **ClickHouse 版本** | v25.8                                           |
 | **資料驅動**      | Microsoft ODBC Driver 18 for SQL Server           |

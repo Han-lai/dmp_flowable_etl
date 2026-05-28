@@ -14,10 +14,10 @@ import os
 
 # ClickHouse Configuration
 CH_CONFIG = {
-    'host': os.getenv('CLICKHOUSE_HOST', 'REDACTED_IP'),
+    'host': os.getenv('CLICKHOUSE_HOST', 'localhost'),
     'port': int(os.getenv('CLICKHOUSE_PORT', '8123')),
     'username': os.getenv('CLICKHOUSE_USERNAME', 'default'),
-    'password': os.getenv('CLICKHOUSE_PASSWORD', 'REDACTED_PASSWORD'),
+    'password': os.getenv('CLICKHOUSE_PASSWORD', '<CLICKHOUSE_PASSWORD>'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 

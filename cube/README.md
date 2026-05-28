@@ -50,7 +50,7 @@ cube/
 | 變數 | 預期設定 | 說明 |
 |------|--------|------|
 | `CUBEJS_DB_TYPE` | `clickhouse` | 資料庫類型 |
-| `CUBEJS_DB_HOST` | `REDACTED_IP` | ClickHouse 主機 |
+| `CUBEJS_DB_HOST` | `<CLICKHOUSE_HOST>` | ClickHouse 主機 |
 | `CUBEJS_DB_PORT` | `8123` | ClickHouse HTTP Port |
 | `CUBEJS_DB_USER` | `default` | 使用者 |
 | `CUBEJS_DB_NAME` | `default` | 預設 DB |

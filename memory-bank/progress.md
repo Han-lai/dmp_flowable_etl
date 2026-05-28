@@ -33,8 +33,8 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 - **指標聚合優化 (Measure Optimization)**: 升級所有數量型指標，將 `bitmapCardinality(groupBitmapMergeState(x))` 精簡為更高效的原生函式 `groupBitmapMerge(x)`。
 - **成果與發布**: 成功將時間與空間複雜度由 O(N²) 降維至 O(1)，使單一大範圍查詢從 30 秒 (超時) 降至 1.5 - 8 秒，並順利推送到 GitLab `master` 分支。
 
-### 2026-05-18: 機房新伺服器 (REDACTED_IP:8122) 部署與全量資料對帳
-- **腳本連線大更新**: 將專案中所有核心 Python 腳本（連線設定）由舊主機全面安全移轉至新主機 `REDACTED_IP:8122`，採用 `default/default` 憑證。
+### 2026-05-18: 機房新伺服器 (<OLD_SERVER_HOST>) 部署與全量資料對帳
+- **腳本連線大更新**: 將專案中所有核心 Python 腳本（連線設定）由舊主機全面安全移轉至新主機 `<OLD_SERVER_HOST>`，採用 `default/default` 憑證。
 - **跨伺服器秒級資料搬移**: 利用 ClickHouse 遠端直連函式 `remote()`，成功將 **53,388,806 筆** 核心 Bronze 資料在 3 分鐘內高速轉入新資料庫，完美避開 MSSQL 來源端無索引引發的 ODBC 分批超時限制。
 - **ETL 完整重算與業務對帳**: 完成 `silver` 及 `gold` 兩層 `--reset` 重建與 Backfill 計算，比對 WJ2 廠區 `2025-12-31` 的 Todo(9)、Doing(5)、Done(186) 指標，數據達成 **0 誤差對齊**，證明新伺服器隨時可投入正式生產！
 
