@@ -42,9 +42,10 @@ dmp_flowable/
         │   ├── 01_bronze_...sql
         │   └── 04_silver_...sql
         └── dml/                     (4) 業務邏輯處：所有的 DML 運算語法
-            ├── backfill_pivot.sql     --> 變數轉置邏輯
-            ├── backfill_silver.sql    --> 核心寬表與清洗邏輯
-            └── backfill_gold_...sql   --> KPI 指標計算邏輯
+            ├── backfill_pivot.sql          --> 變數轉置邏輯
+            ├── backfill_silver.sql         --> 核心寬表與清洗邏輯
+            ├── backfill_gold_...sql        --> KPI 指標計算邏輯
+            └── backfill_gold_summary.sql   --> ★ Cube.js 整數預聚合（最終步驟）
 ```
 
 ### 各階段執行映射表
@@ -66,7 +67,8 @@ dmp_flowable/
 | :--- | :--- | :--- | :--- |
 | **Bronze** | **原始層** | `schema/01_...` | 1:1 複製 MSSQL 原始資料，保留歷史真相。 |
 | **Silver** | **事實層** | `dml/backfill_silver.sql` | **核心區域**。處理變數轉置、大表 JOIN、資料清理。 |
-| **Gold** | **指標層** | `dml/backfill_gold.sql` | **最終產出**。高度彙總的 KPI 數據，供前端直接查詢。 |
+| **Gold** | **指標層** | `dml/backfill_gold.sql` | KPI Bitmap 物理化，供 FastAPI 直接查詢。 |
+| **Gold Summary** | **預聚合層** | `dml/backfill_gold_summary.sql` | **★ Cube.js 查詢入口**。Bitmap 轉整數預聚合，查詢耗時 < 0.11s。 |
 
 ---
 
@@ -188,10 +190,11 @@ python scripts/etl/audit_done_details.py --date 2026-05-12 --status done
 4. 執行 `python scripts/etl/sync_unified_odbc.py --table <表名>`。
 
 ### 情境 B：新增一個全新的 KPI 指標
-1. 建立 Gold 層實體表 SQL -> 註冊 `infra_config.yaml` -> 執行 `setup_schema.py`。
+1. 建立 Gold 層實體表 SQL → 註冊 `infra_config.yaml` → 執行 `setup_schema.py`。
 2. 撰寫運算邏輯 DML (`backfill_new_kpi.sql`)。
 3. 在 `pipeline_config.yaml` 註冊新的運算步驟。
-4. 執行 `python scripts/etl/execute_etl.py --daily`。
+4. 若指標需由 Cube.js 查詢，在 `backfill_gold_summary.sql` 中新增對應欄位，並更新 `schema/06b_gold_kpi_task_summary.sql` DDL。
+5. 執行 `python scripts/etl/execute_etl.py --daily`。
 
 ---
 

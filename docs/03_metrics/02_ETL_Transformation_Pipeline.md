@@ -1,7 +1,7 @@
 # ETL 轉換管線技術細節 (Bronze → Silver → Gold)
 
 **文件編號**: 03-ETL-001  
-**最後更新**: 2026-04-30  
+**最後更新**: 2026-05-28  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering
 
@@ -16,8 +16,9 @@
 5. [Stage 4 — 里程碑快照聚合 (backfill_gold_milestone.sql)](#5-stage-4--里程碑快照聚合-backfill_gold_milestonesql)
 6. [Stage 5 — ACC 七日滾動去重 (backfill_gold_acc.sql)](#6-stage-5--acc-七日滾動去重-backfill_gold_accsql)
 7. [Stage 6 — 最終合併主表 (backfill_gold.sql)](#7-stage-6--最終合併主表-backfill_goldsql)
-8. [時間視窗機制與 Checkpoint](#8-時間視窗機制與-checkpoint)
-9. [維護作業參考](#9-維護作業參考)
+8. [Stage 7 — 預聚合彙總表 (backfill_gold_summary.sql)](#8-stage-7--預聚合彙總表-backfill_gold_summarysql)
+9. [時間視窗機制與 Checkpoint](#9-時間視窗機制與-checkpoint)
+10. [維護作業參考](#10-維護作業參考)
 
 ---
 
@@ -56,9 +57,12 @@ Stage 6 ▼  backfill_gold.sql
         gold.rmv_l5_task_completion_phys
         (FULL OUTER JOIN 合併 Milestone + ACC)
         │
-        ▼
-        gold.rmv_l5_task_completion  (VIEW + FINAL)
-        (BI/API 查詢入口)
+        │  gold.rmv_l5_task_completion  (VIEW + FINAL)
+        │  (FastAPI 查詢入口)
+        │
+Stage 7 ▼  backfill_gold_summary.sql
+        gold.rmv_l5_task_summary
+        (★ Cube.js 查詢入口：將 Bitmap 轉為整數預聚合，按 period_type/period_key 存儲)
 ```
 
 **SQL 模板位置**: `sql/etl/dml/`  
@@ -330,11 +334,47 @@ LEFT JOIN gold.rmv_l5_acc_phys AS a
 
 ### 7.3 BI 對接視圖
 
-應用層（Cube.js / FastAPI）透過 `rmv_l5_task_completion` 讀取時，透過 `bitmapCardinality(groupBitmapMergeState(...))` 進行毫秒級的精確去重與聚合。
+FastAPI 透過 `rmv_l5_task_completion` (VIEW + FINAL) 讀取，執行即時 `bitmapCardinality(groupBitmapMergeState(...))` 去重聚合。
+
+**Cube.js** 改為讀取 Stage 7 產出的 `rmv_l5_task_summary`，直接 `SUM` 整數欄位，查詢耗時從 ~750ms 降至 0.06~0.11 秒。
 
 ---
 
-## 8. 時間視窗機制與 Checkpoint
+## 8. Stage 7 — 預聚合彙總表 (backfill_gold_summary.sql)
+
+### 8.1 目的
+
+將 `rmv_l5_task_completion_phys` 中的 Bitmap 欄位，在 ETL 寫入時即轉換為整數，按 `period_type`（Day / Week / Month）× `period_key` × 五階維度儲存，讓 Cube.js 查詢降為純 `SUM` 運算，消除即時 Bitmap 聚合的開銷。
+
+### 8.2 輸入 / 輸出
+
+| 項目     | 內容                                              |
+| :------- | :------------------------------------------------ |
+| **輸入** | `gold.rmv_l5_task_completion_phys` (Stage 6 產出) |
+| **輸出** | `gold.rmv_l5_task_summary`                        |
+| **粒度** | `period_type` × `period_key` × 五階維度 × `vx_type` |
+
+### 8.3 核心欄位
+
+| 欄位名稱        | 說明                                            |
+| :-------------- | :---------------------------------------------- |
+| `period_type`   | `'Day'` / `'Week'` / `'Month'`                  |
+| `period_key`    | `'2025-12-31'` / `'2025-W52'` / `'2025-12'`    |
+| `snapshot_date` | 對應該 period 的代表日（Day=當日，Week/Month=最後一天） |
+| `total_qty`     | `bitmapCardinality(groupBitmapMergeState(total_task))`  |
+| `todo_qty`      | `bitmapCardinality(groupBitmapMergeState(todo_daily))`  |
+| `doing_qty`     | `bitmapCardinality(groupBitmapMergeState(doing_daily))` |
+| `done_qty`      | `bitmapCardinality(groupBitmapMergeState(done_daily))`  |
+| `acc_qty`       | `bitmapCardinality(groupBitmapMergeState(acc))`         |
+| `acc_total_qty` | `bitmapCardinality(groupBitmapMergeState(acc_total_task))` |
+
+### 8.4 增量視窗擴展設計
+
+Week / Month 粒度的視窗邊界由 `toStartOfWeek` / `toStartOfMonth` 動態擴展，確保 `ReplacingMergeTree` 能覆蓋完整週期，避免增量執行時遺漏歷史資料。
+
+---
+
+## 9. 時間視窗機制與 Checkpoint  
 
 ### 8.1 視窗切割方式
 
@@ -379,7 +419,7 @@ LIMIT 30;
 
 ---
 
-## 9. 維護作業參考
+## 10. 維護作業參考
 
 ### 9.1 全量重算（修改業務邏輯後）
 

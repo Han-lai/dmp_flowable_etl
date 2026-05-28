@@ -2,7 +2,7 @@
 
 **文件編號**: 02-DEP-001  
 **版本**: 5.1 (合併版 — 含 ETL 同步引擎與 Watermark 運維)  
-**最後更新**: 2026-04-16  
+**最後更新**: 2026-05-28  
 **定位**: 本文件提供基於 ODBC 架構的系統部署、資料同步與 ETL 運維完整指南。
 
 ---
@@ -172,7 +172,8 @@ npm run dev
 執行完成後，可透過以下方式驗證：
 1. 確認 `bronze._sync_watermark` 有所有 18 張表的記錄
 2. 確認 `ops_metrics.etl_checkpoint` 所有 step 為 `SUCCESS`
-3. 查詢 `gold.rmv_l5_task_completion` 確認有資料產出
+3. 查詢 `gold.rmv_l5_task_completion_phys` 確認 Bitmap KPI 資料產出
+4. 查詢 `gold.rmv_l5_task_summary` 確認預聚合整數資料產出（Cube.js 查詢入口）
 
 ---
 

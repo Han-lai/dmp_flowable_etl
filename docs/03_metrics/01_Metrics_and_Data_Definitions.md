@@ -1,7 +1,7 @@
 # DMP Flowable 業務指標與數據定義 (Business Metrics & Data Definitions)
 
 **文件編號**: 03-MTR-001  
-**最後更新**: 2026-04-30  
+**最後更新**: 2026-05-28  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering  
 **定位**: 本文件為系統的業務語義辭典，記載 L5 任務指標的精確定義、演進歷程、五階維度血緣與查帳對齊基準。ETL 技術執行細節（SQL 邏輯、管線階段）請見 `02_02_ETL_Transformation_Pipeline.md`。
@@ -236,4 +236,4 @@ Superset 明細表 / API 下鑽查詢
 ---
 
 **文件負責人**: AIT / Data Engineering
-**最後審核日期**: 2026-04-30
+**最後審核日期**: 2026-05-28

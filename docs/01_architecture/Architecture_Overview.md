@@ -1,7 +1,7 @@
 # DMP Flowable 系統架構總覽
 
 **文件編號**: 01-ARCH-001  
-**最後更新**: 2026-04-30  
+**最後更新**: 2026-05-28  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering
 
@@ -30,19 +30,19 @@
 │                                                                             │
 │  APP_SRV_BPM (流程引擎)              APP_SRV_COMMON (維度主檔)               │
 │  ┌───────────────────────────┐      ┌──────────────────────────────────┐    │
-│  │ ACT_HI_TASKINST_0108      │      │ HR_Employee_0202                 │    │
-│  │ ACT_HI_VARINST_0108       │      │ EmpNodeRoleMapping_0202          │    │
-│  │ ACT_HI_PROCINST_0108      │      │ EmpOrgInfoMapping_0202           │    │
-│  │ ACT_HI_IDENTITYLINK_0108  │      │ EmpUserGroupMapping_0202         │    │
-│  │ ACT_RE_PROCDEF_0108       │      │ UserGroup_0202                   │    │
-│  └───────────────────────────┘      │ ProcessRoleUserMapping_0202      │    │
-│                                     │ MDM_LINE_DESC_MASTER_0202        │    │
-│                                     │ MDM_PROD_AREA_MASTER_0202        │    │
-│                                     │ MDM_FACTORY_AREA_MASTER_0202     │    │
-│                                     │ MDM_MFG_SITE_MASTER_0202         │    │
-│                                     │ MDM_MFG_PLANT_MASTER_0202        │    │
-│                                     │ DMPFunctionConfig_0202           │    │
-│                                     │ DMPFunctionClientMapping_0202    │    │
+│  │ ACT_HI_TASKINST_0503      │      │ HR_Employee_0503                 │    │
+│  │ ACT_HI_VARINST_0503       │      │ EmpNodeRoleMapping_0503          │    │
+│  │ ACT_HI_PROCINST_0503      │      │ EmpOrgInfoMapping_0503           │    │
+│  │ ACT_HI_IDENTITYLINK_0503  │      │ EmpUserGroupMapping_0503         │    │
+│  │ ACT_RE_PROCDEF_0503       │      │ UserGroup_0503                   │    │
+│  └───────────────────────────┘      │ ProcessRoleUserMapping_0503      │    │
+│                                     │ MDM_LINE_DESC_MASTER_0503        │    │
+│                                     │ MDM_PROD_AREA_MASTER_0503        │    │
+│                                     │ MDM_FACTORY_AREA_MASTER_0503     │    │
+│                                     │ MDM_MFG_SITE_MASTER_0503         │    │
+│                                     │ MDM_MFG_PLANT_MASTER_0503        │    │
+│                                     │ DMPFunctionConfig_0503           │    │
+│                                     │ DMPFunctionClientMapping_0503    │    │
 │                                     └──────────────────────────────────┘    │
 └─────────────────────────────────────────────────────────────────────────────┘
                                      │
@@ -88,6 +88,7 @@
 │  │ rmv_l5_acc_phys             (累積在途量: 7日滾動 uniqExact)         │   │
 │  │ rmv_l5_task_completion_phys (最終合併主表: FULL OUTER JOIN)         │   │
 │  │ rmv_l5_task_completion      (BI 對接視圖: VIEW + FINAL)             │   │
+│  │ rmv_l5_task_summary         (★ Cube.js 查詢入口: 預聚合整數彙總表) │   │
 │  └─────────────────────────────────────────────────────────────────────┘   │
 └─────────────────────────────────────────────────────────────────────────────┘
                                      │
@@ -238,7 +239,8 @@ MSSQL APP_SRV_COMMON ───────────┼──► sync_unified_
 | `rmv_l5_milestone_phys`          |   4   | Todo / Doing / Done 快照計數                |
 | `rmv_l5_acc_phys`                |   5   | 7 日滾動 `uniqExact` 在途任務去重           |
 | `rmv_l5_task_completion_phys`    |   6   | FULL OUTER JOIN 合併主表                    |
-| `rmv_l5_task_completion` (View)  |  —    | BI 對接視圖，加 `FINAL` 確保 ReplacingMergeTree 去重完成 |
+| `rmv_l5_task_completion` (View)  |  —    | FastAPI 對接視圖，加 `FINAL` 確保 ReplacingMergeTree 去重完成 |
+| `rmv_l5_task_summary`            |   7   | **★ Cube.js 查詢入口**：整數預聚合彙總表，ETL 階段完成 Bitmap→整數轉換，查詢端直接 SUM |
 
 **設計動機**：系統最初於 Server 207 (充裕記憶體) 採用 Refreshable Materialized View 架構。遷移至 Server 76 (Docker 11 GiB RAM，可用約 6 GiB) 後，即時聚合觸發 OOM，因此改為「物理化分離聚合架構」，以穩定查詢層資源消耗。
 
@@ -304,7 +306,9 @@ python scripts/etl/execute_etl.py --status
 ```
   Gold Layer (ClickHouse)
           │
-          │  gold.rmv_l5_task_completion (View)
+          ├── gold.rmv_l5_task_summary (★ Cube.js 讀取，整數預聚合)
+          │
+          └── gold.rmv_l5_task_completion (View, FastAPI 讀取)
           │
    ┌──────┴──────────────────────────────────────────────┐
    │                                                     │
