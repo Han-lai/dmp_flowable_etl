@@ -193,24 +193,24 @@ Gold 層每天各存一張 Bitmap，Cube.js 用 `groupBitmapMergeState` 把篩�
 > 
 > 因為資料在 ClickHouse 底層是用 Bitmap 格式儲存，如果您直接用 `SELECT todo_daily FROM gold.rmv_l5_milestone_phys` 查詢，畫面會顯示為 `[ClickHouseRoaring64NavigableMap]` 這樣無法直接閱讀的結構。
 > 為了能夠直觀地驗證資料，請搭配 ClickHouse 內建的 Bitmap 函數：
-> - **若要看數量（有幾個任務）**：請使用 `bitmapCardinality(todo_daily)`，它會回傳整數。
-> - **若要看內容（具體包含哪些 Task ID）**：請使用 `bitmapToArray(todo_daily)`，它會回傳一個展開的陣列。
-> - **若要跨多天聯集並計算總數**：請搭配 `GROUP BY` 使用 `bitmapCardinality(groupBitmapMergeState(todo_daily))`。
+> - **若要看數量（有幾個任務）**：請搭配 `GROUP BY` 使用 `groupBitmapMerge(todo_daily)`，它會自動合併對應維度的 Bitmap 並回傳長度（任務數量整數）。
+> - **若要看內容（具體包含哪些 Task ID）**：請搭配 `GROUP BY` 使用 `bitmapToArray(groupBitmapMergeState(todo_daily))`，它會將合併後的 Bitmap 展開為 Task ID 陣列。
 > 
 > **👇 實戰範例：查詢 CNE WJ2 NBU E5 在 2025-12-25 到 2025-12-31 的每日各狀態任務數**
 > ```sql
 > SELECT 
->     date,
->     bitmapCardinality(todo_daily) AS todo_count,
->     bitmapCardinality(doing_daily) AS doing_count,
->     bitmapCardinality(done_daily) AS done_count
+>     snapshot_date,
+>     groupBitmapMerge(todo_daily) AS todo_count,
+>     groupBitmapMerge(doing_daily) AS doing_count,
+>     groupBitmapMerge(done_daily) AS done_count
 > FROM gold.rmv_l5_milestone_phys
 > WHERE region = 'CNE' 
 >   AND plant = 'WJ2' 
 >   AND factory = 'NBU' 
 >   AND line = 'E5'
->   AND date BETWEEN '2025-12-25' AND '2025-12-31'
-> ORDER BY date;
+>   AND snapshot_date BETWEEN '2025-12-25' AND '2025-12-31'
+> GROUP BY snapshot_date
+> ORDER BY snapshot_date;
 > ```
 
 #### ACC Rate 的兩種算法
@@ -642,7 +642,7 @@ multiIf(
 
 ## 附錄：Gold 層數據驗證基準
 
-> 驗證環境：ClickHouse `REDACTED_IP:8122 (default / default)`  
+> 驗證環境：ClickHouse `REDACTED_IP:8123`  
 > 維度篩選：`region='CNE'`、`plant='WJ2'`、`factory='NBU'`、`line='E5'`  
 > 時間區間：2025-12-25 ～ 2025-12-31  
 > 驗證腳本：`scratch/check_gold.py`
@@ -702,3 +702,120 @@ Acc Rate = `(todo + doing) ÷ total`。W49 全部 Done 表示該週的開單任�
 | 2025 | M12 | **2,294** | 12 | 93 | 2,189 | 4.6% |
 
 整個 12 月共有 2,294 個任務；月底尚有 12 + 93 = 105 筆未結清（Acc Rate = 4.6%）。
+
+---
+
+## 附錄：Silver 明細表查詢實戰範例
+
+當您需要進入「明細層」查詢具體的任務流水帳、機種、工單，甚至追蹤單一任務的生命週期時，核心事實寬表 `silver.mv_fact_task_vx` 就是唯一的真相來源（SSOT）。
+
+以下提供四個最常用的明細查詢 SQL 範例：
+
+### 1. 查詢特定日期與維度下「已完成 (DONE)」的任務明細
+即當天開單且當天結案的任務明細：
+```sql
+SELECT 
+    task_id, 
+    proc_inst_id, 
+    task_name, 
+    assignee_name, 
+    task_start_time, 
+    task_end_time,
+    model_name,        -- 機種名稱
+    mo_number          -- 工單號碼
+FROM silver.mv_fact_task_vx FINAL
+WHERE region = 'CNE' 
+  AND plant = 'WJ2' 
+  AND factory = 'NBU' 
+  AND line = 'E5'
+  AND task_start_date = '2025-12-31'
+  AND task_end_date = '2025-12-31'
+  AND is_excluded = 0
+ORDER BY task_end_time DESC;
+```
+
+### 2. 查詢特定日期下「待辦 (TODO)」或「進行中 (DOING)」的任務明細
+- **待辦 (TODO)**：當天已開單，但未簽收（Claim）且未完成：
+```sql
+SELECT task_id, task_name, assignee_name, task_start_time, model_name
+FROM silver.mv_fact_task_vx FINAL
+WHERE region = 'CNE' AND plant = 'WJ2' AND factory = 'NBU' AND line = 'E5'
+  AND task_start_date = '2025-12-31'
+  AND COALESCE(task_claim_date, toDate('1900-01-01')) != '2025-12-31'
+  AND (task_end_date IS NULL OR task_end_date != '2025-12-31')
+  AND is_excluded = 0;
+```
+
+- **進行中 (DOING)**：當天已簽收（Claim）但未完成：
+```sql
+SELECT task_id, task_name, assignee_name, task_start_time, task_claim_time, model_name
+FROM silver.mv_fact_task_vx FINAL
+WHERE region = 'CNE' AND plant = 'WJ2' AND factory = 'NBU' AND line = 'E5'
+  AND task_start_date = '2025-12-31'
+  AND task_claim_date = '2025-12-31'
+  AND (task_end_date IS NULL OR task_end_date != '2025-12-31')
+  AND is_excluded = 0;
+```
+
+### 2.5 查詢特定日期下「持續累積（歷史積壓）」的待辦 (TODO) 或進行中 (DOING) 明細
+*當您需要排查截至某個日期為止，歷史上所有「尚未解決」的真實產線 WIP 積壓時，請使用以下累積邏輯（不限於當天開單）：*
+
+- **持續累積待辦 (TODO)**（在目標日期或之前開單，且截至該日結束時「未簽收」也「未完工」）：
+```sql
+SELECT task_id, task_name, assignee_name, task_start_date, model_name
+FROM silver.mv_fact_task_vx FINAL
+WHERE region = 'CNE' AND plant = 'WJ2' AND factory = 'NBU' AND line = 'E5'
+  AND task_start_date <= '2025-12-31'
+  AND (task_claim_date IS NULL OR task_claim_date > '2025-12-31')
+  AND (task_end_date IS NULL OR task_end_date > '2025-12-31')
+  AND is_excluded = 0
+ORDER BY task_start_date ASC;  -- 最早開單優先（定位最久積壓）
+```
+
+- **持續累積進行中 (DOING)**（在目標日期或之前開單、且已簽收，但截至該日結束時「尚未完工」）：
+```sql
+SELECT task_id, task_name, assignee_name, task_start_date, task_claim_date, model_name
+FROM silver.mv_fact_task_vx FINAL
+WHERE region = 'CNE' AND plant = 'WJ2' AND factory = 'NBU' AND line = 'E5'
+  AND task_start_date <= '2025-12-31'
+  AND task_claim_date <= '2025-12-31'
+  AND (task_end_date IS NULL OR task_end_date > '2025-12-31')
+  AND is_excluded = 0
+ORDER BY task_claim_date ASC; -- 最早簽收優先
+```
+
+### 3. 透過 Task ID 或流程實例 ID (Process ID) 追蹤單一任務
+當您需要追溯某個異常任務的全部資訊（如歷時、是否被排除等）：
+```sql
+SELECT 
+    task_id,
+    proc_inst_id,
+    task_name,
+    task_status,
+    assignee_name,
+    duration_min,          -- 任務歷時 (分鐘)
+    processing_time_min,   -- 簽收後處理時間 (分鐘)
+    model_name,
+    mo_number,
+    exclude_reason,
+    is_excluded
+FROM silver.mv_fact_task_vx
+WHERE task_id = '您的_TASK_ID' 
+   OR proc_inst_id = '您的_PROCESS_INSTANCE_ID';
+```
+
+### 4. 查詢特定機種 (Model) 或工單 (MO) 的所有任務流轉軌跡
+```sql
+SELECT 
+    task_primary_date,
+    task_name,
+    task_status,
+    assignee_name,
+    duration_min,
+    line
+FROM silver.mv_fact_task_vx
+WHERE model_name = '您的_機種名稱' 
+   OR mo_number = '您的_工單號碼'
+ORDER BY task_start_time ASC;
+```
+
