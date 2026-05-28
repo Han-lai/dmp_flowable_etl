@@ -145,4 +145,4 @@ API 使用標準 HTTP 狀態碼：
 ```
 
 ---
-*Last Updated: 2026-03-10*
+*Last Updated: 2026-05-28*
