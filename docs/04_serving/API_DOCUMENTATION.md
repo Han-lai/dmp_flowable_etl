@@ -10,7 +10,7 @@
 
 - **主要功能**: 提供特定月份的每月、每週（ISO 週）及每日（最後 7 天）的任務指標（Total, Todo, Doing, Done, Acc）。
 - **版本**: `1.2.0`
-- **內建文件 (Swagger)**: `http://10.136.218.207:7088/docs`
+- **內建文件 (Swagger)**: `http://10.146.206.76:7088/docs`
 
 ---
 
@@ -18,7 +18,7 @@
 
 ### 基礎網址 (Base URL)
 所有 API 請求應發送至：
-`http://10.136.218.207:7088`
+`http://10.146.206.76:7088`
 
 ### 身份驗證 (Authentication)
 目前此 API 為內部區域網路使用，**無需額外認證標頭** (No Auth Token Required)。
@@ -107,14 +107,14 @@ API 成功回應時（`200 OK`）將返回以下結構：
 ### GET 範例 (依月份查詢)
 ```bash
 curl -X 'GET' \
-  'http://10.136.218.207:7088/api/l5/task-report?month=2025-12&plant=WJ2' \
+  'http://10.146.206.76:7088/api/l5/task-report?month=2025-12&plant=WJ2' \
   -H 'accept: application/json'
 ```
 
 ### POST 範例 (複雜過濾)
 ```bash
 curl -X 'POST' \
-  'http://10.136.218.207:7088/api/l5/task-report' \
+  'http://10.146.206.76:7088/api/l5/task-report' \
   -H 'accept: application/json' \
   -H 'Content-Type: application/json' \
   -d '{
@@ -145,4 +145,4 @@ API 使用標準 HTTP 狀態碼：
 ```
 
 ---
-*Last Updated: 2026-03-10*
+*Last Updated: 2026-05-28*
