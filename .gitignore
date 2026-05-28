@@ -35,11 +35,11 @@ Thumbs.db
 logs/
 *.log
 *.txt
-# *.csv
-!scratch/
-!scratch/*.csv
 output_*.md
 tmp_*
+
+# Scratch / Ad-hoc Analysis (local only, not tracked)
+scratch/
 
 # Documentation Exclusions (Historical/Work-in-progress)
 archive/
