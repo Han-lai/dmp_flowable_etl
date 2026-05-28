@@ -1,10 +1,72 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-05-18
+**最後更新**: 2026-05-27
 
 ---
 
 ## 🎯 當前焦點 (Current Focus)
+
+### ✅ 近期已解決 (2026-05-27 Phase 4 Cube 預聚合架構完成與 anchor_dt 全面遷移)
+- **Phase 4 預聚合架構正式上線**：
+    - 新增 `sql/etl/schema/06b_gold_kpi_task_summary.sql` 與 `sql/etl/dml/backfill_gold_summary.sql`，建立 `gold.rmv_l5_task_summary` 預計算整數彙總表。
+    - 完全捨棄 Cube.js 語意層的即時 Bitmap 運算，改為直接讀取預聚合整數，查詢耗時從 ~750ms 降至 **0.06~0.11 秒**。
+    - 改寫 `L5TaskPeriodic` 與 `L5TaskPeriodicPivot` 兩個 Cube，Measures 全面從 `groupBitmapMerge` 改為 `SUM`。
+- **anchor_dt 全面遷移**：
+    - 將兩個 Cube 的基準日計算（anchor_dt）從 `rmv_l5_task_completion_phys` 遷移至 `rmv_l5_task_summary FINAL WHERE period_type='Day'`。
+    - 兩個 Cube 現在**只讀一張表** (`gold.rmv_l5_task_summary`)，完全移除對 `rmv_l5_task_completion_phys` 的依賴。
+    - 已知風險：ETL 執行期間 summary 為 pipeline 最後階段，有短暫的資料落後視窗，目前接受此風險。
+- **Cube 檔案整理**：
+    - 刪除 `cube_l5_task_summary.js`（邏輯已合併至 `cube_l5_task_periodic.js`）。
+    - 刪除 `cube_5level.js`（效能問題，原因：`leftUTF8()` 包裝導致全表掃描，待重新設計）。
+- **ETL 來源表版本升級**：
+    - `sync_tables.yaml` 所有 MSSQL 來源表從 `_0202`/`_0108` 更新為 `_0503`。
+- **ClickHouse Log 驗證**：
+    - 透過 `system.query_log` 確認 Cube API 查詢正確打到 `rmv_l5_task_summary`，效能穩定。
+- **GitLab 推送 (3 commits)**：
+    - `6b9527e` chore(etl): upgrade MSSQL source table versions to 0503 and improve scripts
+    - `56f3201` feat(cube): replace live bitmap operations with ETL pre-aggregated Gold summary table
+    - `cb4275f` refactor(cube): migrate anchor_dt to read from rmv_l5_task_summary
+
+### ✅ 近期已解決 (2026-05-27 Watermark 結構升級與 ETL 自動接龍自癒機制)
+- **正式環境無痛置換與遷移完成 (Production Switchover)**：
+    - 成功執行資料庫置換更名。將原有的舊正式庫安全改名封存為 `_0202` 後綴（如 `bronze_0202`）。
+    - 將已在 `_0503` 測試沙盒中完整驗證的實體數據表，瞬間無損地 `RENAME` 搬移移入全新的標準無後綴正式資料庫。
+    - 成功重新部署 `sql/etl/schema` 下的 9 個核心 DDL schema 視圖，最後 `DROP` 刪除 `_0503` 空殼庫，實現秒級的正式環境安全上線！
+- **水位線「真實資料時間跨度」自動追蹤**：
+    - 升級 `bronze._sync_watermark` 表，新增 `min_data_time` (資料最舊時間) 與 `max_data_time` (資料最新時間) 兩個 Nullable(DateTime64(3)) 欄位。
+    - 在每次同步後，自動查詢 ClickHouse 當前表的真實時間 `MIN` 與 `MAX` 值並寫入水位線表，達成超低開銷的真實資料跨度監控，免去每次掃描千萬筆大表的開銷。
+- **無痛平滑遷移 (Auto Migration)**：
+    - 在 `sync_unified_odbc.py` 中實作自動檢測與 `ALTER TABLE ... ADD COLUMN IF NOT EXISTS` 機制。不影響現有資料，正式與沙盒環境皆能在下一次同步啟動時完成自動化結構升級。
+- **智能 Auto-Catchup (自動接龍)**：
+    - 升級 `execute_etl.py` 中的 `--daily` 模式，自動讀取 Checkpoint 的 `max(window_end)` 與 Watermark 邊界，全自動動態計算本次補算起迄點，不需手動指定。
+- **空窗跳過與自我療癒 (Safe-Run)**：
+    - 實作防 OOM 安全機制。在計算前若 Bronze 筆數為 0 則 `Skip` 且**不標記 SUCCESS** 到 Checkpoint。這保留了未來若有遲到資料同步進來時，系統自動補算的自癒能力。
+- **測試雙向對稱性**：
+    - 在 `sync_unified_odbc.py` 中新增 `--db-suffix` 命令行參數。這使數據抽取端也支援帶有 `_0503` 的測試庫（例如 `bronze_0503`），與 ETL 引擎達成 100% 完美的測試一致性！
+- **Pipeline 狀態儀表板優化**：
+    - 重構 `execute_etl.py` 中的 `show_status`，解除儀表板筆數查詢表名的 hardcoding 改為從 `pipeline_config.yaml` 中動態讀取。
+    - 擴充 `--status` 監控儀表板，將同步進度與新增的真實最舊/最新時間完美整合展現。
+- **代碼健康度重構**：
+    - 消除變數遮蔽，修復 Bare Excepts，程式碼體質更為強健。
+
+### ✅ 近期已解決 (2026-05-26 Phase 4 預聚合與增量視窗 Bug 修復)
+- **正式環境切換與回滾**:
+    - 成功將測試環境 (`_0503`) 的概念部署至正式環境，統一使用 `bronze.*` 作為目標表，並確保 `sync_tables.yaml` 與 `execute_etl.py` 的組態還原為 GitLab 標準版本。
+- **增量 ETL 的時間視窗修復 (ACC 數據流失問題)**:
+    - 發現並修復了 `backfill_gold_summary.sql` 中的重大 Bug：在使用 10 天 Incremental ETL 聚合 `Week` 與 `Month` 粒度時，原本會丟失當月前段的歷史資料。
+    - **修復方案**：引入動態時間擴展 `toStartOfWeek` 與 `toStartOfMonth`，確保 `ReplacingMergeTree` 永遠能獲取完整的週/月聚合，完美對齊前端動態時光機的 30 天聯集 (ACC) 邏輯。
+    - 成功透過自訂 Python 腳本將 66,026 筆歷史聚合資料回填完畢。
+
+### ✅ 近期已解決 (2026-05-25 Cube 查詢效能極限優化)
+- **破除全表掃描黑洞 (Filter Pushdown)**:
+    - 移除了 Cube Models (`cube_l5_task_periodic.js`, `cube_l5_task_periodic_pivot.js`) 中舊有的 `CROSS JOIN calc_anchor`。改用 ClickHouse 高效的 `Constant Scalar WITH` 語法，成功讓廠區與日期條件下推至底層 ReplacingMergeTree。
+- **主鍵索引修復 (Index Fix)**:
+    - 移除了篩選條件上的 `formatDateTime` 函數包裝，確保資料庫能直接命中 Primary Key。
+- **指標聚合優化 (Measure Optimization)**:
+    - 將 `bitmapCardinality(groupBitmapMergeState(x))` 改為原生 `groupBitmapMerge(x)`，降低內部函數調用開銷。
+- **效能驗證**:
+    - 單一指標查詢由 30~40 秒 (引發 Timeout) 降至 **1.5 秒 ~ 8.5 秒** 的極速。時間與空間複雜度從 O(N²) 降為 O(1)。
+    - 已將更新推送到 GitLab `master` 分支。
 
 ### ✅ 近期已解決 (2026-05-18 機房新伺服器部署與全量資料對帳)
 - **新伺服器連線配置切換**:
@@ -57,4 +119,9 @@
 - [x] **實作 7 日滾動積壓率分母優化 (2026-05-07)**
 - [x] **更新 Cube.js 維度感知 Acc Rate 公式**
 - [x] **完成全量 Gold 層數據回填**
+- [x] **升級 Watermark 水位線表結構，新增資料最舊/最新時間欄位 (2026-05-27)**
+- [x] **實作 ETL 智能自動接龍與防空窗 OOM 自我療癒機制 (2026-05-27)**
+- [x] **擴充 --status 監控儀表板，整合展示真實資料時間跨度 (2026-05-27)**
 - [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能
+
+

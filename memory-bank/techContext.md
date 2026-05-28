@@ -3,11 +3,21 @@
 # 技術環境 - DMP Flowable
 
 ## ClickHouse
-- **Host**: 10.136.218.207 (測試), 10.146.206.76 (生產)
-- **Port**: 8121 (Standard), 8122 (ODBC Sandbox), 8123 (生產)
-- **User**: default
+- **Host**: 10.146.206.76 (生產)
+- **Port**: 8123 (生產)
+- **User**: default / password: 1qaz2wsx3edc
 - **Database**: bronze, silver, gold
-- **Version**: v24.3 (測試), v25.8 (生產)
+- **Version**: v25.8 (生產)
+
+## Cube.js 架構版本 (2026-05-27 更新)
+
+| Cube | 資料來源 | 架構版本 | 查詢耗時 |
+|------|---------|---------|---------|
+| `L5TaskPeriodic` | `gold.rmv_l5_task_summary` | V4.3 預聚合 | 0.06~0.11s |
+| `L5TaskPeriodicPivot` | `gold.rmv_l5_task_summary` | V4.3 預聚合 | 0.06~0.11s |
+
+**重要**：兩個 Cube 的 anchor_dt（基準日計算）與資料本體均讀 `rmv_l5_task_summary FINAL`，完全不依賴 `rmv_l5_task_completion_phys`。
+已知風險：ETL pipeline 中 `gold_summary` 為最後階段，ETL 執行期間 summary 可能落後 completion_phys 約數分鐘。
 
 ### Bronze 層索引優化 (2026-01-08)
 **優化完成度**: 100% ✅
@@ -54,23 +64,24 @@
 ## 同步效能追蹤
 
 ### Watermark 表 (bronze._sync_watermark)
-`sync_unified_odbc.py` 會自動記錄每次同步的效能數據到 `bronze._sync_watermark` 表：
+`sync_unified_odbc.py` 會自動記錄每次同步的效能數據與真實資料跨度到 `bronze._sync_watermark` 表：
 
 **記錄欄位**:
 - `table_name`: 同步的表名
-- `last_sync_time`: 最後同步的時間點（資料的時間戳記）
+- `last_sync_time`: 最後同步的時間點（抽取端的掃描邊界，即資料的時間戳記）
 - `sync_time`: 同步執行的時間（系統執行時間）
 - `row_count`: **累計總筆數**（該次同步的所有批次加總）
 - `duration_ms`: **累計總時間**（該次同步的所有批次時間加總，單位：毫秒）
+- `min_data_time`: **資料真實最舊時間** (Nullable(DateTime64(3))) —— 2026-05-27 新增
+- `max_data_time`: **資料真實最新時間** (Nullable(DateTime64(3))) —— 2026-05-27 新增
 
 **重要說明**:
+- 2026-05-27 升級：新增真實最舊與最新時間統計，在 full 或 batch 同步完成後自動統計並寫入，提供極速的水位線全域監控，並在 `execute_etl.py` 的 `--status` 監控儀表板完美呈現。
 - 2026-04-02 修正：確保 `row_count` 和 `duration_ms` 都是累計值
 - 修正前：`duration_ms` 只記錄最後一個批次的時間 ❌
 - 修正後：`duration_ms` 累加所有批次的時間 ✅
 
 **查詢指令**:
 ```bash
-python check_sync_watermark.py
+python scripts/etl/execute_etl.py --status
 ```
-
-**注意**：修正前的歷史記錄（2026-03-31 之前）的 `duration_ms` 可能不準確。
