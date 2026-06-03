@@ -69,10 +69,18 @@ SELECT
     END AS vx_type,
     
     -- 區域/廠別/工廠/線別維度：優先採用業務變數 (Manual Input)，若無則採用 MDM 主檔推導
-    COALESCE(NULLIF(v_pivot.varinst_region, ''), mdm.region_code, 'UNKNOWN') AS region,
-    COALESCE(NULLIF(v_pivot.varinst_plant, ''), mdm.plant_code, 'UNKNOWN') AS plant,
-    COALESCE(NULLIF(v_pivot.varinst_factory, ''), mdm.factory_code, 'UNKNOWN') AS factory,
-    COALESCE(NULLIF(v_pivot.varinst_lineName, ''), mdm.line_name, 'UNKNOWN') AS line,
+    -- region 取值順序：varinst → 精確 MDM (line+plant) → 備援 MDM (plant only) → UNKNOWN
+    -- 備援 MDM 適用情境：① lineName 為空 ② lineName 有值但不在 MDM（如 NEP1 等未收錄線別）
+    -- 注意：ClickHouse LEFT JOIN 失敗時 String 欄位回傳 '' 而非 NULL，必須用 NULLIF 轉換後 COALESCE 才能正確跳過
+    COALESCE(
+        NULLIF(v_pivot.varinst_region, ''),
+        NULLIF(mdm.region_code, ''),
+        NULLIF(mdm_plant.region_code, ''),
+        'UNKNOWN'
+    ) AS region,
+    COALESCE(NULLIF(v_pivot.varinst_plant, ''), NULLIF(mdm.plant_code, ''), 'UNKNOWN') AS plant,
+    COALESCE(NULLIF(v_pivot.varinst_factory, ''), NULLIF(mdm.factory_code, ''), 'UNKNOWN') AS factory,
+    COALESCE(NULLIF(v_pivot.varinst_lineName, ''), NULLIF(mdm.line_name, ''), 'UNKNOWN') AS line,
     
     -- [E] 業務變數 (11 欄)：從流程變數中轉置提取的具體業務內容
     COALESCE(v_pivot.varinst_moNumber, '') AS mo_number,             -- 工單號碼
@@ -144,7 +152,16 @@ LEFT JOIN (
     )
     GROUP BY PROC_INST_ID_
 ) AS v_pivot ON t.PROC_INST_ID_ = v_pivot.PROC_INST_ID_
-LEFT JOIN silver.mv_dim_mfg_five_level AS mdm ON (v_pivot.varinst_lineName = mdm.line_name) AND (v_pivot.varinst_plant = mdm.plant_code) -- 關聯製造五階維度主檔，獲取標準廠別資訊
+LEFT JOIN silver.mv_dim_mfg_five_level AS mdm ON (v_pivot.varinst_lineName = mdm.line_name) AND (v_pivot.varinst_plant = mdm.plant_code) -- 精確配對：line + plant 都有時使用
+LEFT JOIN (
+    -- 備援 MDM：plant → region 對照表（ON 只用 join key，避免 ClickHouse 25.8 analyzer 誤處理複合條件）
+    -- 使用條件 IF(lineName IS NULL, ...) 在 SELECT 層判斷是否採用此備援結果
+    SELECT plant_code, region_code
+    FROM silver.mv_dim_mfg_five_level
+    WHERE plant_code != '' AND region_code != ''
+    ORDER BY plant_code, region_code
+    LIMIT 1 BY plant_code
+) AS mdm_plant ON v_pivot.varinst_plant = mdm_plant.plant_code
 LEFT JOIN bronze.common_hr_employee AS he ON t.ASSIGNEE_ = he.EmpCode -- 關聯人員主檔
 LEFT JOIN (
     -- [排除邏輯子查詢]：獲取 autoComplete 業務變數 (1=自動跳過)
@@ -166,3 +183,4 @@ WHERE (t.ID_ IS NOT NULL) AND (t.ID_ != '')
       (t.CLAIM_TIME_ >= '{start_ts}' AND t.CLAIM_TIME_ <= '{end_ts}') OR
       (t.END_TIME_ >= '{start_ts}' AND t.END_TIME_ <= '{end_ts}')
   )
+SETTINGS allow_experimental_analyzer = 0
