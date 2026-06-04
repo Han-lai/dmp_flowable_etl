@@ -33,6 +33,9 @@ SELECT
 FROM bronze.bpm_act_hi_varinst v
 INNER JOIN target_procs t ON v.PROC_INST_ID_ = t.PROC_INST_ID_
 WHERE v.NAME_ IN ('region', 'plant', 'factory', 'lineName', 'moNumber', 'autoComplete', 'modelName', 'deliveryArea', 'scheduleNumber', 'sapPlant', 'sapProductGroup', 'pallet', 'transferNo', 'qBlockEventId', 'defectSn', 'time')
-  AND v.CREATE_TIME_ >= parseDateTimeBestEffort('{start_ts}') - INTERVAL 180 DAY
+  AND v.CREATE_TIME_ >= parseDateTimeBestEffort('{start_ts}') - INTERVAL 365 DAY
   AND v.CREATE_TIME_ <= '{end_ts}'
 GROUP BY v.PROC_INST_ID_
+HAVING varinst_plant != '' OR varinst_region != '' OR varinst_lineName != '' OR varinst_moNumber != ''
+-- 過濾全空行：當 proc_inst_id 在 target_procs 中但 varinst 因 CREATE_TIME_ 超出 180 天回溯窗口而找不到時
+-- argMaxIf 會產生全空行，若不過濾會以較新的 _refresh_time 覆蓋掉先前正確寫入的資料
