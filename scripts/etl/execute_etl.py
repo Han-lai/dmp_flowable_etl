@@ -184,14 +184,12 @@ def execute_computation_pipeline(client, args):
         # External Processing (Spill to Disk)
         client.command("SET max_bytes_before_external_group_by = 500000000") # 500MB force spill
         client.command("SET max_bytes_before_external_sort = 500000000")
-        client.command("SET max_bytes_ratio_before_external_group_by = 0.3")
         client.command("SET distributed_aggregation_memory_efficient = 1")
         client.command("SET aggregation_memory_efficient_merge_threads = 1")
         
         # Join Optimization
         client.command("SET max_bytes_in_join = 500000000")
         client.command("SET join_algorithm = 'grace_hash'")
-        client.command("SET max_columns_to_read = 30") # Limit scan width
 
         print(" Using Aggressive Mem-Optimized Settings (1 Thread, 5.5GB Limit, 500MB Spill)")
 
