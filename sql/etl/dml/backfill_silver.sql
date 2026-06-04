@@ -69,18 +69,19 @@ SELECT
     END AS vx_type,
     
     -- 區域/廠別/工廠/線別維度：優先採用業務變數 (Manual Input)，若無則採用 MDM 主檔推導
-    -- region 取值順序：varinst → 精確 MDM (line+plant) → 備援 MDM (plant only) → UNKNOWN
+    -- region 取值順序：varinst → 精確 MDM (line+plant) → 備援 MDM (plant only) → '' (空字串)
     -- 備援 MDM 適用情境：① lineName 為空 ② lineName 有值但不在 MDM（如 NEP1 等未收錄線別）
     -- 注意：ClickHouse LEFT JOIN 失敗時 String 欄位回傳 '' 而非 NULL，必須用 NULLIF 轉換後 COALESCE 才能正確跳過
+    -- 無法取得或回推時保留空字串，不填 UNKNOWN
     COALESCE(
         NULLIF(v_pivot.varinst_region, ''),
         NULLIF(mdm.region_code, ''),
         NULLIF(mdm_plant.region_code, ''),
-        'UNKNOWN'
+        ''
     ) AS region,
-    COALESCE(NULLIF(v_pivot.varinst_plant, ''), NULLIF(mdm.plant_code, ''), 'UNKNOWN') AS plant,
-    COALESCE(NULLIF(v_pivot.varinst_factory, ''), NULLIF(mdm.factory_code, ''), 'UNKNOWN') AS factory,
-    COALESCE(NULLIF(v_pivot.varinst_lineName, ''), NULLIF(mdm.line_name, ''), 'UNKNOWN') AS line,
+    COALESCE(NULLIF(v_pivot.varinst_plant, ''), NULLIF(mdm.plant_code, ''), '') AS plant,
+    COALESCE(NULLIF(v_pivot.varinst_factory, ''), NULLIF(mdm.factory_code, ''), '') AS factory,
+    COALESCE(NULLIF(v_pivot.varinst_lineName, ''), NULLIF(mdm.line_name, ''), '') AS line,
     
     -- [E] 業務變數 (11 欄)：從流程變數中轉置提取的具體業務內容
     COALESCE(v_pivot.varinst_moNumber, '') AS mo_number,             -- 工單號碼
