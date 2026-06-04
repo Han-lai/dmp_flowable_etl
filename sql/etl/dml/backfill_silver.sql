@@ -3,6 +3,14 @@
 -- 目的：將流程任務 (Task) 的基礎資訊、時效、業務變數與週期狀態進行大統一聚合，作為 KPI 與明細報表的唯一來源
 -- Variables: {start_ts}, {end_ts} - 增量/分段回填的時間區間
 
+WITH window_task_ids AS (
+    -- 當前時間視窗內的任務 ID 與流程 ID，集中計算一次供後續子查詢複用，避免重複掃描大表
+    SELECT DISTINCT ID_, PROC_INST_ID_
+    FROM bronze.bpm_act_hi_taskinst
+    WHERE (START_TIME_ >= '{start_ts}' AND START_TIME_ <= '{end_ts}')
+       OR (CLAIM_TIME_ >= '{start_ts}' AND CLAIM_TIME_ <= '{end_ts}')
+       OR (END_TIME_   >= '{start_ts}' AND END_TIME_   <= '{end_ts}')
+)
 INSERT INTO silver.mv_fact_task_vx
 SELECT
     -- [A] 識別資訊：追蹤任務與流程的唯一 ID
@@ -144,13 +152,7 @@ LEFT JOIN (
         argMax(varinst_time, _refresh_time) as varinst_time,
         argMax(varinst_autoComplete, _refresh_time) as varinst_autoComplete
     FROM silver.mv_varinst_pivoted
-    WHERE PROC_INST_ID_ IN (
-        -- 子查詢限制：僅處理當前時間視窗內的流程，大幅降低 Scan 量與記憶體負擔
-        SELECT DISTINCT PROC_INST_ID_ FROM bronze.bpm_act_hi_taskinst
-        WHERE (START_TIME_ >= '{start_ts}' AND START_TIME_ <= '{end_ts}')
-           OR (CLAIM_TIME_ >= '{start_ts}' AND CLAIM_TIME_ <= '{end_ts}')
-           OR (END_TIME_ >= '{start_ts}' AND END_TIME_ <= '{end_ts}')
-    )
+    WHERE PROC_INST_ID_ IN (SELECT PROC_INST_ID_ FROM window_task_ids)
     GROUP BY PROC_INST_ID_
 ) AS v_pivot ON t.PROC_INST_ID_ = v_pivot.PROC_INST_ID_
 LEFT JOIN silver.mv_dim_mfg_five_level AS mdm ON (v_pivot.varinst_lineName = mdm.line_name) AND (v_pivot.varinst_plant = mdm.plant_code) -- 精確配對：line + plant 都有時使用
@@ -169,12 +171,7 @@ LEFT JOIN (
     SELECT TASK_ID_, LONG_
     FROM bronze.bpm_act_hi_varinst
     WHERE NAME_ = 'autoComplete' AND TASK_ID_ IS NOT NULL AND TASK_ID_ != ''
-      AND TASK_ID_ IN (
-          SELECT DISTINCT ID_ FROM bronze.bpm_act_hi_taskinst
-          WHERE (START_TIME_ >= toDateTime64('{start_ts}', 3) AND START_TIME_ <= toDateTime64('{end_ts}', 3))
-             OR (CLAIM_TIME_ >= toDateTime64('{start_ts}', 3) AND CLAIM_TIME_ <= toDateTime64('{end_ts}', 3))
-             OR (END_TIME_ >= toDateTime64('{start_ts}', 3) AND END_TIME_ <= toDateTime64('{end_ts}', 3))
-      )
+      AND TASK_ID_ IN (SELECT ID_ FROM window_task_ids)
 ) AS tb ON t.ID_ = tb.TASK_ID_
 
 WHERE (t.ID_ IS NOT NULL) AND (t.ID_ != '')
