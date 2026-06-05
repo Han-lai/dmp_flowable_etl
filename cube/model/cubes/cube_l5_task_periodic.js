@@ -107,22 +107,24 @@ cube(`L5TaskPeriodic`, {
         effectiveDenominator: { type: `sum`, sql: `total_qty`, title: 'Denominator' },
 
         // [達成率指標]
+        // 規格：數值=1顯示100%；數值<1最大顯示99%；原始比率小數後第3位起無條件捨去後×100顯示整數
+        // 公式：if(分子>=分母, 100, floor(分子*100/分母))
         doneRate: {
             type: `number`,
-            sql: `round(${doneQty} * 100.0 / nullIf(${effectiveDenominator}, 0), 2)`,
+            sql: `if(${doneQty} >= ${effectiveDenominator}, 100, floor(${doneQty} * 100.0 / nullIf(${effectiveDenominator}, 0)))`,
             title: 'Rate: Done'
         },
         doingDoneRate: {
             type: `number`,
-            sql: `round(${doingDoneQty} * 100.0 / nullIf(${effectiveDenominator}, 0), 2)`,
+            sql: `if(${doingDoneQty} >= ${effectiveDenominator}, 100, floor(${doingDoneQty} * 100.0 / nullIf(${effectiveDenominator}, 0)))`,
             title: 'Rate: Doing+Done'
         },
         accRate: {
             type: `number`,
             sql: `
             CASE
-                WHEN any(granularity) = 'Day' THEN round(${accQty} * 100.0 / nullIf(${accTotalQty}, 0), 2)
-                ELSE round((${todoQty} + ${doingQty}) * 100.0 / nullIf(${totalQty}, 0), 2)
+                WHEN any(granularity) = 'Day' THEN if(${accQty} >= ${accTotalQty}, 100, floor(${accQty} * 100.0 / nullIf(${accTotalQty}, 0)))
+                ELSE floor((${todoQty} + ${doingQty}) * 100.0 / nullIf(${totalQty}, 0))
             END`,
             title: 'Rate: Acc (積壓/落後率)'
         },
