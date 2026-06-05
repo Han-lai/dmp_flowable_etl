@@ -95,19 +95,19 @@ cube(`L5TaskPeriodicPivot`, {
             '1. Total Task' as status_name, total_qty as task_qty, 100.0 as task_pct, 1 as status_sort FROM v4_wide_metrics
         UNION ALL
         SELECT vx_type, region, plant, factory, line, filter_date, snapshot_date_real, granularity, period_name, sort_order as period_sort,
-            '2. Todo' as status_name, todo_qty as task_qty, round(todo_qty * 100.0 / nullIf(total_qty, 0), 2) as task_pct, 2 as status_sort FROM v4_wide_metrics
+            '2. Todo' as status_name, todo_qty as task_qty, floor(todo_qty * 100.0 / nullIf(total_qty, 0)) as task_pct, 2 as status_sort FROM v4_wide_metrics
         UNION ALL
         SELECT vx_type, region, plant, factory, line, filter_date, snapshot_date_real, granularity, period_name, sort_order as period_sort,
-            '3. Doing' as status_name, doing_qty as task_qty, round(doing_qty * 100.0 / nullIf(total_qty, 0), 2) as task_pct, 3 as status_sort FROM v4_wide_metrics
+            '3. Doing' as status_name, doing_qty as task_qty, floor(doing_qty * 100.0 / nullIf(total_qty, 0)) as task_pct, 3 as status_sort FROM v4_wide_metrics
         UNION ALL
         SELECT vx_type, region, plant, factory, line, filter_date, snapshot_date_real, granularity, period_name, sort_order as period_sort,
-            '4. Done' as status_name, done_qty as task_qty, round(done_qty * 100.0 / nullIf(total_qty, 0), 2) as task_pct, 4 as status_sort FROM v4_wide_metrics
+            '4. Done' as status_name, done_qty as task_qty, if(done_qty >= total_qty, 100, floor(done_qty * 100.0 / nullIf(total_qty, 0))) as task_pct, 4 as status_sort FROM v4_wide_metrics
         UNION ALL
         SELECT vx_type, region, plant, factory, line, filter_date, snapshot_date_real, granularity, period_name, sort_order as period_sort,
-            '5. Doing+Done' as status_name, doing_done_qty as task_qty, round(doing_done_qty * 100.0 / nullIf(total_qty, 0), 2) as task_pct, 5 as status_sort FROM v4_wide_metrics
+            '5. Doing+Done' as status_name, doing_done_qty as task_qty, if(doing_done_qty >= total_qty, 100, floor(doing_done_qty * 100.0 / nullIf(total_qty, 0))) as task_pct, 5 as status_sort FROM v4_wide_metrics
         UNION ALL
         SELECT vx_type, region, plant, factory, line, filter_date, snapshot_date_real, granularity, period_name, sort_order as period_sort,
-            '6. Todo+Doing(Acc)' as status_name, acc_qty as task_qty, round(acc_qty * 100.0 / nullIf(acc_total_qty, 0), 2) as task_pct, 6 as status_sort FROM v4_wide_metrics
+            '6. Todo+Doing(Acc)' as status_name, acc_qty as task_qty, if(acc_qty >= acc_total_qty, 100, floor(acc_qty * 100.0 / nullIf(acc_total_qty, 0))) as task_pct, 6 as status_sort FROM v4_wide_metrics
     ) AS pivoted_result
     `,
 
