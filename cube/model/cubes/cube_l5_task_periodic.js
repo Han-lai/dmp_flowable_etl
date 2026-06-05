@@ -7,6 +7,10 @@
  *   捨棄即時 Bitmap 運算，改讀 ETL 預聚合整數彙總表 (gold.rmv_l5_task_summary)。
  *   Measures 從 groupBitmapMerge 改為 SUM，SQL 層從讀取 Bitmap 欄位改為讀取整數欄位。
  *   accQty 在 Week/Month 粒度改用同梯次積壓 (Todo + Doing) 邏輯，由 ETL 階段計算後寫入。
+ * - 2026-06-05 (V4.4):
+ *   新增 todoRate / doingRate measures，使用 floor() 計算符合 Rule 2 規格
+ *   （原本由 BFF reports.js calcRate() 以 Math.round() 計算，不符合無條件捨去規格）。
+ *   doneRate / doingDoneRate / accRate 同步從 round() 改為 floor()，統一符合 Rule 2。
  * - 2026-05-25 (V4.2):
  *   將 params CTE 重構為 Constant Scalar WITH，移除 CROSS JOIN calc_anchor。
  *   所有 Bitmap 數量指標從 bitmapCardinality(groupBitmapMergeState(x)) 改為 groupBitmapMerge(x)。
@@ -109,6 +113,16 @@ cube(`L5TaskPeriodic`, {
         // [達成率指標]
         // 規格：數值=1顯示100%；數值<1最大顯示99%；原始比率小數後第3位起無條件捨去後×100顯示整數
         // 公式：if(分子>=分母, 100, floor(分子*100/分母))
+        todoRate: {
+            type: `number`,
+            sql: `floor(${todoQty} * 100.0 / nullIf(${effectiveDenominator}, 0))`,
+            title: 'Rate: Todo'
+        },
+        doingRate: {
+            type: `number`,
+            sql: `floor(${doingQty} * 100.0 / nullIf(${effectiveDenominator}, 0))`,
+            title: 'Rate: Doing'
+        },
         doneRate: {
             type: `number`,
             sql: `if(${doneQty} >= ${effectiveDenominator}, 100, floor(${doneQty} * 100.0 / nullIf(${effectiveDenominator}, 0)))`,
