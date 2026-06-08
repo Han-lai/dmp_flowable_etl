@@ -67,7 +67,10 @@ SELECT
          ELSE 'TODO' END AS status_monthly,
 
     -- [D] 製造五階維度：定義業務分類 (V1/V2/V3)
-    CASE 
+    CASE
+        -- NPE 廠區 V3_ 任務強制歸 V1（V2_ 出貨行政任務維持 V2）
+        WHEN COALESCE(NULLIF(v_pivot.varinst_factory, ''), NULLIF(mdm.factory_code, ''), '') = 'NPE'
+             AND t.TASK_DEF_KEY_ NOT LIKE 'V2%' THEN 'V1'
         -- 優先判定特殊工單前綴，歸類為 V1
         WHEN substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3) IN ('196','199','200','210','212','213') THEN 'V1'
         WHEN t.TASK_DEF_KEY_ LIKE 'V1%' THEN 'V1'
