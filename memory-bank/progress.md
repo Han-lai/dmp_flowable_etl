@@ -5,6 +5,38 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 ## 已完成里程碑 (Milestones)
 
+### 2026-06-05: Cube 費率指標 floor() 修復與 todoRate/doingRate 新增
+
+- **費率規格 Rule 2 修復** (`8da3d57`): 將 `cube_l5_task_periodic.js` 與 `cube_l5_task_periodic_pivot.js` 中所有費率指標（doneRate, doingDoneRate, accRate, task_pct 系列）從 `round(..., 2) * 100` 改為 `floor(qty*100/total)`，結果以整數百分比呈現，value=1 → 100%，value<1 → 最高 99%。
+- **todoRate / doingRate 補充** (`2080fdb`): 在 `L5TaskPeriodic` Cube 補充原缺少的兩項指標，原先由 BFF `Math.round()` 計算；改為 Cube 統一以 `floor()` 處理，符合 Rule 2 規格。
+
+---
+
+### 2026-06-04: ETL 執行錯誤修復、varinst lookback 延長與 backfill_silver 重構
+
+- **varinst lookback 365 天與防空行覆寫** (`d8ade48`): `backfill_pivot.sql` 回溯天數從 180 延長至 365，覆蓋長流程任務。新增 `HAVING` 子句，排除全空資料列，避免以新的 `_refresh_time` 覆蓋正確舊資料。`backfill_silver.sql` 移除 `UNKNOWN` fallback，改以空字串取代無法解析的維度欄位。
+- **無效 ClickHouse settings 移除** (`d0753e3`): 刪除 `execute_etl.py` 中導致執行錯誤的 2 個無效設定。
+- **backfill_silver 共用 CTE 重構** (`ca465a7`): 以共用 CTE 架構整併重複邏輯（-13 行 / +10 行），同時保持 NULLIF region 修復效果。
+
+---
+
+### 2026-06-03: V2/V1 四階維度 region 修復與全量回填
+
+**問題根因**: V2 任務只送 `varinst_plant`（DG3/WJ2），不送 `varinst_lineName`，導致精確 MDM JOIN 失敗。ClickHouse LEFT JOIN 失敗時 String 欄位回傳 `''` 而非 NULL，`COALESCE` 不跳過空字串，備援邏輯從未被執行。
+
+**修復檔案**: `sql/etl/dml/backfill_silver.sql`
+- 所有 `mdm.*` 欄位加上 `NULLIF(..., '')`，讓 JOIN 失敗的空字串轉為 NULL
+- 移除 region 備援的 `IF(lineName IS NULL)` 條件，改為精確 MDM 查不到即啟用 plant 備援
+- 四階回推設計邊界：`plant→factory` 為 1:N 不可回推，V2 的 factory 維持 UNKNOWN
+
+**回填範圍**: 2025-10 至 2026-05，共 8 個月全部完成
+
+**Gold 層清理**: 執行 `ALTER TABLE DELETE WHERE region = ''` 刪除四張 Gold 表的舊資料（共約 12,330 筆）
+
+**驗證**: Silver `region=''` 筆數為 0，Gold 篩選 CNE/CNS 均有正確資料
+
+---
+
 ### 2026-05-27 (下午): Phase 4 Cube 預聚合架構完成與 anchor_dt 全面遷移
 - **Gold Summary 預聚合表上線**：新增 `gold.rmv_l5_task_summary` 整數彙總表，ETL 在寫入階段完成 bitmap merge，Cube 查詢只做 SUM，查詢耗時降至 0.06~0.11 秒。
 - **L5TaskPeriodic & L5TaskPeriodicPivot 全面改寫**：兩個核心 Cube 完全捨棄即時 Bitmap 運算，改讀預聚合表，並將 anchor_dt 計算來源也遷移至 `rmv_l5_task_summary FINAL WHERE period_type='Day'`，兩個 Cube 現只讀一張表。
@@ -72,4 +104,9 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 - [x] **擴充 --status 監控儀表板，整合展示真實資料時間跨度 (2026-05-27)**。
 - [x] **資料庫正式環境無痛置換遷移 (0503 -> 標準正式，舊正式 -> 0202) (2026-05-27)**。
 - [x] 提交並推送所有 V4.3 邏輯變更至版本控制。
+- [x] 修復 varinst lookback 365天、防空行覆寫 (2026-06-04)。
+- [x] 移除無效 ClickHouse settings 修復執行錯誤 (2026-06-04)。
+- [x] backfill_silver.sql 共用 CTE 重構 (2026-06-04)。
+- [x] 費率指標統一改為 floor() 整數百分比，符合 Rule 2 規格 (2026-06-05)。
+- [x] 新增 todoRate / doingRate 至 L5TaskPeriodic Cube (2026-06-05)。
 - [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能。

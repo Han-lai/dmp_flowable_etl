@@ -1,6 +1,6 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-05-27
+**最後更新**: 2026-06-08
 
 ---
 
@@ -99,6 +99,58 @@
     - 完成 2025-09 至 2026-01 的全量歷史回填（對帳完全吻合：12/30 = 251, 12/31 = 200）。
     - 清理了所有過時的測試 DML 與 Schema 檔案。
 
+### ✅ 近期已解決 (2026-06-05 Cube 費率指標 floor() 修復與 todoRate/doingRate 新增)
+
+- **費率指標截斷規則修正** (`8da3d57`):
+    - 將 `cube_l5_task_periodic.js` 與 `cube_l5_task_periodic_pivot.js` 中所有費率指標 (`doneRate`, `doingDoneRate`, `accRate`, 所有 `task_pct`) 從 `round(..., 2) * 100` 改為 `floor(qty*100/total)`。
+    - 符合規格 Rule 2：值=1 顯示 100%，值<1 最高 99%，百分比以整數呈現（無小數點）。
+- **新增 todoRate / doingRate 指標** (`2080fdb`):
+    - 在 `L5TaskPeriodic` Cube 補充缺少的 `todoRate` 與 `doingRate` 兩項 measures。
+    - 原先在 BFF 層用 `Math.round()` 計算，違反 Rule 2 規格；改為 Cube 統一用 `floor()` 處理。
+
+### ✅ 近期已解決 (2026-06-04 ETL 執行錯誤修復與 backfill_silver 重構)
+
+- **varinst lookback 延長與空行防覆寫** (`d8ade48`):
+    - `backfill_pivot.sql`：varinst 回溯範圍從 180 天延長至 365 天，覆蓋長流程任務（變數建立時間超過 180 天前的情形）。
+    - 新增 `HAVING` 子句跳過全空資料列，防止空行以較新的 `_refresh_time` 覆蓋已正確的歷史資料。
+    - `backfill_silver.sql`：將無法解析的維度（region/plant/factory/line）的 fallback 從 `'UNKNOWN'` 改為空字串。
+- **ClickHouse 無效設定移除** (`d0753e3`):
+    - `scripts/etl/execute_etl.py`：移除導致執行錯誤的 2 個無效 ClickHouse settings。
+- **backfill_silver 共用 CTE 重構** (`ca465a7`):
+    - 將 `backfill_silver.sql` 重構為共用 CTE 架構，減少重複邏輯（10 行新增、13 行刪除），同時保持 NULLIF region 修復。
+
+### ✅ 近期已解決 (2026-06-03 V2/V1 四階維度 region 修復與全量回填)
+
+**問題**: V2 任務選擇後無法帶出 Region/Plant，gold 層篩選 CNE/CNS 顯示空資料。
+
+**根本原因（三層）**:
+1. **ClickHouse LEFT JOIN 回傳 `''` 而非 NULL**：`COALESCE` 不跳過空字串，`mdm.region_code=''`（JOIN 失敗）被提早返回，備援邏輯從未執行。
+2. **備援條件過嚴**：原邏輯只在 `lineName 為空` 時啟用 plant 備援，V1 有 lineName 但 MDM 查不到（如 NEP1）時備援也不啟動。
+3. **Gold 層 ORDER BY 含 region**：`region=''` 和 `region='CNE'` 被視為不同 key，OPTIMIZE 無法去重，必須直接 DELETE。
+
+**修復內容 (`sql/etl/dml/backfill_silver.sql`)**:
+- 所有 `mdm.*` 欄位加上 `NULLIF(..., '')`，確保 JOIN 失敗的空字串被轉為 NULL
+- 移除 region 備援的 `IF(lineName IS NULL)` 條件限制，改為只要精確 MDM 查不到就直接用 plant 備援
+- 新增 `SETTINGS allow_experimental_analyzer = 0`（ClickHouse 25.8 analyzer bug workaround）
+
+**回填範圍**: 2025-10 ～ 2026-05（8 個月），全部完成
+
+**Gold 層清理** (`ALTER TABLE ... DELETE WHERE region = ''`):
+- `rmv_l5_task_summary`: 3,028 筆刪除
+- `rmv_l5_task_completion_phys`: 3,018 筆刪除
+- `rmv_l5_milestone_phys`: 2,321 筆刪除
+- `rmv_l5_acc_phys`: 3,963 筆刪除
+
+**驗證結果 (2025-10 V2)**:
+- Silver: CNE/WJ2=10,135 筆 ✅、CNS/DG3=6,342 筆 ✅、region='' 0 筆 ✅
+- Gold: CNE/WJ2 有資料 ✅、CNS/DG3 有資料 ✅
+
+**四階回推限制（設計邊界）**:
+- `plant → factory` 是 1:N（DG3 有 7 個 factory），無法安全回推，V2 的 `factory` 維持 UNKNOWN
+- `line_name` 在 MDM 中非唯一鍵（TZ-TEST 出現 29 個 plant），不可用 line 單鍵回推 plant
+
+**暫存腳本（可清理）**: `scripts/check_gold_region.py`、`scripts/verify_silver_region.py`、`scripts/fix_gold_empty_region.py`、`scripts/verify_oct_v2.py`
+
 ### ⏩ 進行中
 - **語義層對接**: 已建立 `L5TaskDetailsSuper` Cube，準備在前端報表啟用新欄位。
 - **生產環境穩定運轉**: 持續觀察 ReplacingMergeTree 在高頻更新下的合併效能。
@@ -122,6 +174,13 @@
 - [x] **升級 Watermark 水位線表結構，新增資料最舊/最新時間欄位 (2026-05-27)**
 - [x] **實作 ETL 智能自動接龍與防空窗 OOM 自我療癒機制 (2026-05-27)**
 - [x] **擴充 --status 監控儀表板，整合展示真實資料時間跨度 (2026-05-27)**
+- [x] 修復 V2/V1 四階維度 region 為空字串問題，完成 2025-10 至 2026-05 全量回填 (2026-06-03)
+- [x] 修復 varinst lookback 365天、防空行覆寫 HAVING 子句 (2026-06-04)
+- [x] 移除無效 ClickHouse settings 修復執行錯誤 (2026-06-04)
+- [x] backfill_silver.sql 共用 CTE 重構 (2026-06-04)
+- [x] 費率指標統一改為 floor() 整數百分比，符合 Rule 2 規格 (2026-06-05)
+- [x] 新增 todoRate / doingRate 至 L5TaskPeriodic Cube (2026-06-05)
 - [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能
+- [ ] 清理暫存驗證腳本 check_gold_region.py, verify_silver_region.py, fix_gold_empty_region.py, verify_oct_v2.py
 
 
