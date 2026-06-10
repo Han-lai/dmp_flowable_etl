@@ -136,3 +136,10 @@ identitylink:
   step_days: 2
   engine_ddl: "USER_ID_ String, TYPE_ String, TASK_ID_ String, CREATE_TIME_ DateTime"
   columns: "USER_ID_, TYPE_, TASK_ID_, CREATE_TIME_"
+
+kpi_user_config_log:
+  source: "APP_SRV_COMMON.dbo.RptCommonKpiUserConfigLog_0503"
+  target: "bronze.common_rptkpiuserconfiglog"
+  strategy: "full"
+  engine_ddl: "empCode String, EmpName Nullable(String), ADAccount Nullable(String), UserGroupNames Nullable(String), Vx String, NodeCodes Nullable(String), Plant String, MFG_PLANT_CODES Nullable(String), Factory Nullable(String), LineNames Nullable(String), ConfigDate Nullable(Date)"
+  columns: "*"
