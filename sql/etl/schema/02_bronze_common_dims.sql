@@ -217,3 +217,25 @@ CREATE TABLE bronze.common_dmp_function_client_mapping
 ENGINE = ReplacingMergeTree(_sync_version)
 ORDER BY (ID);
 
+-- ==========================================
+-- KPI User Config Log (RptCommonKpiUserConfigLog)
+-- ==========================================
+-- DROP TABLE IF EXISTS bronze.common_rptkpiuserconfiglog;
+CREATE TABLE bronze.common_rptkpiuserconfiglog (
+    `empCode` String,
+    `EmpName` Nullable(String),
+    `ADAccount` Nullable(String),
+    `UserGroupNames` Nullable(String),
+    `Vx` String,
+    `NodeCodes` Nullable(String),
+    `Plant` String,
+    `MFG_PLANT_CODES` Nullable(String),
+    `Factory` Nullable(String),
+    `LineNames` Nullable(String),
+    `ConfigDate` Nullable(Date),
+    `_batch_id` String DEFAULT '',
+    `_extracted_at` DateTime64(3) DEFAULT now(),
+    `_sync_version` UInt64 DEFAULT 1
+) ENGINE = MergeTree()
+ORDER BY (empCode, Vx, Plant);
+
