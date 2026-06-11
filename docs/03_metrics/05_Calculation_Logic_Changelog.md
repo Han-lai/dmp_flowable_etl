@@ -63,7 +63,7 @@ L5 報表以 `2026-04-01` 為分界，由兩條管線分別負責不同時間範
 Silver (mv_fact_task_vx)
      │
      ├─── [歷史管線] task_start_date ＜ 2026-04-01 ─────────────────────────┐
-     │    backfill_summary_v3.sql                                            │
+     │    backfill_gold_summary_historical.sql                                            │
      │    典範：混合（Day 保留事件日語意；Week/Month 採 Cohort）              │
      │    ├─ Day:   事件日 ARRAY JOIN；acc 讀 rmv_l5_acc_phys 7D Bitmap      │
      │    ├─ Week:  Cohort + ISO 週鍵；toISOYear=toYear 排除 Dec 29-31       │
@@ -86,7 +86,7 @@ Silver (mv_fact_task_vx)
 
 | 項目 | 歷史管線（2025-10 ~ 2026-03） | 現行管線（2026-04 起） |
 |------|------------------------------|----------------------|
-| **SQL 入口** | `backfill_summary_v3.sql` | `backfill_gold_milestone.sql` → `backfill_gold_summary.sql` |
+| **SQL 入口** | `backfill_gold_summary_historical.sql` | `backfill_gold_milestone.sql` → `backfill_gold_summary.sql` |
 | **計算典範** | **混合**（Day 事件日 + Week/Month Cohort） | **純 Cohort** |
 | **中間層** | 無（直接輸出整數至 summary） | `rmv_l5_task_completion_phys`（Bitmap）、`rmv_l5_acc_phys` |
 | **Day snapshot** | 事件日 ARRAY JOIN（task_start/claim/end） | 開單日唯一快照（task_start_date） |
@@ -595,7 +595,7 @@ bitmapCardinality(bitmapOr(
 ### 3.8 V3.1 歷史資料混合管線 (2026-06-10)
 
 **提交**：`608f31c` 前後  
-**SQL**：`sql/etl/dml/backfill_summary_v3.sql`  
+**SQL**：`sql/etl/dml/backfill_gold_summary_historical.sql`  
 **核心改動**：為 2025-10~2026-03 歷史資料建立專屬管線，以混合語意解決日/週/月計算不一致問題
 
 **背景**
@@ -651,7 +651,7 @@ V3.1 使用 ISO 週鍵（`concat(toISOYear, '-W', lpad(toISOWeek, 2, '0'))`）�
 **提交**：`<commit hash>`
 **異動人**：<Git Author>
 **影響範圍**：
-- [ ] `sql/etl/dml/backfill_summary_v3.sql`
+- [ ] `sql/etl/dml/backfill_gold_summary_historical.sql`
 - [ ] `sql/etl/dml/backfill_gold_milestone.sql`
 - [ ] `sql/etl/dml/backfill_gold_acc.sql`
 - [ ] `sql/etl/dml/backfill_gold_summary.sql`
@@ -674,7 +674,7 @@ V3.1 使用 ISO 週鍵（`concat(toISOYear, '-W', lpad(toISOWeek, 2, '0'))`）�
 **回填操作**
 - [ ] 不需回填
 - [ ] 已執行回填，範圍：`YYYY-MM-DD ~ YYYY-MM-DD`
-  - [ ] V3 管線（backfill_summary_v3.sql）
+  - [ ] V3 管線（backfill_gold_summary_historical.sql）
   - [ ] V4 管線（backfill_gold_summary.sql）
 
 **驗證結果**
@@ -878,7 +878,7 @@ V3.1 使用 ISO 週鍵（`concat(toISOYear, '-W', lpad(toISOWeek, 2, '0'))`）�
 **提交**：`608f31c` 前後
 **異動人**：ALBEE.LAI
 **影響範圍**：
-- [x] `sql/etl/dml/backfill_summary_v3.sql`（新建）
+- [x] `sql/etl/dml/backfill_gold_summary_historical.sql`（新建）
 
 **問題描述**
 > `gold.rmv_l5_task_summary` 在 2026-03-31 以前完全無資料，前端歷史頁面空白。需補充 2025-10~2026-03 的日/週/月彙總。
@@ -895,7 +895,7 @@ V3.1 使用 ISO 週鍵（`concat(toISOYear, '-W', lpad(toISOWeek, 2, '0'))`）�
 
 **回填操作**：
 - [x] 已執行回填，範圍：`2025-10-01 ~ 2026-03-31`
-  - [x] V3 管線（backfill_summary_v3.sql）
+  - [x] V3 管線（backfill_gold_summary_historical.sql）
 
 **驗證結果**
 

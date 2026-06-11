@@ -23,7 +23,7 @@ L5 指標採**雙管線架構**，以 `2026-04-01` 為固定分界：
 
 | 時間範圍 | 管線 | SQL 入口 | 計算典範 |
 |---------|------|---------|---------|
-| **≤ 2026-03-31** | **V3 管線** | `backfill_summary_v3.sql` | 事件日快照（混合） |
+| **≤ 2026-03-31** | **V3 管線** | `backfill_gold_summary_historical.sql` | 事件日快照（混合） |
 | **≥ 2026-04-01** | **V4 管線** | `backfill_gold_summary.sql` | 開單日 Cohort |
 
 兩條管線**各司其職、互不干擾**，最終都寫入同一張預聚合彙總表，Cube.js 直接讀取。
@@ -37,7 +37,7 @@ Bronze → Silver ETL（獨立維護，V3/V4 不觸及）
 Silver (mv_fact_task_vx)   ← V3/V4 管線只 SELECT，從不 INSERT/UPDATE
      │
      ├── [V3 管線] SELECT，task_start_date ≤ 2026-03-31
-     │   backfill_summary_v3.sql
+     │   backfill_gold_summary_historical.sql
      │   ├─ Day:   事件日 ARRAY JOIN；acc 另讀 gold.rmv_l5_acc_phys（見註）
      │   ├─ Week:  Cohort + ISO 週鍵（toISOYear=toYear 排除跨年 Dec 29-31）
      │   └─ Month: Cohort 月底截面
@@ -89,7 +89,7 @@ V3 管線加入 `toISOYear(task_start_date) = toYear(task_start_date)` 過濾，
 
 ### 2.4 SQL 檔案
 
-`sql/etl/dml/backfill_summary_v3.sql`  
+`sql/etl/dml/backfill_gold_summary_historical.sql`  
 邊界保護：`AND snapshot_date < toDate('2026-04-01')`（無論傳入的日期範圍為何，永遠不會寫入 4 月以後的資料）
 
 ---
@@ -177,8 +177,8 @@ ORDER BY (period_type, vx_type, period_key, region, plant, factory, line)
 兩條管線透過 `scripts/etl/config/pipeline_config.yaml` 整合進同一個 `execute_etl.py`，以兩個連續 step 執行：
 
 ```yaml
-- phase_id: "gold_summary_v3"
-  template: "backfill_summary_v3.sql"       # V3 管線：自帶 < 2026-04-01 邊界保護
+- phase_id: "gold_summary_historical"
+  template: "backfill_gold_summary_historical.sql"       # V3 管線：自帶 < 2026-04-01 邊界保護
 - phase_id: "gold_summary"
   template: "backfill_gold_summary.sql"     # V4 管線：自帶 >= 2026-04-01 邊界保護
 ```
@@ -193,7 +193,7 @@ ORDER BY (period_type, vx_type, period_key, region, plant, factory, line)
 python scripts/etl/execute_etl.py --daily
 ```
 
-增量模式的起點由 `phase = 'gold_summary'` 的 checkpoint 決定，通常只跑當天（≥ 2026-04-01），`gold_summary_v3` step 會因 WHERE 條件為空自動跳過，不寫入任何資料。
+增量模式的起點由 `phase = 'gold_summary'` 的 checkpoint 決定，通常只跑當天（≥ 2026-04-01），`gold_summary_historical` step 會因 WHERE 條件為空自動跳過，不寫入任何資料。
 
 ### 6.3 回填 V3 歷史資料（首次或 Silver 修正後）
 
