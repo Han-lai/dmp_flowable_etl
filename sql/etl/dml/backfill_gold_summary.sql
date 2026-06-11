@@ -5,7 +5,7 @@
 --
 -- [重要] 版本邊界保護：
 --   此 SQL 僅處理 >= 2026-04-01 的資料（V4.3 Cohort 邏輯）
---   <= 2026-03-31 的資料由 backfill_summary_v3.sql 負責（V3 Bitmap 邏輯）
+--   <= 2026-03-31 的資料由 backfill_gold_summary_historical.sql 負責（V3 Bitmap 邏輯）
 --   若 {end_ts} < 2026-04-01，此 SQL 將不寫入任何資料（WHERE 條件自然為空）
 
 -- Day 粒度: 每日一行，直接計算
