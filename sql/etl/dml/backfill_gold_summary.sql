@@ -2,6 +2,11 @@
 -- 目的: 將 bitmap merge 計算移至 ETL 階段，Cube 查詢只做整數 SUM
 -- 效能: 查詢從 ~750ms 降至 ~184ms (-75%)
 -- 變數: {start_ts}, {end_ts}
+--
+-- [重要] 版本邊界保護：
+--   此 SQL 僅處理 >= 2026-04-01 的資料（V4.3 Cohort 邏輯）
+--   <= 2026-03-31 的資料由 backfill_summary_v3.sql 負責（V3 Bitmap 邏輯）
+--   若 {end_ts} < 2026-04-01，此 SQL 將不寫入任何資料（WHERE 條件自然為空）
 
 -- Day 粒度: 每日一行，直接計算
 INSERT INTO gold.rmv_l5_task_summary
@@ -26,6 +31,7 @@ SELECT
 FROM gold.rmv_l5_task_completion_phys
 WHERE snapshot_date >= toDate('{start_ts}')
   AND snapshot_date <= toDate('{end_ts}')
+  AND snapshot_date >= toDate('2026-04-01')   -- V3/V4 邊界保護
 GROUP BY snapshot_date, vx_type, region, plant, factory, line
 
 UNION ALL
@@ -33,7 +39,7 @@ UNION ALL
 -- Week 粒度: 按 ISO 週聚合
 SELECT
     'Week' AS period_type,
-    concat(toString(toISOYear(snapshot_date)), '-W', 
+    concat(toString(toISOYear(snapshot_date)), '-W',
            lpad(toString(toISOWeek(snapshot_date)), 2, '0')) AS period_key,
     max(snapshot_date) AS max_snap_dt,
     0 AS sort_order,
@@ -56,6 +62,7 @@ SELECT
 FROM gold.rmv_l5_task_completion_phys
 WHERE snapshot_date >= toStartOfWeek(toDate('{start_ts}'), 3)
   AND snapshot_date <= toDate('{end_ts}')
+  AND snapshot_date >= toDate('2026-04-01')   -- V3/V4 邊界保護
 GROUP BY period_key, period_name, vx_type, region, plant, factory, line
 
 UNION ALL
@@ -85,4 +92,5 @@ SELECT
 FROM gold.rmv_l5_task_completion_phys
 WHERE snapshot_date >= toStartOfMonth(toDate('{start_ts}'))
   AND snapshot_date <= toDate('{end_ts}')
+  AND snapshot_date >= toDate('2026-04-01')   -- V3/V4 邊界保護
 GROUP BY period_key, period_name, vx_type, region, plant, factory, line;
