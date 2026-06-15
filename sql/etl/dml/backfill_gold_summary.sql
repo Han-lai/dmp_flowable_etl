@@ -36,6 +36,43 @@ GROUP BY snapshot_date, vx_type, region, plant, factory, line
 
 UNION ALL
 
+-- Day 粒度補丁: acc_phys 有記錄但當天無任務（total=0）的日期（如假日、停產日）
+-- 目的: 確保 acc 積壓數在零開單日仍可查詢，不依賴前端補 0
+SELECT
+    'Day' AS period_type,
+    toString(a.snapshot_date) AS period_key,
+    a.snapshot_date,
+    0 AS sort_order,
+    toString(a.snapshot_date) AS period_name,
+    a.vx_type, a.region, a.plant, a.factory, a.line,
+    0 AS total_qty,
+    0 AS todo_qty,
+    0 AS doing_qty,
+    0 AS done_qty,
+    0 AS doing_done_qty,
+    bitmapCardinality(a.acc)            AS acc_qty,
+    bitmapCardinality(a.acc_total_task) AS acc_total_qty,
+    now64(3) AS _refresh_time
+FROM gold.rmv_l5_acc_phys AS a FINAL
+LEFT ANTI JOIN (
+    SELECT DISTINCT snapshot_date, vx_type, region, plant, factory, line
+    FROM gold.rmv_l5_task_completion_phys
+    WHERE snapshot_date >= toDate('{start_ts}')
+      AND snapshot_date <= toDate('{end_ts}')
+      AND snapshot_date >= toDate('2026-04-01')
+) AS c
+ON  a.snapshot_date = c.snapshot_date
+AND a.vx_type   = c.vx_type
+AND a.region    = c.region
+AND a.plant     = c.plant
+AND a.factory   = c.factory
+AND a.line      = c.line
+WHERE a.snapshot_date >= toDate('{start_ts}')
+  AND a.snapshot_date <= toDate('{end_ts}')
+  AND a.snapshot_date >= toDate('2026-04-01')
+
+UNION ALL
+
 -- Week 粒度: 按 ISO 週聚合
 SELECT
     'Week' AS period_type,
