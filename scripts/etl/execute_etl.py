@@ -99,7 +99,7 @@ def update_checkpoint(client, phase, start, end, status, error="", duration_ms=0
         INSERT INTO ops_metrics.etl_checkpoint 
             (phase, window_start, window_end, status, error_msg, duration_ms, result_rows, result_bytes) 
         VALUES 
-            ('{phase}', '{start}', '{end}', '{status}', '{error[:500]}', {duration_ms}, {rows}, {table_bytes})
+            ('{phase}', '{start}', '{end}', '{status}', '{error[:2000].replace("'", "''")}', {duration_ms}, {rows}, {table_bytes})
         """
         client.command(sql)
     except Exception as e:
@@ -179,19 +179,19 @@ def execute_computation_pipeline(client, args):
     if args.low_ram:
         # Core Memory Limits
         client.command("SET max_threads = 1")
-        client.command("SET max_memory_usage = 10000000000") # Limit to 10GB since container is now 11GB
-        
+        client.command("SET max_memory_usage = 10000000000") # 10GB hard cap (container: 11GB)
+
         # External Processing (Spill to Disk)
         client.command("SET max_bytes_before_external_group_by = 500000000") # 500MB force spill
         client.command("SET max_bytes_before_external_sort = 500000000")
         client.command("SET distributed_aggregation_memory_efficient = 1")
         client.command("SET aggregation_memory_efficient_merge_threads = 1")
-        
+
         # Join Optimization
         client.command("SET max_bytes_in_join = 500000000")
         client.command("SET join_algorithm = 'grace_hash'")
 
-        print(" Using Aggressive Mem-Optimized Settings (1 Thread, 5.5GB Limit, 500MB Spill)")
+        print(" Using Aggressive Mem-Optimized Settings (1 Thread, 10GB Limit, 500MB Spill)")
 
 
 
@@ -281,6 +281,10 @@ def execute_computation_pipeline(client, args):
             if ("Memory limit exceeded" in err_msg or "Code: 241" in err_msg) and duration.total_seconds() > 60:
                 mid_seconds = int(duration.total_seconds() // 2)
                 mid_dt = start_dt + datetime.timedelta(seconds=mid_seconds)
+                # Both halves share the midpoint boundary (closed interval on both sides).
+                # Rows at exactly mid_dt are inserted by both halves; ReplacingMergeTree
+                # deduplicates them on compaction. This avoids a 1-second data gap that
+                # occurs when using mid-1s with sub-second (DateTime64) timestamps.
                 print(f"   [OOM Alert] Memory Limit hit at {start_str} ~ {end_str}. Splitting window into halves...")
                 run_safe(phase_id, sql_tpl, start_dt, mid_dt, target_table=target_table)
                 run_safe(phase_id, sql_tpl, mid_dt, end_dt, target_table=target_table)
@@ -325,7 +329,7 @@ def main():
     parser.add_argument("--start", type=str, default="2025-01-01", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", type=str, default=datetime.date.today().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
     parser.add_argument("--step-days", type=int, default=10, help="Window size for memory safety")
-    parser.add_argument("--low-ram", action="store_true", help="Enable 6GB RAM optimization")
+    parser.add_argument("--low-ram", action="store_true", help="Enable 10GB RAM cap with disk spill (for 11GB containers)")
     
     args = parser.parse_args()
     
@@ -372,16 +376,40 @@ def main():
                 args.end = datetime.date.today().strftime("%Y-%m-%d")
                 print(f"  [End] No Watermark found. Using System Today: {args.end}")
 
-            # 3.2 Determine START: Read Last ETL Checkpoint
-            # We look for the last successful gold_summary run
-            cp_res = client.query("SELECT maxOrNull(window_end) FROM ops_metrics.etl_checkpoint FINAL WHERE status = 'SUCCESS' AND phase = 'gold_summary'")
+            # 3.2 Determine START: min(bronze_max_data_time, last_etl_checkpoint) - 1 day
+            # This prevents gaps when the checkpoint window ran ahead of actual bronze data.
+            # We take the MIN across both taskinst and varinst because Silver JOINs both tables;
+            # if varinst lags behind taskinst, using only taskinst would build Silver rows with
+            # incomplete vx_type / mo_number data and never trigger a re-run.
+            bronze_max_res = client.query(
+                "SELECT minOrNull(max_data_time) FROM bronze._sync_watermark FINAL"
+                " WHERE table_name IN ('bronze.bpm_act_hi_taskinst', 'bronze.bpm_act_hi_varinst')"
+            )
+            bronze_max_dt = None
+            if bronze_max_res.result_rows and bronze_max_res.result_rows[0][0]:
+                bronze_max_dt = bronze_max_res.result_rows[0][0]
+                if isinstance(bronze_max_dt, str):
+                    bronze_max_dt = datetime.datetime.strptime(bronze_max_dt, "%Y-%m-%d %H:%M:%S")
+                print(f"  [Bronze Max] Min(taskinst, varinst) max_data_time: {bronze_max_dt.strftime('%Y-%m-%d')}")
+
+            # Derive last phase_id from pipeline config to avoid hardcoding 'gold_summary'.
+            last_phase_id = PIPELINE_CONFIG['pipeline_stages'][-1]['steps'][-1]['phase_id']
+            cp_res = client.query(f"SELECT maxOrNull(window_end) FROM ops_metrics.etl_checkpoint FINAL WHERE status = 'SUCCESS' AND phase = '{last_phase_id}'")
             if cp_res.result_rows and cp_res.result_rows[0][0]:
                 last_checkpoint_dt = cp_res.result_rows[0][0]
                 if isinstance(last_checkpoint_dt, str):
                     last_checkpoint_dt = datetime.datetime.strptime(last_checkpoint_dt, "%Y-%m-%d %H:%M:%S")
-                # Start from 1 day before the last checkpoint to ensure no gaps at boundaries
-                args.start = (last_checkpoint_dt - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
-                print(f"  [Start] Found Last ETL Checkpoint at {last_checkpoint_dt.strftime('%Y-%m-%d')}. Overlapping 1 day: {args.start}")
+                print(f"  [Checkpoint] Last {last_phase_id} checkpoint: {last_checkpoint_dt.strftime('%Y-%m-%d')}")
+
+                # Use the earlier of the two to avoid skipping windows where bronze had no data yet
+                if bronze_max_dt:
+                    anchor_dt = min(last_checkpoint_dt, bronze_max_dt)
+                    print(f"  [Start Anchor] min(checkpoint, bronze_max) = {anchor_dt.strftime('%Y-%m-%d')}")
+                else:
+                    anchor_dt = last_checkpoint_dt
+
+                args.start = (anchor_dt - datetime.timedelta(days=1)).strftime("%Y-%m-%d")
+                print(f"  [Start] Overlapping 1 day before anchor: {args.start}")
             else:
                 # Fallback if no checkpoint exists
                 end_dtobj = datetime.datetime.strptime(args.end, "%Y-%m-%d")

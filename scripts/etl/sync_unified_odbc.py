@@ -30,7 +30,7 @@ CLICKHOUSE_CONFIG = {
 
 # MSSQL ODBC Credentials
 MSSQL_USER = os.getenv("MSSQL_USER", "APP_SRV_BPM")
-MSSQL_PASSWORD = os.getenv("MSSQL_PASSWORD", "APP_SRV_BPM")
+MSSQL_PASSWORD = os.getenv("MSSQL_PASSWORD", "")
 ODBC_DSN = os.getenv("ODBC_DSN", "MSSQL_DSN")
 
 # Configure Logging
@@ -66,22 +66,14 @@ def build_odbc_conn(db_name):
     return f"DSN={ODBC_DSN};Database={db_name};Uid={MSSQL_USER};Pwd={MSSQL_PASSWORD};MARS_Connection=yes"
 
 
-def load_configs():
+def load_configs(config_name="sync_tables.yaml"):
     """
-    載入 YAML 設定檔 (預設為 sync_tables.yaml)，
-    包含所有需要同步的表格定義、主鍵及同步策略 (batch/full)。
+    載入 YAML 設定檔，包含所有需要同步的表格定義、主鍵及同步策略 (batch/full)。
     """
     base_dir = os.path.dirname(os.path.abspath(__file__))
-    
-    config_name = "sync_tables.yaml"
-    if "--config" in sys.argv:
-        idx = sys.argv.index("--config")
-        if idx + 1 < len(sys.argv):
-            config_name = sys.argv[idx + 1]
-            
     config_path = os.path.join(base_dir, "config", config_name)
     logger.info(f"Using layout config: {config_path}")
-    
+
     try:
         with open(config_path, 'r', encoding='utf-8') as f:
             return yaml.safe_load(f)
@@ -91,8 +83,6 @@ def load_configs():
     except Exception as e:
         logger.error(f"讀取 YAML 發生錯誤：{e}")
         sys.exit(1)
-
-TABLE_CONFIGS = load_configs()
 
 def get_client():
     return clickhouse_connect.get_client(**CLICKHOUSE_CONFIG)
@@ -276,7 +266,12 @@ def sync_batch(client, config, start_str, end_str):
             err_msg = str(e)
             logger.warning(f"  Batch failed (Attempt {attempt + 1}/{max_retries}): {err_msg}")
             
-            if "Code: 1000" in err_msg or "Timeout" in err_msg or "Code: 241" in err_msg or "MEMORY_LIMIT" in err_msg:
+            # Abort retries immediately for OOM, timeout, or any Code: 1000 (generic ODBC error).
+            # Code: 1000 covers connection drops and "Too many simultaneous queries" — retrying
+            # these just adds 90s of delay; the adaptive splitter handles them correctly instead.
+            is_oom = "Code: 241" in err_msg or "MEMORY_LIMIT" in err_msg
+            is_timeout = "Timeout" in err_msg or "Code: 1000" in err_msg
+            if is_oom or is_timeout:
                 logger.warning("  Timeout or OOM detected. Aborting retries to trigger adaptive range splitting.")
                 raise e
                 
@@ -393,8 +388,16 @@ def sync_full(client, config):
 
 
 def main():
+    # Stage-1: parse --config only so we can load TABLE_CONFIGS before defining --table choices.
+    pre_parser = argparse.ArgumentParser(add_help=False)
+    pre_parser.add_argument("--config", default="sync_tables.yaml")
+    pre_args, _ = pre_parser.parse_known_args()
+
+    table_configs = load_configs(pre_args.config)
+
+    # Stage-2: full argument parsing with proper --table choices derived from config.
     parser = argparse.ArgumentParser(description="Unified ODBC Sync using Explicit Table Engines")
-    parser.add_argument("--table", choices=list(TABLE_CONFIGS.keys()) + ['all'], default='all', help="Table to sync")
+    parser.add_argument("--table", choices=list(table_configs.keys()) + ['all'], default='all', help="Table to sync")
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
     parser.add_argument("--step-days", type=int, default=7, help="Batch size in days")
@@ -407,7 +410,7 @@ def main():
     client = get_client()
     setup_watermark_table(client)
 
-    tables_to_sync = [args.table] if args.table != 'all' else list(TABLE_CONFIGS.keys())
+    tables_to_sync = [args.table] if args.table != 'all' else list(table_configs.keys())
     logger.info(f"Target Tables: {', '.join(tables_to_sync)}")
 
     stats = []
@@ -416,7 +419,7 @@ def main():
         start_t = time.time()
         status = "SUCCESS"
         row_count = 0
-        config = TABLE_CONFIGS[table_key]
+        config = table_configs[table_key]
         config['table_key'] = table_key
         target_table = config['target']
         config['target'] = target_table
@@ -487,7 +490,7 @@ def main():
 
         except Exception as e:
             logger.error(f"Stopping sync for {table_key} due to error: {e}")
-            status = f"FAILED: {str(e)[:50]}"
+            status = f"FAILED: {str(e)[:200]}"
         finally:
             duration = time.time() - start_t
             stats.append({
