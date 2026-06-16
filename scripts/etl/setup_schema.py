@@ -73,14 +73,18 @@ def execute_sql_file(client, sql_file: Path, description: str, force=False):
                     print(f"   ! Table {table} already exists. Use --force to recreate if needed.")
             except: pass
 
-    # Execute statements sequentially
+    # Strip /* ... */ block comments first, then split on ';' outside of line comments.
+    sql_stripped = re.sub(r'/\*.*?\*/', '', sql_content, flags=re.DOTALL)
     statements = []
     current = []
-    for line in sql_content.split('\n'):
+    for line in sql_stripped.split('\n'):
         stripped = line.strip()
-        if stripped.startswith('--'): continue
+        if stripped.startswith('--'):
+            continue
+        # Remove trailing inline comment before checking for semicolon
+        code_part = stripped.split('--')[0].strip()
         current.append(line)
-        if stripped.split('--')[0].strip().endswith(';'):
+        if code_part.endswith(';'):
             stmt = '\n'.join(current).strip()
             if stmt and stmt != ';':
                 statements.append(stmt)
@@ -88,7 +92,11 @@ def execute_sql_file(client, sql_file: Path, description: str, force=False):
     
     success = 0
     for i, stmt in enumerate(statements, 1):
-        if not stmt.strip() or stmt.strip().upper().startswith('SELECT'): continue
+        if not stmt.strip():
+            continue
+        if stmt.strip().upper().startswith('SELECT'):
+            print(f"   [Skip] Statement {i} is a SELECT — DDL files should not contain SELECT statements.")
+            continue
         try:
             client.command(stmt)
             success += 1

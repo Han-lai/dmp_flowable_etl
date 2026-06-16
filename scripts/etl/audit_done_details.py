@@ -11,6 +11,7 @@ import argparse
 import pandas as pd
 from datetime import datetime
 import os
+import sys
 
 # ClickHouse Configuration
 CH_CONFIG = {
@@ -21,24 +22,58 @@ CH_CONFIG = {
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
 
+def _validate_date(value: str):
+    """確認日期為 YYYY-MM-DD 格式，避免靜默回傳 0 筆。"""
+    try:
+        datetime.strptime(value, "%Y-%m-%d")
+    except ValueError:
+        print(f"Error: --date must be YYYY-MM-DD, got: {value!r}")
+        sys.exit(1)
+
 def get_client():
     return clickhouse_connect.get_client(**CH_CONFIG)
 
 def audit_done_details(date, region, plant, factory, line, vx_type, status='done'):
+    _validate_date(date)
+
     client = get_client()
-    
-    # 建立過濾器
-    filters = []
-    if region: filters.append(f"region = '{region}'")
-    if plant: filters.append(f"plant = '{plant}'")
-    if factory: filters.append(f"factory = '{factory}'")
-    if line: filters.append(f"line = '{line}'")
-    if vx_type: filters.append(f"vx_type = '{vx_type}'")
-    
-    filter_sql = " AND ".join(filters)
-    if filter_sql:
-        filter_sql = "AND " + filter_sql
-    
+
+    # Build WHERE conditions using parameterized queries to prevent SQL injection.
+    conditions = ["is_excluded = 0"]
+    params = {'p_date': date}
+
+    if region:
+        conditions.append("region = {p_region:String}")
+        params['p_region'] = region
+    if plant:
+        conditions.append("plant = {p_plant:String}")
+        params['p_plant'] = plant
+    if factory:
+        conditions.append("factory = {p_factory:String}")
+        params['p_factory'] = factory
+    if line:
+        conditions.append("line = {p_line:String}")
+        params['p_line'] = line
+    if vx_type:
+        conditions.append("vx_type = {p_vx:String}")
+        params['p_vx'] = vx_type
+
+    # Build date conditions mirroring Gold milestone V4 Cohort logic exactly.
+    # Silver stores NULL (via NULLIF) for missing claim/end dates — not epoch.
+    if status == 'done':
+        conditions.append("task_start_date = {p_date:Date}")
+        conditions.append("task_end_date = {p_date:Date}")
+    elif status == 'todo':
+        conditions.append("task_start_date = {p_date:Date}")
+        conditions.append("COALESCE(task_claim_date, toDate('1900-01-01')) != {p_date:Date}")
+        conditions.append("(task_end_date IS NULL OR task_end_date != {p_date:Date})")
+    elif status == 'doing':
+        conditions.append("task_start_date = {p_date:Date}")
+        conditions.append("task_claim_date = {p_date:Date}")
+        conditions.append("(task_end_date IS NULL OR task_end_date != {p_date:Date})")
+    else:  # all
+        conditions.append("task_start_date = {p_date:Date}")
+
     status_label_map = {'done': 'DONE', 'todo': 'TODO', 'doing': 'DOING', 'all': 'ALL'}
     status_label = status_label_map.get(status, 'DONE')
     print(f"\n{'='*100}")
@@ -46,46 +81,14 @@ def audit_done_details(date, region, plant, factory, line, vx_type, status='done
     print(f" Hierarchy: {region} / {plant} / {factory} / {line} | VX: {vx_type}")
     print(f"{'='*100}\n")
 
-    # Build date filter mirroring Gold milestone V4 Cohort logic exactly.
-    # Silver stores NULL (via NULLIF) for missing claim/end dates — not epoch.
-    # Gold anchors all metrics to task_start_date (Same-day Cohort).
-    if status == 'done':
-        # Matches Gold: task_end_date = task_start_date
-        date_filter = (
-            f"AND task_start_date = '{date}'\n"
-            f"      AND task_end_date = '{date}'"
-        )
-    elif status == 'todo':
-        # Matches Gold: claim_date is missing or != start_date
-        date_filter = (
-            f"AND task_start_date = '{date}'\n"
-            f"      AND COALESCE(task_claim_date, toDate('1900-01-01')) != '{date}'\n"
-            f"      AND (task_end_date IS NULL OR task_end_date != '{date}')"
-        )
-    elif status == 'doing':
-        # Matches Gold: claim_date = start_date, but not ended on start_date
-        date_filter = (
-            f"AND task_start_date = '{date}'\n"
-            f"      AND task_claim_date = '{date}'\n"
-            f"      AND (task_end_date IS NULL OR task_end_date != '{date}')"
-        )
-    else:  # all
-        # All tasks opened on that day (task_start_date)
-        date_filter = (
-            f"AND task_start_date = '{date}'"
-        )
-
-    # 2. Detailed Query
-    detail_sql = f"""
+    detail_sql = """
     SELECT *
     FROM silver.mv_fact_task_vx FINAL
-    WHERE is_excluded = 0
-      {filter_sql}
-      {date_filter}
+    WHERE {}
     ORDER BY task_end_time DESC, task_start_time DESC
-    """
+    """.format(" AND ".join(conditions))
 
-    res_detail = client.query(detail_sql)
+    res_detail = client.query(detail_sql, parameters=params)
     if not res_detail.result_rows:
         print(f"No tasks found for this criteria.")
         return
