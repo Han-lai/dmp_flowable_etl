@@ -11,11 +11,12 @@
 
 本看板由三個 Cube 模型協同運作：
 
+> **架構異動（2026-06-16）**：`DimMfgFilter` 篩選選單模型（`cube_dim_mfg_filter.js`）已廢棄移除。篩選器資料來源請改用 `L5TaskPeriodic` 或靜態 SQL Dataset。
+
 | Cube 模型 | 用途 |
 | :--- | :--- |
 | **`L5TaskPeriodic`** | KPI 主模型。提供日/週/月三種粒度的 Todo/Doing/Done 聚合指標。 |
 | **`L5TaskPeriodicPivot`** | 表格專用。提供長表格式，適合 Pivot Table 及地區/廠別階層展示。 |
-| **`DimMfgFilter`** | 輕量化篩選選單。專為 Superset Native Filter 設計，查詢速度 < 0.1s。 |
 | **`L5TaskDetails`** | 明細下鑽模型。提供單一工單層級的任務明細查詢。 |
 
 ### 1.1 系統功能現況
@@ -24,7 +25,7 @@
 | :--- | :--- | :--- |
 | **指標引擎** | ✅ **Bitmap 高效聚合** | 採用 ClickHouse Bitmap 運算，徹底解決「跨天 ID 重複加總」的數據偏大問題。 |
 | **多時間粒度** | ✅ **日 / 週 / 月** | 三種粒度各自預計算 Bitmap，查詢速度達秒級響應。 |
-| **篩選選單效能** | ✅ **0.1s 響應** | 透過 `DimMfgFilter` 獨立選單模型，解決原本篩選選單 Loading 超過 60 秒的問題。 |
+| **篩選選單效能** | ⚠️ **架構調整中** | 原 `DimMfgFilter` 獨立選單模型已於 2026-06-16 移除；篩選器改由 `L5TaskPeriodic` 維度欄位或靜態 SQL Dataset 提供。 |
 | **日期處理** | ✅ **字串比對** | 轉換為 `YYYY-MM-DD` 10 位字串，解決 ClickHouse 24.3 ISO 時間字串轉型報錯。 |
 | **明細下鑽** | ✅ **L5TaskDetails** | 支援從 KPI 圖表下鑽至單一工單明細清單。 |
 
@@ -80,7 +81,7 @@
 
 請遵循以下配置 SOP：
 
-1.  **資料來源選取**：所有篩選器（地區、廠區、日期等）的 **「Filter Value Source (Dataset)」** 務必選擇 `DimMfgFilter`。
+1.  **資料來源選取**：所有篩選器（地區、廠區、日期等）的 **「Filter Value Source (Dataset)」** 選擇 `L5TaskPeriodic`（原 `DimMfgFilter` 已於 2026-06-16 移除）。
 2.  **日期篩選器對應 (Mapping)**：將 Date 篩選器的目標對準所有 Dataset 的 **`snapshotDate` (日期篩選/基準日期)**。
     > ⚠️ **警告**：切勿對準 `realSnapshotDate`，否則選取日期後歷史資料會被篩除。
 3.  **排序優化**：在日期篩選器內設定 `Sort: DESC`，確保選單最上方顯示最新的日期。
@@ -95,7 +96,7 @@
 
 ### Q: 為什麼選單裡看不到最新的日期？
 *   **原因**：Dataset 欄位未同步或排序未更新。
-*   **解法**：在 Dataset 頁面點擊 **"Sync columns from source"** 並確認 `DimMfgFilter` 的 SQL 包含 `ORDER BY snapshot_date DESC`。
+*   **解法**：在 Dataset 頁面點擊 **"Sync columns from source"**，確認所使用的 Dataset（`L5TaskPeriodic` 或靜態 SQL Dataset）的 SQL 包含 `ORDER BY snapshot_date DESC`。
 
 ### Q: 選取日期時出現 `Arrow error: Cannot convert string to type DateTime`？
 *   **原因**：ClickHouse 24.3 與 ISO 時間格式不相容。
@@ -109,7 +110,7 @@
 
 **相關文件**:
 - Cube.js 語義層說明 → `docs/04_serving/CubeJS_Semantic_Layer.md`
-- 核心指標定義 → `docs/03_metrics/Metrics_and_Data_Definitions.md`
+- 核心指標定義 → `docs/03_metrics/01_Metrics_and_Data_Definitions.md`
 - 明細欄位對照 → `docs/03_metrics/UI_Detail_Fields_Mapping.md`
 
 ---

@@ -16,8 +16,9 @@
 5. [Stage 4 — 里程碑快照聚合 (backfill_gold_milestone.sql)](#5-stage-4--里程碑快照聚合-backfill_gold_milestonesql)
 6. [Stage 5 — ACC 七日滾動去重 (backfill_gold_acc.sql)](#6-stage-5--acc-七日滾動去重-backfill_gold_accsql)
 7. [Stage 6 — 最終合併主表 (backfill_gold.sql)](#7-stage-6--最終合併主表-backfill_goldsql)
-8. [Stage 7 — 預聚合彙總表 (backfill_gold_summary.sql)](#8-stage-7--預聚合彙總表-backfill_gold_summarysql)
-9. [時間視窗機制與 Checkpoint](#9-時間視窗機制與-checkpoint)
+8. [Stage 7 — 歷史資料預聚合 (backfill_gold_summary_historical.sql)](#8-stage-7--歷史資料預聚合-backfill_gold_summary_historicalsql)（新增於 2026-06-10）
+9. [Stage 8 — 增量預聚合彙總表 (backfill_gold_summary.sql)](#9-stage-8--增量預聚合彙總表-backfill_gold_summarysql)
+10. [時間視窗機制與 Checkpoint](#10-時間視窗機制與-checkpoint)
 10. [維護作業參考](#10-維護作業參考)
 
 ---
@@ -25,7 +26,7 @@
 ## 1. 管線總覽
 
 Bronze 層資料就緒後，`execute_etl.py` 依 `pipeline_config.yaml` 定義的階段順序，
-透過「時間視窗批次」驅動 5 支 SQL 模板，將資料逐步轉換至 Gold 層。
+透過「時間視窗批次」驅動 8 個 SQL 步驟，將資料逐步轉換至 Gold 層。
 
 ```
 Bronze 層 (18 張原始表)
@@ -60,9 +61,13 @@ Stage 6 ▼  backfill_gold.sql
         │  gold.rmv_l5_task_completion  (VIEW + FINAL)
         │  (FastAPI 查詢入口)
         │
-Stage 7 ▼  backfill_gold_summary.sql
+Stage 7 ▼  backfill_gold_summary_historical.sql              （新增於 2026-06-10）
         gold.rmv_l5_task_summary
-        (★ Cube.js 查詢入口：將 Bitmap 轉為整數預聚合，按 period_type/period_key 存儲)
+        (歷史資料 ≤2026-03-31：混合粒度 Day/event + Week/Month Cohort，Bitmap→整數)
+        │
+Stage 8 ▼  backfill_gold_summary.sql
+        gold.rmv_l5_task_summary
+        (★ 增量 ≥2026-04-01：純 Cohort，Bitmap→整數，V4 Pre-aggregation 2026-05-27 起)
 ```
 
 **SQL 模板位置**: `sql/etl/dml/`  
@@ -388,7 +393,7 @@ Week / Month 粒度的視窗邊界由 `toStartOfWeek` / `toStartOfMonth` 動態�
 ...
 視窗 37: 2025-12-22 00:00:00  ~  2025-12-31 23:59:59
 
-每個視窗 × 5 個 SQL 階段 = 185 次 SQL 執行
+每個視窗 × 8 個 SQL 步驟 = 296 次 SQL 執行
 ```
 
 ### 8.2 Checkpoint 斷點續傳

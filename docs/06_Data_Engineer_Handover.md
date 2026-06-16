@@ -42,10 +42,11 @@ dmp_flowable/
         │   ├── 01_bronze_...sql
         │   └── 04_silver_...sql
         └── dml/                     (4) 業務邏輯處：所有的 DML 運算語法
-            ├── backfill_pivot.sql          --> 變數轉置邏輯
-            ├── backfill_silver.sql         --> 核心寬表與清洗邏輯
-            ├── backfill_gold_...sql        --> KPI 指標計算邏輯
-            └── backfill_gold_summary.sql   --> ★ Cube.js 整數預聚合（最終步驟）
+            ├── backfill_pivot.sql                   --> 變數轉置邏輯
+            ├── backfill_silver.sql                  --> 核心寬表與清洗邏輯
+            ├── backfill_gold_...sql                 --> KPI 指標計算邏輯
+            ├── backfill_gold_summary_historical.sql --> ★ 歷史資料預聚合（≤2026-03-31，新增於 2026-06-10）
+            └── backfill_gold_summary.sql            --> ★ 增量整數預聚合（≥2026-04-01，V4 方案 2026-05-27 起）
 ```
 
 ### 各階段執行映射表

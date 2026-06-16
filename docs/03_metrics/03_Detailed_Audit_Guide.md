@@ -15,7 +15,7 @@
 1. **錨定起點**：所有的任務皆以其開單日 (`task_start_date`) 作為唯一歸屬梯次。
 2. **狀態互斥**：在任何時間粒度（日/週/月）下，一個任務在該週期末只會處於 `Todo`、`Doing`、`Done` 的其中「唯一一種」狀態。
    - `Todo` + `Doing` + `Done` = 該梯次總任務數 (`Total`)。
-3. **高效去重**：由於採用 ClickHouse Bitmap (例如 `groupBitmapMergeState`)，不僅大幅提升查詢效能，也徹底解決了跨天重複計算的問題。系統已廢棄舊版的 `ARRAY JOIN` 展開邏輯。
+3. **高效去重**：由於採用 ClickHouse Bitmap (例如 `groupBitmapMergeState`)，不僅大幅提升查詢效能，也徹底解決了跨天重複計算的問題。系統於 V4（≥2026-04-01）廢棄了 `ARRAY JOIN` 展開邏輯，改採 Same-Day Cohort；歷史管線（`backfill_gold_summary_historical.sql`，≤2026-03-31）的 Day 粒度仍保留 ARRAY JOIN 以維持事件日語意。
 
 ### 1.2 UI 與 Gold 彙總對齊說明
 
@@ -174,7 +174,7 @@ WHERE (iso_year = 2026 AND iso_week = 1)
 GROUP BY iso_year, iso_week;
 ```
 
-> 方法 A 與方法 B 的結果應完全一致。若有差異，通常代表 Stage 7 (`backfill_gold_summary.sql`) 尚未針對該視窗執行完成。
+> 方法 A 與方法 B 的結果應完全一致。若有差異，通常代表 Stage 7（`backfill_gold_summary_historical.sql`，歷史 ≤2026-03-31）或 Stage 8（`backfill_gold_summary.sql`，增量 ≥2026-04-01）尚未針對該視窗執行完成。
 
 ### 4.3 Silver 層輔助查詢（任務清單稽核）
 
