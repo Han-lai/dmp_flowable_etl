@@ -183,15 +183,28 @@ Gold 層的 `rmv_l5_task_summary` 預聚合表已在 ETL 階段完成 Bitmap 去
 | **Week** | 當週（Wx）、前一週（Wx-1）、前兩週（Wx-2） | `todo_weekly` / `doing_weekly` / `done_weekly` | `(todo + doing) ÷ total` |
 | **Month** | 當月所有天 | `todo_monthly` / `doing_monthly` / `done_monthly` | `(todo + doing) ÷ total` |
 
-#### 關鍵技術：Bitmap 跨日聯集
+#### 關鍵技術：ETL 預聚合整數欄位（自 2026-05-27 V4 Pre-aggregation 起）
 
-Gold 層每天各存一張 Bitmap，Cube.js 用 `groupBitmapMergeState` 把篩選範圍內所有天的 Bitmap 做聯集後再計算去重人數：
+> **架構調整說明（2026-05-27）**：原方案（V3 及以前）將任務 ID 以 Bitmap 格式存入 Gold 層，由 Cube.js 在查詢時呼叫 `groupBitmapMergeState` 做跨日聯集去重，O(N²) 計算導致單一指標查詢耗時 30～40 秒。
+>
+> 自 V4 起，去重運算提前到 ETL 階段完成，`gold.rmv_l5_task_summary` 直接存放 **整數欄位**（`todo_qty`、`doing_qty`、`done_qty`、`acc_qty` 等）。Cube.js 查詢降級為單純的 `sum(qty)`，查詢時間由 30～40 秒降至 1.5～8.5 秒。
 
+**目前方式（V4）**：  
+ETL 在 `backfill_gold_summary.sql` 執行時，以 Bitmap `bitmapCardinality` 計算各日去重任務數，並將整數結果寫入預聚合表：
+
+```sql
+-- ETL 階段：Bitmap → 整數（僅在 ETL 時執行一次）
+bitmapCardinality(groupBitmapState(task_id_hash)) AS done_qty
 ```
-週合計 = Bitmap(週一) ∪ Bitmap(週二) ∪ ... ∪ Bitmap(週日)
+
+Cube.js 查詢時只需：
+
+```sql
+-- Cube.js：直接加總整數，無需 Bitmap 操作
+sum(done_qty)
 ```
 
-這樣即使同一個任務跨兩天都有紀錄，最終只算一次，**不會重複計數**。
+這樣即使同一個任務跨兩天都有紀錄，去重邏輯在 ETL 時已確保，前端查詢**不會重複計數**。
 
 > **💡 小技巧：如何在 ClickHouse 原生終端機查詢 Bitmap 欄位？**
 > 
@@ -417,7 +430,7 @@ python scripts/etl/execute_etl.py --reset --backfill --low-ram
 | 變數 | 預設值 |
 |---|---|
 | `MSSQL_USER` | `APP_SRV_BPM` |
-| `MSSQL_PASSWORD` | `APP_SRV_BPM` |
+| `MSSQL_PASSWORD` | *(無預設，必須由環境變數設定)* |
 | `ODBC_DSN` | `MSSQL_DSN` |
 | `CLICKHOUSE_HOST` | `<CLICKHOUSE_HOST>` |
 | `CLICKHOUSE_PASSWORD` | `<CLICKHOUSE_PASSWORD>` |
@@ -489,13 +502,14 @@ sql/etl/
 #### 執行順序與各檔案職責
 
 ```
-Step A  backfill_pivot.sql       → silver.mv_varinst_pivoted
-Step B  backfill_silver.sql      → silver.mv_fact_task_vx  (大 JOIN)
-Step C  backfill_exclusion.sql   → 更新 silver.mv_fact_task_vx 的排除旗標
-Step D  backfill_gold_milestone  → gold.rmv_l5_milestone_phys
-Step E  backfill_gold_acc.sql    → gold.rmv_l5_acc_phys
-Step F  backfill_gold.sql        → gold.rmv_l5_task_completion_phys  (最終匯總)
-Step G  backfill_gold_summary.sql → gold.rmv_l5_task_summary  (★ Cube.js 整數預聚合)
+Step A  backfill_pivot.sql                  → silver.mv_varinst_pivoted
+Step B  backfill_silver.sql                 → silver.mv_fact_task_vx  (大 JOIN)
+Step C  backfill_exclusion.sql              → 更新 silver.mv_fact_task_vx 的排除旗標
+Step D  backfill_gold_milestone.sql         → gold.rmv_l5_milestone_phys
+Step E  backfill_gold_acc.sql               → gold.rmv_l5_acc_phys
+Step F  backfill_gold.sql                   → gold.rmv_l5_task_completion_phys  (最終匯總)
+Step G  backfill_gold_summary_historical.sql → gold.rmv_l5_task_summary  (★ 歷史資料 ≤2026-03-31，含混合粒度，新增於 2026-06-10)
+Step H  backfill_gold_summary.sql           → gold.rmv_l5_task_summary  (★ ≥2026-04-01 純 Cohort，V4 整數預聚合)
 ```
 
 ---

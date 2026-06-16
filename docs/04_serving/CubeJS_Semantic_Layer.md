@@ -31,40 +31,29 @@ Serving Layer (FastAPI / Node.js / Superset)
 
 ## 2. Cube 模型總覽 (Model Overview)
 
-本專案目前共實作四個 Cube 模型，各司其職：
+本專案目前共實作三個 Cube 模型，各司其職：
+
+> **架構異動（2026-06-16 移除）**：`DimMfgFilter`（`cube_dim_mfg_filter.js`）已廢棄移除。Superset 篩選器的維度資料改由 `L5TaskPeriodic` 主模型提供，或採靜態 SQL Dataset。
 
 | Cube 名稱 | 資料來源 | 主要用途 |
 | :--- | :--- | :--- |
 | **`L5TaskPeriodic`** | `gold.rmv_l5_task_summary` | KPI 聚合主模型，提供日/週/月三種粒度的完成率指標 |
 | **`L5TaskPeriodicPivot`** | `gold.rmv_l5_task_summary` | Pivot 表格專用長表模型，適合 Superset Pivot Table |
-| **`DimMfgFilter`** | `gold.rmv_l5_task_completion` | 輕量化篩選選單，提供 Superset Native Filter 的極速下拉選單 |
 | **`L5TaskDetails`** | `silver.mv_fact_task_vx FINAL` | 明細下鑽模型，提供工單層級的任務明細查詢 |
 
 ---
 
 ## 3. 數據建模定義 (Data Schema)
 
-### 3.0 DimMfgFilter — 篩選選單模型
+### 3.0 DimMfgFilter — 篩選選單模型（★ 已廢棄，移除於 2026-06-16）
 
-**設計動機**：若讓 Superset 篩選器直接查詢主模型，選單載入超過 60 秒且觸發 Network Error。`DimMfgFilter` 僅提取不重複的維度組合，查詢速度提升至 **< 0.1s**。
-
-```javascript
-// cube_dim_mfg_filter.js 核心 SQL
-SELECT DISTINCT region, plant, factory, line, vx_type, snapshot_date
-FROM gold.rmv_l5_task_completion
-ORDER BY snapshot_date DESC  -- 確保最新日期優先顯示
-```
-
-| 維度名稱 | 欄位名 | 說明 |
-| :--- | :--- | :--- |
-| **日期篩選** | `snapshotDate` | 格式化為 `YYYY-MM-DD` 字串，用於 Superset Date Filter |
-| **地區** | `diffRegion` | 帶 `diff` 前綴，支援跨 Dataset 篩選聯動 |
-| **廠區** | `diffPlant` | 同上 |
-| **工廠** | `diffFactory` | 同上 |
-| **線體** | `diffLine` | 同上 |
-| **Vx 類型** | `diffVxType` | V1 / V2 / V3 |
-
-**使用規則**：Superset 所有篩選器（地區、廠區、日期）的 Filter Value Source 一律選擇 `DimMfgFilter`，不可使用主模型。
+> 原 `DimMfgFilter` 模型（`cube_dim_mfg_filter.js`）已從 Cube.js 語意層移除。
+>
+> **設計背景**：原先 Superset 篩選器直接查詢主模型時，選單載入超過 60 秒並觸發 Network Error。`DimMfgFilter` 透過 `DISTINCT` 只抓維度組合，將查詢壓縮至 < 0.1s。
+>
+> **移除原因**：維護成本高且查詢模式改變後效益降低。
+>
+> **現行替代方案**：Superset Native Filter 改為直接對 `L5TaskPeriodic` 的維度欄位（`diffRegion`、`diffPlant` 等）進行篩選，或採靜態 SQL Dataset。
 
 ---
 
@@ -207,11 +196,11 @@ cube(`L5TaskPeriodic`, {
 
 **相關文件**:
 - 系統架構總覽: `docs/01_architecture/Architecture_Overview.md`
-- ETL 管線細節: `docs/03_metrics/ETL_Transformation_Pipeline.md`
+- ETL 管線細節: `docs/03_metrics/02_ETL_Transformation_Pipeline.md`
 - 核心指標定義: `docs/03_metrics/Metrics_and_Data_Definitions.md`
 
 ---
 
 **文件負責人**: AIT / Data Engineering  
 **審核狀態**: 已對照 `cube/model/cubes/cube_l5_task_periodic.js` 與 `cube_l5_task_details.js` 實作校對。  
-**最後審核日期**: 2026-04-30
+**最後審核日期**: 2026-06-16（更新：`DimMfgFilter` 模型廢棄移除）

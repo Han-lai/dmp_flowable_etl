@@ -68,7 +68,7 @@ python scripts/etl/execute_etl.py --daily --low-ram
 
 這是目前的數據搬運核心，支援「全量」與「增量批次」兩大策略，並針對 Server 76 的記憶體限制進行了適應性調整。
 
-### 3.1 資料表同步配置 (`TABLE_CONFIGS`)
+### 3.1 資料表同步配置 (`load_configs()`)
 配置位於 `config/sync_tables.yaml`，定義每張 MSSQL 來源表的同步策略（全量 / 增量）與時間戳欄位。
 
 ### 3.2 顯式 DDL 機制
@@ -181,5 +181,5 @@ npm run dev
 **更新日期**：2026-04-23  
 **相關文件**：
 - 架構總覽：`docs/01_architecture/Architecture_Overview.md`
-- ETL 轉換管線：`docs/03_metrics/ETL_Transformation_Pipeline.md`
+- ETL 轉換管線：`docs/03_metrics/02_ETL_Transformation_Pipeline.md`
 - ODBC 設定：`docs/01_architecture/ClickHouse_ODBC_Setup.md`

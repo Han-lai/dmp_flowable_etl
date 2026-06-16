@@ -240,7 +240,7 @@ MSSQL APP_SRV_COMMON ───────────┼──► sync_unified_
 | `rmv_l5_acc_phys`                |   5   | 7 日滾動 `uniqExact` 在途任務去重           |
 | `rmv_l5_task_completion_phys`    |   6   | FULL OUTER JOIN 合併主表                    |
 | `rmv_l5_task_completion` (View)  |  —    | FastAPI 對接視圖，加 `FINAL` 確保 ReplacingMergeTree 去重完成 |
-| `rmv_l5_task_summary`            |   7   | **★ Cube.js 查詢入口**：整數預聚合彙總表，ETL 階段完成 Bitmap→整數轉換，查詢端直接 SUM |
+| `rmv_l5_task_summary`            |  7+8  | **★ Cube.js 查詢入口**：整數預聚合彙總表，ETL 階段完成 Bitmap→整數轉換，查詢端直接 SUM。由雙管線寫入：Stage 7（`backfill_gold_summary_historical.sql`，V3 歷史 ≤2026-03-31，新增 2026-06-10）＋ Stage 8（`backfill_gold_summary.sql`，V4 增量 ≥2026-04-01） |
 
 **設計動機**：系統最初於 Server 207 (充裕記憶體) 採用 Refreshable Materialized View 架構。遷移至 Server 76 (Docker 11 GiB RAM，可用約 6 GiB) 後，即時聚合觸發 OOM，因此改為「物理化分離聚合架構」，以穩定查詢層資源消耗。
 
