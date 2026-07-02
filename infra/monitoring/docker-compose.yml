@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   grafana:
     image: grafana/grafana-oss:latest
@@ -18,21 +16,43 @@ services:
   prometheus:
     image: dcr-twtpe.deltaww.com/docker.io/prom/prometheus:latest
     container_name: prometheus
-    command:
-      - "--config.file=/etc/prometheus/prometheus.yml"
-      - "--storage.tsdb.path=/prometheus"
     ports:
-      - "9091:9090"
+      - "9011:9090"
+
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        mkdir -p /etc/prometheus &&
+        echo "global:
+          scrape_interval: 15s
+
+        scrape_configs:
+          - job_name: 'prometheus'
+            static_configs:
+              - targets: ['localhost:9090']
+
+          - job_name: 'clickhouse-metrics'
+            static_configs:
+              - targets: ['10.136.218.207:9363']
+                labels:
+                  instance: 'clickhouse-primary'
+
+          - job_name: 'node-exporter'
+            static_configs:
+              - targets: ['10.136.218.207:9111']
+                labels:
+                  instance: 'docker-host'" > /etc/prometheus/prometheus.yml && /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus
     volumes:
-      - /var/docker-data/monitor/prometheus:/etc/prometheus:ro
       - prometheus-data:/prometheus
     restart: unless-stopped
 
   node-exporter:
     image: prom/node-exporter:latest
     container_name: node-exporter
+
     ports:
-      - "9100:9100"
+      - "9111:9100"
     volumes:
       - /proc:/host/proc:ro
       - /sys:/host/sys:ro

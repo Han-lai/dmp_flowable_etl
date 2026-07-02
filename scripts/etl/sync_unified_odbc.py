@@ -512,6 +512,17 @@ def main():
         row_str = f"{s['rows']:,}"
         logger.info(f"{s['table']:<35} | {dur_str:>10} | {row_str:>10} | {s['status']}")
     logger.info("-" * 80)
+
+    # Fail loud: 任何一張表 FAILED 就 exit 非 0，讓 wrapper(set -e)/排程真正顯示失敗，
+    # 不再「全部失敗卻 exit 0、假裝 Complete」（masking bug）。
+    failed = [s for s in stats if s["status"] != "SUCCESS"]
+    if failed:
+        logger.error(
+            f"{len(failed)}/{len(stats)} table(s) FAILED: "
+            + ", ".join(s["table"] for s in failed)
+        )
+        sys.exit(1)
+
     logger.info("All operations completed.")
 
 if __name__ == "__main__":

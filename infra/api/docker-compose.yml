@@ -14,8 +14,8 @@ services:
       sh -c "pip install --no-cache-dir -r requirements.txt && 
              python main.py"
     environment:
-      - CLICKHOUSE_HOST=${CLICKHOUSE_HOST:-10.136.218.207}
+      - CLICKHOUSE_HOST=${CLICKHOUSE_HOST}
       - CLICKHOUSE_PORT=${CLICKHOUSE_PORT:-8121}
       - CLICKHOUSE_USERNAME=${CLICKHOUSE_USERNAME:-default}
-      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD:-default}
+      - CLICKHOUSE_PASSWORD=${CLICKHOUSE_PASSWORD}
     restart: always
