@@ -5,6 +5,59 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 ## 已完成里程碑 (Milestones)
 
+### 2026-07-02: Bronze 同步 MSSQL_PASSWORD 事故根因修復確認
+
+- **事故摘要**：每日排程（`sync_unified_odbc.py --table all`）的執行環境缺少 `MSSQL_PASSWORD` 環境變數，fallback 成空字串，ODBC bridge 以 `Pwd=;` 連 MSSQL 失敗（Code 86）。full 策略的 15 張維度表（`common_hr_employee`、`common_mdm_*` 等）每次 TRUNCATE 後 INSERT 失敗留空表，6/17、6/29、6/30 連續三天發生，每次靠人工手動補跑（`python sync_unified_odbc.py --table all` 帶正確環境變數）才恢復。
+- **修復**：infra 在正確的排程器環境補上 `MSSQL_PASSWORD`（及 `CLICKHOUSE_HOST`、`CLICKHOUSE_PASSWORD`）。
+- **驗證**：2026-07-02 00:00:11~00:00:34 自動排程首次成功完成，`bronze._sync_watermark` 所有 19 張表 `sync_time` 更新，full 策略表全部有資料。
+
+---
+
+### 2026-06-29~07-01: 安全性清洗、fail-loud 修復、Grafana 監控建置
+
+**GitHub 機敏資訊清洗**：
+- `git filter-repo` 清洗 192 commits 的完整歷史：移除 ClickHouse 真實密碼（`1qaz2wsx3edc`）、內部 IP（`10.146.206.76`、`10.136.218.207`）、`CUBEJS_API_SECRET` 舊密鑰（`dmp_flowable_cube_secret_key_2026`）
+- 128 筆公司帳號 `albee.lai@deltaww.com` 的 author/committer 全數改寫為 `Han-lai <sh41bee@gmail.com>`
+- Force-push 覆蓋 `github.com/Han-lai/dmp_flowable_etl` 的 `master` 與 `main` 分支
+- ClickHouse 密碼已旋轉（新密碼存於 `infra/.env`，不進版控）；CUBEJS_API_SECRET 換新密鑰並改由 `infra/.env` 提供
+- 全域規則寫入 `~/.claude/CLAUDE.md`：push GitHub 前一律禁止 IP/密碼出現，commit 用 Han-lai 身份
+
+**程式碼環境變數化（工作目錄未 commit）**：
+- `scripts/export/export_silver_detail.py` → `CH_HOST`/`CH_PASSWORD` 改為 `os.environ[...]` 必填
+- `infra/api/docker-compose.yml` → `CLICKHOUSE_HOST`/`CLICKHOUSE_PASSWORD` 移除 IP/密碼 fallback
+- `infra/cube/docker-compose.yml` → 同上，並補加 `env_file: ../.env`（原本寫死 IP，env_file 也缺失）
+- `scripts/etl/init_pipeline.sh` → 改用 `${VAR:?must be set}` 強制檢查必填
+- `claude.md` → 移除 IP 字串，改寫成「請見 `infra/.env`」
+- `infra/monitoring/docker-compose.yml` → 同步成線上實際版本（Prometheus port 9011、scrape config 內嵌）
+
+**`sync_unified_odbc.py` fail-loud 修復（工作目錄未 commit）**：
+- `main()` 結尾加 `sys.exit(1)`（11 行），當任何表狀態 `!= "SUCCESS"` 時 exit 非零
+- 修復「masking bug」：之前整批失敗仍 exit 0、排程顯示假成功，6/17 事故的直接元兇之一
+- 已用 `identitylink` 表（batch 策略，不 TRUNCATE）在缺少 MSSQL_PASSWORD 情境下實測觸發成功
+
+**Grafana Bronze Sync Monitoring（`http://10.136.218.207:9003`）**：
+- 新增 ClickHouse datasource `grafana-clickhouse-datasource-76` 指向 `10.146.206.76:9000`（正式環境）
+- 建立 Dashboard `Bronze Sync Monitoring (10.146.206.76)`，uid `afe90588-6fc1-494e-9b97-9a4d5e2b0cf6`，含 4 個 panel：
+  1. **近 24h 失敗計數**（stat，紅/綠燈閾值）
+  2. **失敗清單**（table，含 exception 完整文字）
+  3. **7 天失敗趨勢**（timeseries，每小時 bucket）
+  4. **表狀態總覽**：結合 `bronze._sync_watermark`（最後成功時間，快速查詢）+ `system.query_log`（最後失敗時間）；依 `sync_tables.yaml` 的 full/batch 策略分流：full 表用 `current_rows=0` → 🔴空表；batch 表只用 `hours_since_success>=24` → 🟠過期；兩者都正常 → ✅正常
+
+---
+
+### 2026-06-09: CH vs MSSQL 全線體對帳腳本建立與 vx_type 修正
+
+- **對帳腳本 `scripts/audit_all_lines.py` 建立**: 支援 `--period`（Day/Week/Month）、`--vx-type`（V1/V2/V3）、`--start/--end`、`--diff-only`、`--csv`、`--factory/--line/--plant` 等參數，輸出含 `dt`（每日日期）欄位，CSV 含 status 分類（diff/ok/only_ch/only_ms）。
+- **關鍵 Bug 修正：MSSQL vx_type 分類需複製 Silver 覆蓋規則**: 單純用 `TaskDefinitionKey LIKE 'V3%'` 會多算，因 Silver 有兩條覆蓋規則：(1) MoNumber 前三碼 IN ('196','199','200','210','212','213') → 強制 V1；(2) Factory='NPE' AND TaskDefinitionKey NOT LIKE 'V2%' → 強制 V1。SMT-S12 WJ2 案例：18,944 筆 TaskDefinitionKey=V3_xxx，但 CH Gold V3 只有 7,082 筆，差距來自 MoNumber 前綴覆蓋。
+- **period_type 差異釐清**: Cube 顯示 Done=1328（Month cohort），腳本預設 Day cohort 得到 911，兩者均正確但口徑不同，加入 `--period` 參數讓使用者明確選擇。
+- **2026-04-24~04-30 三版本對帳結果**:
+  - V3（Day）: 71條OK / 14條差異，最大差距 -8 筆，Done% 全部吻合 → 同步邊界效應
+  - V1（Day）: 1631 行輸出，6條差異
+  - V2（Day）: CH 無 V2 資料（0筆），MSSQL 有 563 筆 → 該期間 V2 任務均被 Silver 歸入 V1
+- **CSV 輸出**: 三份 CSV 保留於根目錄（diff_v3/v1/v2_daily_0424_0430.csv）
+
+---
+
 ### 2026-06-05: Cube 費率指標 floor() 修復與 todoRate/doingRate 新增
 
 - **費率規格 Rule 2 修復** (`8da3d57`): 將 `cube_l5_task_periodic.js` 與 `cube_l5_task_periodic_pivot.js` 中所有費率指標（doneRate, doingDoneRate, accRate, task_pct 系列）從 `round(..., 2) * 100` 改為 `floor(qty*100/total)`，結果以整數百分比呈現，value=1 → 100%，value<1 → 最高 99%。
@@ -86,6 +139,10 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 | :--- | :--- | :--- |
 | **正式庫置換上線** | ✅ 標準無後綴正式上線 | 已將舊庫封存為 _0202，並把驗證後的 0503 瞬間改名移入標準正式庫 |
 | **Bronze Sync Watermark** | ✅ 欄位擴充與自動時間追蹤 | 已新增 min_data_time 與 max_data_time 並支援平滑遷移與對稱測試 |
+| **Bronze Sync 排程穩定性** | ✅ MSSQL_PASSWORD 修復，2026-07-02 首次自動成功 | 事故：6/17、6/29、6/30 空密碼導致 15 張 full 表清空；已修復環境變數 |
+| **Grafana 監控 Dashboard** | ✅ Bronze Sync Monitoring 建立 | 指向正式環境 .76，4 panels，full/batch 分流判斷狀態 |
+| **sync_unified_odbc.py fail-loud** | ✅ sys.exit(1) patch（未 commit） | 修復靜默失敗 masking bug，已實測驗證 |
+| **GitHub 安全性清洗** | ✅ 密碼/IP/身份全數清洗 | git filter-repo 清洗 192 commits，已 force-push |
 | **ETL Catchup & Checkpoint** | ✅ 智能自動接龍與空窗自癒 | 支援 max(window_end) 接龍、空窗 Skip 與對稱測試 |
 | **狀態儀表板 Dashboard** | ✅ show_status 動態優化 | 支援 YAML 動態掃描、最舊最新資料時間完美整合同步呈現 |
 | **Silver Fact Layer** | ✅ V4.3 | 超級事實表 (Super Silver)，包含 L4、業務變數與時效 |
@@ -109,4 +166,10 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 - [x] backfill_silver.sql 共用 CTE 重構 (2026-06-04)。
 - [x] 費率指標統一改為 floor() 整數百分比，符合 Rule 2 規格 (2026-06-05)。
 - [x] 新增 todoRate / doingRate 至 L5TaskPeriodic Cube (2026-06-05)。
+- [x] GitHub 機敏資訊清洗（密碼/IP/作者身份）+ ClickHouse 密碼旋轉 (2026-06-29)
+- [x] sync_unified_odbc.py fail-loud sys.exit(1) + 實測驗證 (2026-06-29)
+- [x] Grafana Bronze Sync Monitoring dashboard 建立（4 panels）(2026-06-30)
+- [x] MSSQL_PASSWORD 環境變數修復，自動排程 2026-07-02 首次成功 (2026-07-02)
 - [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能。
+- [ ] sync_full_table() TRUNCATE 無回滾結構性風險（改暫存表替換方案）
+- [ ] 將工作目錄未 commit 修改推送至 GitLab

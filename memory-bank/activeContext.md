@@ -1,10 +1,40 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-06-08
+**最後更新**: 2026-07-02
 
 ---
 
 ## 🎯 當前焦點 (Current Focus)
+
+### ✅ 近期已解決 (2026-07-02 Bronze 同步 MSSQL_PASSWORD 事故根因修復確認)
+
+- **事故根因修復確認**：`sync_unified_odbc.py` 每日排程因執行環境缺少 `MSSQL_PASSWORD`，導致 ODBC 以空密碼連線 MSSQL 失敗。`full` 策略 15 張表在 TRUNCATE 後 INSERT 失敗留空表（6/17、6/29、6/30 連續發生）。infra 補上環境變數後，**2026-07-02 00:00 首次成功完成自動排程**，所有表均同步正常。
+- **驗證方式**：`bronze._sync_watermark` 所有表 `sync_time` 更新至 `2026-07-02 00:00:xx`，full 策略表 `current_rows` 均恢復非零。
+
+### ✅ 近期已解決 (2026-06-29~07-02 安全性清洗與監控建置)
+
+**GitHub 機敏資訊清洗**：
+- `git filter-repo` 清洗歷史：移除 ClickHouse 密碼、內部 IP（10.146.206.76、10.136.218.207）、CUBEJS_API_SECRET 舊密鑰
+- 192 個 commit 作者從 `albee.lai@deltaww.com` 改為 `Han-lai <sh41bee@gmail.com>`，force-push 至 `origin/master`
+- ClickHouse 密碼已旋轉，CUBEJS_API_SECRET 已換新密鑰並改用環境變數（`infra/.env`）
+- 程式碼環境變數化：5 個追蹤檔案移除寫死 IP/密碼（未 commit，留在工作目錄）
+
+**`sync_unified_odbc.py` fail-loud 機制（未 commit）**：
+- `main()` 結尾新增 `sys.exit(1)`，任何表失敗即讓排程真正回報失敗，修復「靜默失敗」bug
+- 搭配 `daily_etl_wrapper.sh` 的 `set -e` 生效，已實測驗證
+
+**Grafana Bronze Sync 監控 Dashboard**：
+- 新增 datasource 指向正式環境 `10.146.206.76:9000`
+- Dashboard「Bronze Sync Monitoring」含 4 個 panel：失敗計數、失敗清單、7天趨勢、表狀態總覽
+- Panel 4 依 full/batch 策略分流判斷：full 表看 `current_rows=0`（🔴空表）、batch 表看 `hours_since_success>=24`（🟠過期），不混用判斷邏輯
+- 資料來源：`system.query_log`（失敗原因）+ `bronze._sync_watermark`（最後成功時間，比掃描 query_log 更快）
+
+### ✅ 近期已解決 (2026-06-09 CH vs MSSQL 全線體對帳腳本)
+
+- **`scripts/audit_all_lines.py` 正式完成**: 支援 `--period`、`--vx-type`、`--start/--end`、`--diff-only`、`--csv`，每列包含 `dt` 日期欄位，可直接匯出 Excel 日期篩選。
+- **關鍵發現 — vx_type 查詢必須複製 Silver 覆蓋規則**: 不能只用 `TaskDefinitionKey LIKE 'V3%'`；需先排除 MoNumber 前三碼 IN ('196','199','200','210','212','213') 和 NPE factory 覆蓋，否則 V3 計數會虛高（SMT-S12 WJ2：18,944 → 7,082）。
+- **V3 2026-04-24~04-30 對帳結論**: 14 條差異線體，最大 -8 筆，Done% 全部吻合，為同步邊界效應，非資料錯誤。
+- **V2 期間空資料**: CH Gold V2 在此期間為 0，MSSQL 仍有 563 筆，正常（被 Silver NPE/MoNumber 規則歸入 V1）。
 
 ### ✅ 近期已解決 (2026-05-27 Phase 4 Cube 預聚合架構完成與 anchor_dt 全面遷移)
 - **Phase 4 預聚合架構正式上線**：
@@ -151,9 +181,12 @@
 
 **暫存腳本（可清理）**: `scripts/check_gold_region.py`、`scripts/verify_silver_region.py`、`scripts/fix_gold_empty_region.py`、`scripts/verify_oct_v2.py`
 
-### ⏩ 進行中
+### ⏩ 進行中 / 待處理
 - **語義層對接**: 已建立 `L5TaskDetailsSuper` Cube，準備在前端報表啟用新欄位。
 - **生產環境穩定運轉**: 持續觀察 ReplacingMergeTree 在高頻更新下的合併效能。
+- **sync_unified_odbc.py 結構性風險（未修）**: `sync_full_table()` 採 TRUNCATE-before-INSERT 無回滾設計，任何 INSERT 失敗（非密碼問題）仍會留空表。建議改為先寫暫存表確認成功再替換，或至少 INSERT 失敗時嘗試回填。
+- **未 commit 的修改**: 環境變數化的 5 個檔案（`export_silver_detail.py`、兩個 docker-compose、`init_pipeline.sh`、`claude.md`）以及 `sync_unified_odbc.py` fail-loud、`infra/monitoring/docker-compose.yml` 更新，目前僅在工作目錄，GitLab 未同步。
+- **Grafana `main` 分支待清除**: GitHub 預設分支切到 `master` 後可刪除多餘的 `main`。
 
 ## 🎯 專案當前狀態
 - **整體架構**: **V4.3 超級事實表 (Super Silver Architecture)**。
@@ -180,7 +213,15 @@
 - [x] backfill_silver.sql 共用 CTE 重構 (2026-06-04)
 - [x] 費率指標統一改為 floor() 整數百分比，符合 Rule 2 規格 (2026-06-05)
 - [x] 新增 todoRate / doingRate 至 L5TaskPeriodic Cube (2026-06-05)
+- [x] 建立 CH vs MSSQL 全線體對帳腳本 audit_all_lines.py，支援 period/vx-type 篩選與 dt 日期欄位 (2026-06-09)
+- [x] 修正 MSSQL vx_type 查詢邏輯，對齊 Silver backfill_silver.sql MoNumber/NPE 覆蓋規則 (2026-06-09)
+- [x] GitHub 機敏資訊清洗（密碼/IP/作者身份）+ ClickHouse 密碼旋轉 + CUBEJS_API_SECRET 更換 (2026-06-29)
+- [x] sync_unified_odbc.py fail-loud sys.exit(1) patch (2026-06-29)
+- [x] Grafana Bronze Sync Monitoring dashboard 建立（4 panels，正式環境 .76 datasource）(2026-06-30)
+- [x] MSSQL_PASSWORD 環境變數補上，自動排程恢復正常，2026-07-02 首次成功驗證 (2026-07-02)
 - [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能
 - [ ] 清理暫存驗證腳本 check_gold_region.py, verify_silver_region.py, fix_gold_empty_region.py, verify_oct_v2.py
+- [ ] sync_full_table() TRUNCATE 無回滾結構性風險修復（暫存表替換方案）
+- [ ] 將工作目錄未 commit 修改推送至 GitLab（環境變數化 + fail-loud + monitoring docker-compose）
 
 
