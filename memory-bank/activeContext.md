@@ -23,11 +23,16 @@
 - `main()` 結尾新增 `sys.exit(1)`，任何表失敗即讓排程真正回報失敗，修復「靜默失敗」bug
 - 搭配 `daily_etl_wrapper.sh` 的 `set -e` 生效，已實測驗證
 
-**Grafana Bronze Sync 監控 Dashboard**：
+**Grafana Bronze Sync 監控 Dashboard（2026-07-03 完成調校）**：
 - 新增 datasource 指向正式環境 `10.146.206.76:9000`
-- Dashboard「Bronze Sync Monitoring」含 4 個 panel：失敗計數、失敗清單、7天趨勢、表狀態總覽
-- Panel 4 依 full/batch 策略分流判斷：full 表看 `current_rows=0`（🔴空表）、batch 表看 `hours_since_success>=24`（🟠過期），不混用判斷邏輯
-- 資料來源：`system.query_log`（失敗原因）+ `bronze._sync_watermark`（最後成功時間，比掃描 query_log 更快）
+- `GF_SERVER_ROOT_URL=http://10.136.218.207:9003` 補入 docker-compose，告警郵件連結可點擊
+- Dashboard「Bronze Sync Monitoring」含 4 個 panel（version 15）：
+  1. **近 24h 失敗計數**：filter 精確錨定至 `ILIKE 'INSERT INTO bronze.%'`（不加前導 `%`，避免 SELECT 型監控查詢誤計）
+  2. **失敗清單**：移除 `query_kind`（ExceptionBeforeStart 永遠是 None），同精確 filter
+  3. **7 天趨勢（雙線）**：A=失敗次數（紅）/ B=成功同步表數（綠）。B 使用 `match()` regex + `uniq(extract(...))` 正確計算「不重複表數」，`match()` 解決 INSERT 前有 `\n` 縮排導致 ILIKE 錨定失效的問題；每次正常同步凌晨顯示 19 張
+  4. **表狀態總覽**：full/batch 策略分流，full 看 `current_rows=0`，batch 看 `hours_since_success>=24`
+- `hours_since_success`：距上次成功同步的小時數；< 24 = 正常，>= 24 = 🟠逾期
+- 告警規則：A→B(reduce)→C(threshold) 結構，`error_type` label 動態帶入郵件主旨與內文，SMTP via deltarelay.deltaww.com:25
 
 ### ✅ 近期已解決 (2026-06-09 CH vs MSSQL 全線體對帳腳本)
 
@@ -222,6 +227,7 @@
 - [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能
 - [ ] 清理暫存驗證腳本 check_gold_region.py, verify_silver_region.py, fix_gold_empty_region.py, verify_oct_v2.py
 - [ ] sync_full_table() TRUNCATE 無回滾結構性風險修復（暫存表替換方案）
+- [x] Grafana dashboard 雙線趨勢、精確 filter、GF_SERVER_ROOT_URL 完成調校（2026-07-03）
 - [ ] 將工作目錄未 commit 修改推送至 GitLab（環境變數化 + fail-loud + monitoring docker-compose）
 
 

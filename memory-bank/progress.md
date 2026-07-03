@@ -5,6 +5,17 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 ## 已完成里程碑 (Milestones)
 
+### 2026-07-03: Grafana Bronze Sync Monitoring 完整調校
+
+- **GF_SERVER_ROOT_URL** 補入 `infra/monitoring/docker-compose.yml`：告警郵件中的「View Dashboard」按鈕從 localhost 改為正確的 `http://10.136.218.207:9003`，點擊可直接開啟
+- **Dashboard Panel 修正**（最終 version 15）：
+  - 精確 filter：`ILIKE 'INSERT INTO bronze.%'`（錨定開頭），排除 SELECT 型 monitoring 自身查詢誤計；`ILIKE '%...'`（含前導 %）會造成 Grafana monitoring query 的 SQL 文字被計為 bronze 失敗
+  - ClickHouse 不支援 CJK alias（`AS 失敗次數` 語法錯誤）：改用英文 alias + Grafana `displayName` override 顯示中文
+  - `trim()` 不去 `\n`：INSERT 查詢前有換行縮排導致 ILIKE 錨定失效，改用 `match()` regex 解決
+  - Panel 3 B 系列改為 `uniq(extract(query, 'INSERT INTO (bronze\\.[a-z_]+)'))` 計算不重複表數，正常日凌晨顯示 19
+
+---
+
 ### 2026-07-02: Bronze 同步 MSSQL_PASSWORD 事故根因修復確認
 
 - **事故摘要**：每日排程（`sync_unified_odbc.py --table all`）的執行環境缺少 `MSSQL_PASSWORD` 環境變數，fallback 成空字串，ODBC bridge 以 `Pwd=;` 連 MSSQL 失敗（Code 86）。full 策略的 15 張維度表（`common_hr_employee`、`common_mdm_*` 等）每次 TRUNCATE 後 INSERT 失敗留空表，6/17、6/29、6/30 連續三天發生，每次靠人工手動補跑（`python sync_unified_odbc.py --table all` 帶正確環境變數）才恢復。
