@@ -1,10 +1,35 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-07-02
+**最後更新**: 2026-07-06
 
 ---
 
 ## 🎯 當前焦點 (Current Focus)
+
+### ✅ 近期已解決 (2026-07-06 專案清理：暫存檔 + 壞測試 + 死碼 SQL)
+
+- **未追蹤暫存內容清理**：刪除 `logs/output/`（16 個一次性除錯輸出）、`archive/`（25 個 V4 開發封存檔）、`prd_mssql/`（8 檔，含 527MB `done.csv`）、`.pytest_cache/`、多個 `__pycache__/`、`.deltacoder/`、以及未追蹤的 `api/reports.js`、`cube/model/cubes/staff_usage.js`（皆非 git 追蹤內容，刪除不影響版本歷史）。
+- **恢復誤刪檔案**：`README.md`、2 個 pptx、`requirements-dev.txt` 原本已在工作目錄被刪除（非本次或前次 session 所為，原因不明），已 `git checkout` 恢復。
+- **README.md 全面改寫**：修正失真連結、雙管線 Gold Summary 敘述、虛構的專案結構（舊版寫的 `api/routers/`、`cube/conf/`、`sql/queries/` 皆不存在），改為自足內容（不導向其他文件），新增「核心業務規則摘要」章節。
+- **修復 2 支壞掉的單元測試**（跑 `pytest tests/ -v` 驗證，11 個測試全綠）：
+  - `test_etl_windows.py`：原本 import 不存在的 `generate_windows()` 導致無法收集 → 在 `execute_etl.py` 把內嵌的視窗生成邏輯抽成獨立函數（純重構，逐行核對數學結果與原邏輯一致，無行為變動），與 `sync_unified_odbc.py` 的 `generate_batches()` 風格對稱。
+  - `test_audit_script.py`：斷言還在檢查舊的字串拼接 SQL，但 commit `9e56480` 已把 `audit_done_details.py` 改成 ClickHouse 參數化查詢（防 SQL injection）→ 改斷言驗證正確行為（佔位符進 SQL、實際值進 `parameters` 字典）。
+  - 環境問題：`venv/` 缺 `pytest`/`fastapi`/`pandas` 等 `requirements-dev.txt` 套件，`.venv/` 損毀（缺 `pyvenv.cfg`）；已在 `venv/` 補裝套件使測試可跑，但代表 clean checkout 後照 README 步驟會直接卡住，需要文件補一句「先 `pip install -r requirements-dev.txt`」。
+- **刪除 4 個死碼/重複 SQL 檔案**（git rm，已 staged 未 commit）：
+  - `sql/etl/schema/05_silver_dim_users.sql`、`sql/etl/schema/07_gold_kpi_user_utilization.sql`：整檔內容 100% 是註解的空殼 DDL，且引用已棄用的表名 `gold.rmv_user_utilization`（L7 現行方向已改走 `gold.tb_active_user_metrics`）。
+  - `sql/setup/00_init_databases.sql`：與 `setup_schema.py` 的 `initialize_databases()` 完全重複，且未被任何腳本引用。
+  - `sql/verification/06_validation.sql`：未被任何腳本引用，查詢已不存在的物件（`gold.rmv_user_utilization`、`system.view_refreshes` 對應已棄用的 Refreshable MV 架構、寫死日期的舊備份表）。
+  - 已同步清理 `infra_config.yaml` 中對應的註解殘留引用。
+
+### ✅ 近期已解決 (2026-07-03 AI 知識庫建立 — Fable 5 Intelligence Session)
+
+- **新增 `docs/08_ai_agent/` AI 知識庫（8 檔）**：00 入口地圖、01 風險評估（含文件失真清單）、02 已驗證模組地圖、03 技術 KB + 術語表、04 開發規範、05 事故踩坑錄、06 AI 工作流程、07 交接補充。
+- **新根目錄 `CLAUDE.md`**：取代已刪除的過時版本（舊版引用不存在的腳本），內含鐵律 + 導航 + 關鍵事實速記。
+- **修正失真的 `sql/etl/dml/README.md`**：對齊 pipeline_config.yaml 的 8-phase 實況（舊版引用不存在的 sync_gold_unified.sql、誤標 backfill_gold.sql 已棄用）。
+- **重要發現**：
+  1. 🔴 5 個已 commit 檔案含內部 IP（memory-bank 三檔、grafana_dashboard_setup.md、monitoring compose），progress.md 另含已退役 CH 舊密碼 → **push GitHub 前必須清洗**。
+  2. ✅ 315 工單規則不一致已決策（2026-07-06）：查證 Silver 表 mo_number 前綴 315 共 69 萬筆（88.5% 現為 V3），套用 `.kiro` spec 要求會造成大規模重新分類；配合變更記錄「315% 規則會致跨流程誤判」的既有結論，**維持現狀不套用**，該 spec 視為過時。已修正 `systemPatterns.md` 的錯誤記錄。
+  3. ⚠ Cohort 結算邏輯雙處維護：silver status_* 欄位（明細用）與 gold milestone 內聯條件（KPI 用）非共用，修改需同步。
 
 ### ✅ 近期已解決 (2026-07-02 Bronze 同步 MSSQL_PASSWORD 事故根因修復確認)
 
@@ -14,7 +39,7 @@
 ### ✅ 近期已解決 (2026-06-29~07-02 安全性清洗與監控建置)
 
 **GitHub 機敏資訊清洗**：
-- `git filter-repo` 清洗歷史：移除 ClickHouse 密碼、內部 IP（10.146.206.76、10.136.218.207）、CUBEJS_API_SECRET 舊密鑰
+- `git filter-repo` 清洗歷史：移除 ClickHouse 密碼、內部 IP（正式 CH 主機、監控主機）、CUBEJS_API_SECRET 舊密鑰
 - 192 個 commit 作者從 `albee.lai@deltaww.com` 改為 `Han-lai <sh41bee@gmail.com>`，force-push 至 `origin/master`
 - ClickHouse 密碼已旋轉，CUBEJS_API_SECRET 已換新密鑰並改用環境變數（`infra/.env`）
 - 程式碼環境變數化：5 個追蹤檔案移除寫死 IP/密碼（未 commit，留在工作目錄）
@@ -24,8 +49,8 @@
 - 搭配 `daily_etl_wrapper.sh` 的 `set -e` 生效，已實測驗證
 
 **Grafana Bronze Sync 監控 Dashboard（2026-07-03 完成調校）**：
-- 新增 datasource 指向正式環境 `10.146.206.76:9000`
-- `GF_SERVER_ROOT_URL=http://10.136.218.207:9003` 補入 docker-compose，告警郵件連結可點擊
+- 新增 datasource 指向正式環境 `<CLICKHOUSE_HOST>:9000`
+- `GF_SERVER_ROOT_URL=http://<MONITOR_HOST>:9003` 補入 docker-compose，告警郵件連結可點擊
 - Dashboard「Bronze Sync Monitoring」含 4 個 panel（version 15）：
   1. **近 24h 失敗計數**：filter 精確錨定至 `ILIKE 'INSERT INTO bronze.%'`（不加前導 `%`，避免 SELECT 型監控查詢誤計）
   2. **失敗清單**：移除 `query_kind`（ExceptionBeforeStart 永遠是 None），同精確 filter
@@ -229,5 +254,10 @@
 - [ ] sync_full_table() TRUNCATE 無回滾結構性風險修復（暫存表替換方案）
 - [x] Grafana dashboard 雙線趨勢、精確 filter、GF_SERVER_ROOT_URL 完成調校（2026-07-03）
 - [ ] 將工作目錄未 commit 修改推送至 GitLab（環境變數化 + fail-loud + monitoring docker-compose）
+- [x] 315 工單規則決策：查證影響 69 萬筆任務，維持現狀不套用，.kiro spec 視為過時（2026-07-06）
+- [x] 清洗 5 個含 IP/舊密碼的追蹤檔（memory-bank 三檔、grafana_dashboard_setup.md、monitoring compose→env 插值），commit `263dfa1`；並還原被誤刪的 `.gitignore`（2026-07-06）
+- [ ] **GitHub 同步需走 cherry-pick**：本地 master 與 origin/master（filter-repo 清洗版）歷史完全分叉、本地歷史仍含舊機敏字串，**絕不可直接 force-push master**；需從 origin/master 建分支 cherry-pick 新 commits 後推送
+- [ ] 監控主機部署注意：`infra/monitoring/docker-compose.yml` 改用必填變數，重啟前需在該主機建立 `infra/monitoring/.env`（MONITOR_HOST、GRAFANA_ADMIN_PASSWORD）
+- [ ] commit 新建的 AI 知識庫（docs/08_ai_agent/、CLAUDE.md、sql/etl/dml/README.md 修正）與已刪除檔案的處置確認
 
 

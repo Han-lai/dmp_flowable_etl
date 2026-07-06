@@ -6,10 +6,12 @@
 
 | Dashboard | 目的 | Datasource |
 |---|---|---|
-| [Bronze Sync Monitoring](#一-bronze-sync-monitoring-dashboard) | 監控每日 MSSQL→Bronze 同步是否成功 | ClickHouse `10.146.206.76`（正式環境） |
-| [clickhouse-l5-perf](#二-l5-效能監控-dashboard) | 監控 L5 查詢對 ClickHouse 資源的消耗 | ClickHouse `10.136.218.207` + Prometheus |
+| [Bronze Sync Monitoring](#一-bronze-sync-monitoring-dashboard) | 監控每日 MSSQL→Bronze 同步是否成功 | ClickHouse `<CLICKHOUSE_HOST>`（正式環境） |
+| [clickhouse-l5-perf](#二-l5-效能監控-dashboard) | 監控 L5 查詢對 ClickHouse 資源的消耗 | ClickHouse `<MONITOR_HOST>` + Prometheus |
 
-Grafana 入口：`http://10.136.218.207:9003`
+Grafana 入口：`http://<MONITOR_HOST>:9003`
+
+> 主機實際 IP 不進版控：`<CLICKHOUSE_HOST>` 見 `infra/.env`，`<MONITOR_HOST>` 見 `infra/monitoring/.env`。
 
 ---
 
@@ -18,7 +20,7 @@ Grafana 入口：`http://10.136.218.207:9003`
 **目的**：每日排程（`sync_unified_odbc.py`）同步 MSSQL→Bronze 的健康狀態監控。過去曾因 `MSSQL_PASSWORD` 環境變數缺失，導致 full 策略表在 TRUNCATE 後 INSERT 失敗、15 張維度表連續三天被清空（2026-06-17/29/30 事故）。此 Dashboard 讓異常可見。
 
 **Dashboard uid**: `afe90588-6fc1-494e-9b97-9a4d5e2b0cf6`
-**Datasource**: `grafana-clickhouse-datasource-76`（uid: `cfqkyxfkb2hhcf`），指向正式 ClickHouse `10.146.206.76:9000`
+**Datasource**: `grafana-clickhouse-datasource-76`（uid: `cfqkyxfkb2hhcf`），指向正式 ClickHouse `<CLICKHOUSE_HOST>:9000`
 
 ### Panel 清單
 

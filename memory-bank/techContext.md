@@ -92,12 +92,12 @@ python scripts/etl/execute_etl.py --status
 
 ## 監控
 
-### Grafana（`http://10.136.218.207:9003`）
+### Grafana（`http://<MONITOR_HOST>:9003`，IP 見 `infra/monitoring/.env`）
 
 | Dashboard | 用途 | Datasource |
 |---|---|---|
-| `Bronze Sync Monitoring` | 每日 MSSQL→Bronze 同步健康狀態，含表狀態（🔴/🟠/✅）| ClickHouse `10.146.206.76` |
-| `clickhouse-l5-perf` | L5 查詢效能（CPU/記憶體/慢查詢）| ClickHouse `10.136.218.207` + Prometheus |
+| `Bronze Sync Monitoring` | 每日 MSSQL→Bronze 同步健康狀態，含表狀態（🔴/🟠/✅）| ClickHouse `<CLICKHOUSE_HOST>`（正式） |
+| `clickhouse-l5-perf` | L5 查詢效能（CPU/記憶體/慢查詢）| ClickHouse `<MONITOR_HOST>` + Prometheus |
 
 ### Bronze 同步狀態快速診斷 SQL
 

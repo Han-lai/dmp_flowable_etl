@@ -7,7 +7,7 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 ### 2026-07-03: Grafana Bronze Sync Monitoring 完整調校
 
-- **GF_SERVER_ROOT_URL** 補入 `infra/monitoring/docker-compose.yml`：告警郵件中的「View Dashboard」按鈕從 localhost 改為正確的 `http://10.136.218.207:9003`，點擊可直接開啟
+- **GF_SERVER_ROOT_URL** 補入 `infra/monitoring/docker-compose.yml`：告警郵件中的「View Dashboard」按鈕從 localhost 改為正確的 `http://<MONITOR_HOST>:9003`，點擊可直接開啟
 - **Dashboard Panel 修正**（最終 version 15）：
   - 精確 filter：`ILIKE 'INSERT INTO bronze.%'`（錨定開頭），排除 SELECT 型 monitoring 自身查詢誤計；`ILIKE '%...'`（含前導 %）會造成 Grafana monitoring query 的 SQL 文字被計為 bronze 失敗
   - ClickHouse 不支援 CJK alias（`AS 失敗次數` 語法錯誤）：改用英文 alias + Grafana `displayName` override 顯示中文
@@ -27,7 +27,7 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 ### 2026-06-29~07-01: 安全性清洗、fail-loud 修復、Grafana 監控建置
 
 **GitHub 機敏資訊清洗**：
-- `git filter-repo` 清洗 192 commits 的完整歷史：移除 ClickHouse 真實密碼（`1qaz2wsx3edc`）、內部 IP（`10.146.206.76`、`10.136.218.207`）、`CUBEJS_API_SECRET` 舊密鑰（`dmp_flowable_cube_secret_key_2026`）
+- `git filter-repo` 清洗 192 commits 的完整歷史：移除 ClickHouse 真實密碼（已旋轉的舊值）、內部 IP（正式 CH 主機與監控主機）、`CUBEJS_API_SECRET` 舊密鑰——原值一律不再記錄於版控文件
 - 128 筆公司帳號 `albee.lai@deltaww.com` 的 author/committer 全數改寫為 `Han-lai <sh41bee@gmail.com>`
 - Force-push 覆蓋 `github.com/Han-lai/dmp_flowable_etl` 的 `master` 與 `main` 分支
 - ClickHouse 密碼已旋轉（新密碼存於 `infra/.env`，不進版控）；CUBEJS_API_SECRET 換新密鑰並改由 `infra/.env` 提供
@@ -46,9 +46,9 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 - 修復「masking bug」：之前整批失敗仍 exit 0、排程顯示假成功，6/17 事故的直接元兇之一
 - 已用 `identitylink` 表（batch 策略，不 TRUNCATE）在缺少 MSSQL_PASSWORD 情境下實測觸發成功
 
-**Grafana Bronze Sync Monitoring（`http://10.136.218.207:9003`）**：
-- 新增 ClickHouse datasource `grafana-clickhouse-datasource-76` 指向 `10.146.206.76:9000`（正式環境）
-- 建立 Dashboard `Bronze Sync Monitoring (10.146.206.76)`，uid `afe90588-6fc1-494e-9b97-9a4d5e2b0cf6`，含 4 個 panel：
+**Grafana Bronze Sync Monitoring（`http://<MONITOR_HOST>:9003`）**：
+- 新增 ClickHouse datasource `grafana-clickhouse-datasource-76` 指向 `<CLICKHOUSE_HOST>:9000`（正式環境）
+- 建立 Dashboard `Bronze Sync Monitoring`（正式環境 CH），uid `afe90588-6fc1-494e-9b97-9a4d5e2b0cf6`，含 4 個 panel：
   1. **近 24h 失敗計數**（stat，紅/綠燈閾值）
   2. **失敗清單**（table，含 exception 完整文字）
   3. **7 天失敗趨勢**（timeseries，每小時 bucket）

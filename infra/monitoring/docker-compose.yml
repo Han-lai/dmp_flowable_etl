@@ -5,9 +5,10 @@ services:
     ports:
       - "9003:3000"
     environment:
-      - GF_SECURITY_ADMIN_PASSWORD=admin
+      # MONITOR_HOST / GRAFANA_ADMIN_PASSWORD 由同目錄 .env 提供（不進版控），缺失時 compose 直接報錯
+      - GF_SECURITY_ADMIN_PASSWORD=${GRAFANA_ADMIN_PASSWORD:?GRAFANA_ADMIN_PASSWORD must be set in infra/monitoring/.env}
       - GF_INSTALL_PLUGINS=grafana-clickhouse-datasource
-      - GF_SERVER_ROOT_URL=http://10.136.218.207:9003
+      - GF_SERVER_ROOT_URL=http://${MONITOR_HOST:?MONITOR_HOST must be set in infra/monitoring/.env}:9003
       - GF_SMTP_ENABLED=true
       - GF_SMTP_HOST=deltarelay.deltaww.com:25
       - GF_SMTP_FROM_ADDRESS=grafana-alert@deltaww.com
@@ -40,13 +41,13 @@ services:
 
           - job_name: 'clickhouse-metrics'
             static_configs:
-              - targets: ['10.136.218.207:9363']
+              - targets: ['${MONITOR_HOST}:9363']
                 labels:
                   instance: 'clickhouse-primary'
 
           - job_name: 'node-exporter'
             static_configs:
-              - targets: ['10.136.218.207:9111']
+              - targets: ['${MONITOR_HOST}:9111']
                 labels:
                   instance: 'docker-host'" > /etc/prometheus/prometheus.yml && /bin/prometheus --config.file=/etc/prometheus/prometheus.yml --storage.tsdb.path=/prometheus
     volumes:
