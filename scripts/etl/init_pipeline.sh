@@ -39,6 +39,11 @@ echo "=== Phase 2: Full sync from external data (MSSQL -> Bronze) ==============
 # Using OOM-protected ODBC engine with adaptive batch sync support
 python scripts/etl/sync_unified_odbc.py --table all
 
+echo ""
+echo "=== Phase 2.5: Populate MDM-dependent dimension table (mv_dim_mfg_five_level) ==="
+# Must run after Bronze sync: this table's source data (bronze.common_mdm_*) only exists post-sync
+python scripts/etl/setup_schema.py --file sql/etl/dml/init_dim_mfg_five_level.sql
+
 if [[ "$MODE" == "--low-ram" ]]; then
     echo ""
     echo "=== Phase 3: Starting precise dimension and fact calculation engine (Backfill) ====================="

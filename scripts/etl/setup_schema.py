@@ -108,15 +108,25 @@ def execute_sql_file(client, sql_file: Path, description: str, force=False):
 def main():
     parser = argparse.ArgumentParser(description="Infrastructure Setup Tool")
     parser.add_argument("--force", action="store_true", help="Force execution of DDLs even if tables exist")
+    parser.add_argument("--file", type=str, help="Execute a single SQL file directly, bypassing the setup_scripts loop")
     args = parser.parse_args()
-    
+
     try:
         client = get_client()
+
+        if args.file:
+            sql_file = Path(args.file)
+            if not sql_file.exists():
+                print(f"Error: File not found {sql_file}")
+                sys.exit(1)
+            execute_sql_file(client, sql_file, "Single file execution", force=True)
+            return
+
         initialize_databases(client)
-        
+
         script_dir = Path(__file__).resolve().parent
         sql_dir = script_dir.parent.parent / 'sql' / 'etl' / 'schema'
-        
+
         for script in INFRA_CONFIG.get('setup_scripts', []):
             sql_file_name = script['file']
             description = script.get('desc', '') # Make desc optional
