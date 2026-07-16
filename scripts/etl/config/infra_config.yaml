@@ -17,6 +17,7 @@ setup_scripts:
   - file: "03_silver_pivot_and_hierarchy.sql" # Silver Layer 1 - Transposed Variables & Org Hierarchy
   - file: "04_silver_fact_tasks.sql" # Silver Layer 2 - Fact Tasks (V4.3Multi-Time Dimension)
   - file: "06_gold_kpi_task_completion.sql" # Gold Layer 1 - KPI Task Completion (L5)
+  - file: "06b_gold_kpi_task_summary.sql" # Gold Layer 1b - KPI Task Summary (L5 預聚合, V4.3 cube 讀取來源)
   # L7 人員使用率 (05_silver_dim_users.sql / 07_gold_kpi_user_utilization.sql) 已於 2026-07 移除：
   # 兩檔皆為整檔已註解的空殼 DDL，且引用已棄用的表名 gold.rmv_user_utilization；
   # 現行 L7 開發改走 gold.tb_active_user_metrics（cube 端對應 staff_usage.js，狀態見 memory-bank）。
