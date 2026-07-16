@@ -3,7 +3,7 @@
 -- 正確路徑: line_desc → prod_area → factory_area → mfg_site
 -- 前置: bronze.common_mdm_* 系列表必須已透過 sync_unified_odbc.py 同步過資料
 --       (不是只要表存在，是要有實際資料，否則本語句會 INSERT 0 筆)
--- 執行時機: Bronze 同步完成後、Silver/Gold 運算開始前 (init_pipeline.sh Phase 2.5)
+-- 執行時機: 由 sync_unified_odbc.py 在 --table all 且全部同步成功後自動呼叫 (見該檔案 main() 尾端)
 -- 冪等性: 先 TRUNCATE 再 INSERT，避免重跑時因 ReplacingMergeTree 尚未背景合併
 --         導致重複列，讓下游 backfill_silver.sql 的 JOIN（未加 FINAL）產生 fan-out。
 -- ========================================

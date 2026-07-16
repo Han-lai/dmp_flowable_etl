@@ -14,8 +14,10 @@ import time
 import argparse
 import os
 import yaml
+from pathlib import Path
 from datetime import datetime, timedelta
 import clickhouse_connect
+from setup_schema import execute_sql_file
 
 # ClickHouse Configuration
 CLICKHOUSE_CONFIG = {
@@ -522,6 +524,15 @@ def main():
             + ", ".join(s["table"] for s in failed)
         )
         sys.exit(1)
+
+    # Rebuild the derived MDM five-level dimension table from the freshly synced
+    # bronze.common_mdm_* tables. Runs only after a clean full sync (see 'failed'
+    # check above) so it never rebuilds from a partially-synced state, and only
+    # for --table all since targeted single-table syncs don't touch MDM sources.
+    if args.table == 'all' and not args.dry_run:
+        dml_file = Path(__file__).resolve().parent.parent.parent / 'sql' / 'etl' / 'dml' / 'init_dim_mfg_five_level.sql'
+        logger.info("Rebuilding silver.mv_dim_mfg_five_level from synced MDM tables...")
+        execute_sql_file(client, dml_file, "MDM five-level dimension rebuild", force=True)
 
     logger.info("All operations completed.")
 

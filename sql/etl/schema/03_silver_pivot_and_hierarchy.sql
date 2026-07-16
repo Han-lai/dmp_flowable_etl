@@ -73,4 +73,4 @@ SETTINGS allow_nullable_key = 1;
 
 -- 資料填充已移至 sql/etl/dml/init_dim_mfg_five_level.sql
 -- 原因: 本檔案在 setup_schema.py (Phase 1) 執行，早於 bronze.common_mdm_* 的資料同步 (Phase 2)，
---       若在此處直接 INSERT 會抓到空表。改為 init_pipeline.sh 在 Phase 2 同步完成後才呼叫該檔案。
+--       若在此處直接 INSERT 會抓到空表。改為由 sync_unified_odbc.py 在 --table all 同步成功後自動呼叫該檔案。

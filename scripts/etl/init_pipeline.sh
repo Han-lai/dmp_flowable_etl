@@ -13,10 +13,15 @@ cd "$PROJECT_ROOT"
 
 : "${CLICKHOUSE_HOST:?CLICKHOUSE_HOST must be set}"
 : "${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set}"
+# MSSQL_PASSWORD defaults to "" in sync_unified_odbc.py if unset, which causes a silent
+# ODBC login failure -> TRUNCATE succeeds but the following INSERT fails -> empty bronze
+# tables (2026-06 incident). Fail loud here instead of letting Phase 2 wipe data quietly.
+: "${MSSQL_PASSWORD:?MSSQL_PASSWORD must be set (empty value caused a bronze table wipe incident on 2026-06)}"
 export CLICKHOUSE_HOST
 export CLICKHOUSE_PORT="${CLICKHOUSE_PORT:-8121}"
 export CLICKHOUSE_USERNAME="${CLICKHOUSE_USERNAME:-default}"
 export CLICKHOUSE_PASSWORD
+export MSSQL_PASSWORD
 
 LOW_RAM_FLAG=""
 if [[ "$MODE" == "--low-ram" ]]; then
@@ -37,12 +42,8 @@ python scripts/etl/setup_schema.py
 echo ""
 echo "=== Phase 2: Full sync from external data (MSSQL -> Bronze) ==========================="
 # Using OOM-protected ODBC engine with adaptive batch sync support
+# (also rebuilds silver.mv_dim_mfg_five_level from freshly synced MDM tables, see sync_unified_odbc.py)
 python scripts/etl/sync_unified_odbc.py --table all
-
-echo ""
-echo "=== Phase 2.5: Populate MDM-dependent dimension table (mv_dim_mfg_five_level) ==="
-# Must run after Bronze sync: this table's source data (bronze.common_mdm_*) only exists post-sync
-python scripts/etl/setup_schema.py --file sql/etl/dml/init_dim_mfg_five_level.sql
 
 if [[ "$MODE" == "--low-ram" ]]; then
     echo ""
