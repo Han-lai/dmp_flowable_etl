@@ -12,6 +12,9 @@ import re
 from pathlib import Path
 import yaml
 
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # =================================================================
 # 1. Configuration
 # =================================================================
@@ -23,8 +26,6 @@ CH_CONFIG = {
     'password': os.getenv('CLICKHOUSE_PASSWORD', '<CLICKHOUSE_PASSWORD>'),
     'database': os.getenv('CLICKHOUSE_DATABASE', 'default')
 }
-
-
 # ==========================================
 # Load Infrastructure Configuration from YAML
 # ==========================================
@@ -52,25 +53,29 @@ def initialize_databases(client):
     for db in INFRA_CONFIG.get('databases', []):
         try:
             client.command(f"CREATE DATABASE IF NOT EXISTS {db}")
-            print(f" - {db:10}: OK")
+            print(f" - {db:16}: OK")
         except Exception as e:
-            print(f" - {db:10}: Failed - {e}")
+            print(f" - {db:16}: Failed - {e}")
 
 def execute_sql_file(client, sql_file: Path, description: str, force=False):
     print(f"\n{'-'*60}")
     print(f"Deploying: {sql_file.name} ({description})")
-    
+
     sql_content = sql_file.read_text(encoding='utf-8')
     
     # Simple parser to find table names in DDL
     pattern = re.compile(r'CREATE\s+(?:OR\s+REPLACE\s+)?(?:TABLE|VIEW|MATERIALIZED\s+VIEW)\s+(?:IF\s+NOT\s+EXISTS\s+)?([a-zA-Z0-9_.]+)', re.IGNORECASE)
     tables = pattern.findall(sql_content)
-    
+
+    # 預先查出已存在的表，供逐句執行時略過。
+    # ⚠ 快照在執行前一次查定：若日後啟用同檔案內的 DROP TABLE，後續 CREATE 會被誤跳過。
+    existing_tables = set()
     if not force:
         for table in tables:
             try:
                 if client.command(f"EXISTS TABLE {table}"):
                     print(f"   ! Table {table} already exists. Use --force to recreate if needed.")
+                    existing_tables.add(table.lower())
             except: pass
 
     # Strip /* ... */ block comments first, then split on ';' outside of line comments.
@@ -90,20 +95,36 @@ def execute_sql_file(client, sql_file: Path, description: str, force=False):
                 statements.append(stmt)
             current = []
     
+    # 略過與失敗分開計數，避免「全部已存在」被印成 0/7 而誤讀為整份 DDL 失敗
     success = 0
+    skipped = 0
+    failed = 0
     for i, stmt in enumerate(statements, 1):
         if not stmt.strip():
+            skipped += 1
             continue
         if stmt.strip().upper().startswith('SELECT'):
             print(f"   [Skip] Statement {i} is a SELECT — DDL files should not contain SELECT statements.")
+            skipped += 1
             continue
+
+        stmt_match = pattern.search(stmt)
+        stmt_table = stmt_match.group(1).lower() if stmt_match else None
+        if stmt_table and stmt_table in existing_tables:
+            print(f"   [Skip] Statement {i} ({stmt_table}) already exists — use --force to recreate.")
+            skipped += 1
+            continue
+
         try:
             client.command(stmt)
             success += 1
         except Exception as e:
+            failed += 1
             print(f"   [Error] Statement {i}: {e}")
-    
-    print(f"Successfully executed {success}/{len(statements)} statements.")
+
+    total = len(statements)
+    summary = f"Statements: {total} total | {success} executed | {skipped} skipped | {failed} failed"
+    print(summary if failed == 0 else f"{summary}  <-- CHECK ERRORS ABOVE")
 
 def main():
     parser = argparse.ArgumentParser(description="Infrastructure Setup Tool")
