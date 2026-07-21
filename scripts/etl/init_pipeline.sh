@@ -20,10 +20,9 @@ export CLICKHOUSE_PORT="${CLICKHOUSE_PORT:-8121}"
 export CLICKHOUSE_USERNAME="${CLICKHOUSE_USERNAME:-default}"
 export CLICKHOUSE_PASSWORD
 export MSSQL_PASSWORD
-SYNC_CONFIG="${SYNC_CONFIG:-sync_tables.yaml}"
-# 對齊 sync_tables.yaml 的 history_start；更早的區間 Bronze 無資料，只會空跑整欄掃描
+# 對齊 sync_tables.yaml 的 history_start；execute_etl.py 的預設 2025-01-01 比 bronze
+# 實際資料起點早九個月，會空跑大量窗格
 BACKFILL_START="${BACKFILL_START:-2025-10-01}"
-BACKFILL_END="${BACKFILL_END:-$(date +%F)}"
 
 LOW_RAM_FLAG=""
 if [[ "$MODE" == "--low-ram" ]]; then
@@ -38,25 +37,21 @@ else
 fi
 
 echo ""
-echo "--- Sync config: $SYNC_CONFIG | Backfill window: $BACKFILL_START ~ $BACKFILL_END"
-
-echo ""
 echo "=== Phase 1: Setting up ClickHouse base schema =============================="
 python scripts/etl/setup_schema.py
 
 echo ""
 echo "=== Phase 2: Full sync from external data (MSSQL -> Bronze) ==========================="
-echo "    Using sync config: $SYNC_CONFIG"
 # Using OOM-protected ODBC engine with adaptive batch sync support
 # (also rebuilds silver.mv_dim_mfg_five_level from freshly synced MDM tables, see sync_unified_odbc.py)
-python scripts/etl/sync_unified_odbc.py --table all --config "$SYNC_CONFIG"
+python scripts/etl/sync_unified_odbc.py --table all
 
 if [[ "$MODE" == "--low-ram" ]]; then
     echo ""
     echo "=== Phase 3: Starting precise dimension and fact calculation engine (Backfill) ====================="
-    echo "    Backfill window: $BACKFILL_START ~ $BACKFILL_END"
+    echo "    Backfill from: $BACKFILL_START"
     # Using upgraded unified compute engine with checkpointing and OOM protection
-    python scripts/etl/execute_etl.py --backfill $LOW_RAM_FLAG --start "$BACKFILL_START" --end "$BACKFILL_END"
+    python scripts/etl/execute_etl.py --backfill $LOW_RAM_FLAG --start "$BACKFILL_START"
 else
     # ================= HIGH-RAM =================
     echo ""
@@ -68,5 +63,4 @@ fi
 echo ""
 echo "=============================================="
 echo " Pipeline initialization complete!"
-echo " Next step: Check application API (curl http://${CLICKHOUSE_HOST}:7088/docs)"
 echo "=============================================="
