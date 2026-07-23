@@ -47,3 +47,6 @@ docs/archive/
 docs/reports/
 # Validation scripts (excluded from Git for deployment)
 scripts/validation/
+
+# Local KPI exports (S3 下載的 .csv.gz / 轉出的 .xlsx，大量資料檔，不進版控)
+exports/
