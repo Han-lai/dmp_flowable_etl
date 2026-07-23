@@ -57,13 +57,15 @@ SELECT
          ELSE 'TODO' END AS status_daily,
          
     -- 週結算：任務是否在「開單當週」結束前完工，用於週報表結算 (確保跨日任務在週報不重複計數)
-    CASE WHEN t.END_TIME_ IS NOT NULL AND toDate(t.END_TIME_) <= (toStartOfWeek(toDate(t.START_TIME_), 3) + INTERVAL 6 DAY) THEN 'DONE'
-         WHEN t.CLAIM_TIME_ IS NOT NULL AND toDate(t.CLAIM_TIME_) <= (toStartOfWeek(toDate(t.START_TIME_), 3) + INTERVAL 6 DAY) THEN 'DOING'
+    -- 使用已濾 1970 哨兵的 task_end_date/task_claim_date (NULL-aware)，對齊 gold milestone；
+    -- 避免直接用原始 END_TIME_/CLAIM_TIME_ 導致 1970 假日期 <= 週底恆成立而誤判 DONE/DOING。
+    CASE WHEN task_end_date   IS NOT NULL AND task_end_date   <= (toStartOfWeek(task_start_date, 3) + INTERVAL 6 DAY) THEN 'DONE'
+         WHEN task_claim_date IS NOT NULL AND task_claim_date <= (toStartOfWeek(task_start_date, 3) + INTERVAL 6 DAY) THEN 'DOING'
          ELSE 'TODO' END AS status_weekly,
-         
-    -- 月結算：任務是否在「開單當月」結束前完工，用於月報表結算
-    CASE WHEN t.END_TIME_ IS NOT NULL AND toDate(t.END_TIME_) <= toLastDayOfMonth(toDate(t.START_TIME_)) THEN 'DONE'
-         WHEN t.CLAIM_TIME_ IS NOT NULL AND toDate(t.CLAIM_TIME_) <= toLastDayOfMonth(toDate(t.START_TIME_)) THEN 'DOING'
+
+    -- 月結算：任務是否在「開單當月」結束前完工，用於月報表結算 (NULL-aware，對齊 gold milestone)
+    CASE WHEN task_end_date   IS NOT NULL AND task_end_date   <= toLastDayOfMonth(task_start_date) THEN 'DONE'
+         WHEN task_claim_date IS NOT NULL AND task_claim_date <= toLastDayOfMonth(task_start_date) THEN 'DOING'
          ELSE 'TODO' END AS status_monthly,
 
     -- [D] 製造五階維度：定義業務分類 (V1/V2/V3)
