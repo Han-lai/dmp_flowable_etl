@@ -24,6 +24,12 @@ export MSSQL_PASSWORD
 # 實際資料起點早九個月，會空跑大量窗格
 BACKFILL_START="${BACKFILL_START:-2025-10-01}"
 
+# Phase 2 Bronze 同步時間窗（只影響 batch 策略的 fact 表；full 維度表照常整表同步）。
+# SYNC_START 空 = 不帶 --start，batch 表從 watermark 續跑（等同現狀）。
+# SYNC_START 有值 = 從該日起按 step_days 自動切窗拉取，不再無邊界一次 all。
+SYNC_START="${SYNC_START:-}"
+SYNC_END="${SYNC_END:-$(date +%F)}"
+
 LOW_RAM_FLAG=""
 if [[ "$MODE" == "--low-ram" ]]; then
     LOW_RAM_FLAG="--low-ram"
@@ -44,7 +50,11 @@ echo ""
 echo "=== Phase 2: Full sync from external data (MSSQL -> Bronze) ==========================="
 # Using OOM-protected ODBC engine with adaptive batch sync support
 # (also rebuilds silver.mv_dim_mfg_five_level from freshly synced MDM tables, see sync_unified_odbc.py)
-python scripts/etl/sync_unified_odbc.py --table all
+# 帶時間窗：batch 表按 --start/--end 自動切成 step_days 小批拉取，降低單批 MSSQL 峰值。
+SYNC_ARGS=(--table all --end "$SYNC_END")
+[[ -n "$SYNC_START" ]] && SYNC_ARGS+=(--start "$SYNC_START")
+echo "    Sync window: ${SYNC_START:-<from watermark>} -> $SYNC_END"
+python scripts/etl/sync_unified_odbc.py "${SYNC_ARGS[@]}"
 
 if [[ "$MODE" == "--low-ram" ]]; then
     echo ""
