@@ -127,7 +127,9 @@ FROM (
     WHERE is_excluded = 0
       AND task_start_date >= toStartOfWeek(toDate('{start_ts}'), 3)
       AND task_start_date <= toDate('{end_ts}')
-      AND task_start_date < toDate('2026-04-01')
+      -- 週粒度邊界落在週界而非 04-01：historical 止於 W13(3/29)，W14(3/30~4/5) 整週交 V4，
+      -- 避免跨界週被兩側各寫一半而遭 ReplacingMergeTree 覆蓋（見 backfill_gold_summary.sql Week 分支）。
+      AND task_start_date < toDate('2026-03-30')
       AND toISOYear(task_start_date) = toYear(task_start_date)
     GROUP BY period_key, period_name, vx_type, region, plant, factory, line
 )
