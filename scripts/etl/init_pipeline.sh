@@ -5,7 +5,28 @@
 # ===========================================================
 set -e
 
-MODE=${1:-"--low-ram"}
+# ---- 參數解析（時間窗一律用命令列參數帶入，不吃環境變數）----
+# 用法: init_pipeline.sh [--low-ram|--high-ram] [--start YYYY-MM-DD] [--end YYYY-MM-DD]
+#   --low-ram (預設): 跑 Phase 1+2+3 (bronze + silver/gold)
+#   --high-ram      : 只跑 Phase 1+2 (略過 silver/gold)
+#   --start / --end : Phase 2 bronze 同步時間窗 (只影響 batch/fact 表)。
+#                     --start 未給 = batch 表從 watermark 續跑；--end 未給 = 今天
+MODE="--low-ram"
+SYNC_START=""
+SYNC_END=""
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --low-ram|--high-ram) MODE="$1"; shift ;;
+        --start) SYNC_START="$2"; shift 2 ;;
+        --end)   SYNC_END="$2"; shift 2 ;;
+        --start=*) SYNC_START="${1#*=}"; shift ;;
+        --end=*)   SYNC_END="${1#*=}"; shift ;;
+        *) echo "Unknown argument: $1" >&2
+           echo "Usage: $0 [--low-ram|--high-ram] [--start YYYY-MM-DD] [--end YYYY-MM-DD]" >&2
+           exit 1 ;;
+    esac
+done
+[[ -z "$SYNC_END" ]] && SYNC_END="$(date +%F)"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(dirname "$(dirname "$SCRIPT_DIR")")"
@@ -23,12 +44,6 @@ export MSSQL_PASSWORD
 # 對齊 sync_tables.yaml 的 history_start；execute_etl.py 的預設 2025-01-01 比 bronze
 # 實際資料起點早九個月，會空跑大量窗格
 BACKFILL_START="${BACKFILL_START:-2025-10-01}"
-
-# Phase 2 Bronze 同步時間窗（只影響 batch 策略的 fact 表；full 維度表照常整表同步）。
-# SYNC_START 空 = 不帶 --start，batch 表從 watermark 續跑（等同現狀）。
-# SYNC_START 有值 = 從該日起按 step_days 自動切窗拉取，不再無邊界一次 all。
-SYNC_START="${SYNC_START:-}"
-SYNC_END="${SYNC_END:-$(date +%F)}"
 
 LOW_RAM_FLAG=""
 if [[ "$MODE" == "--low-ram" ]]; then
