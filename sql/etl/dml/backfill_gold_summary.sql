@@ -98,9 +98,7 @@ SELECT
     now64(3) AS _refresh_time
 FROM gold.rmv_l5_task_completion_phys
 WHERE snapshot_date >= toStartOfWeek(toDate('{start_ts}'), 3)
-  AND snapshot_date <= toDate('{end_ts}')
-  -- V3/V4 週粒度邊界落在「週界」而非 04-01，避免跨界週(2026-W14, 3/30~4/5)被兩側各寫一半、
-  -- 因 ReplacingMergeTree 同 period_key 覆蓋而遺失 historical 半週。整個 W14 交由 V4 側計算。
+  AND snapshot_date <= toStartOfWeek(toDate('{end_ts}'), 3) + INTERVAL 6 DAY
   AND snapshot_date >= toDate('2026-03-30')   -- 2026-W14 週一
 GROUP BY period_key, period_name, vx_type, region, plant, factory, line
 
@@ -130,6 +128,6 @@ SELECT
     now64(3) AS _refresh_time
 FROM gold.rmv_l5_task_completion_phys
 WHERE snapshot_date >= toStartOfMonth(toDate('{start_ts}'))
-  AND snapshot_date <= toDate('{end_ts}')
+  AND snapshot_date <= toLastDayOfMonth(toDate('{end_ts}'))
   AND snapshot_date >= toDate('2026-04-01')   -- V3/V4 邊界保護
 GROUP BY period_key, period_name, vx_type, region, plant, factory, line;
