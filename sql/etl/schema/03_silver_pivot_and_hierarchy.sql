@@ -71,27 +71,6 @@ ENGINE = ReplacingMergeTree(_mview_update_time)
 ORDER BY (plant_code, line_name)
 SETTINGS allow_nullable_key = 1;
 
--- 首次建立時，手動從來源生成資料
-INSERT INTO silver.mv_dim_mfg_five_level
-SELECT DISTINCT
-    ld.LINE_NAME AS line_name,
-    ld.LINE_DESC AS line_desc,
-    pa.PROD_AREA_CODE AS prod_area_code,
-    -- Factory Level (User Request: Use PM.MFG_PLANT_CODE)
-    pm.MFG_PLANT_CODE AS factory_code,
-    pm.MFG_PLANT_DESC AS factory_name,
-    -- Plant Level (User Request: Use PM.FACTORY)
-    pm.FACTORY AS plant_code,
-    pm.FACTORY AS plant_name, -- Use Code as Name since no desc available in PM
-    -- Region Level (Use MFG_SITE as region_code per user request 2026-02-04)
-    fa.MFG_SITE AS region_code,
-    sm.MFG_SITE_DESC AS region_name,
-    now() AS _mview_update_time
-FROM bronze.common_mdm_line_desc_master ld
-LEFT JOIN bronze.common_mdm_prod_area_master pa ON ld.PROD_AREA_ID = pa.PROD_AREA_ID
--- FIX: Join to mfg_plant_master for correct Plant/Factory info (2026-02-03)
-LEFT JOIN bronze.common_mdm_mfg_plant_master pm ON pa.MFG_PLANT_ID = pm.MFG_PLANT_ID
--- Keep FA join for Region info
-LEFT JOIN bronze.common_mdm_factory_area_master fa ON pa.FACTORY = fa.FACTORY
-LEFT JOIN bronze.common_mdm_mfg_site_master sm ON fa.MFG_SITE = sm.MFG_SITE
-WHERE ld.LINE_NAME IS NOT NULL AND ld.LINE_NAME != '';
+-- 資料填充已移至 sql/etl/dml/init_dim_mfg_five_level.sql
+-- 原因: 本檔案在 setup_schema.py (Phase 1) 執行，早於 bronze.common_mdm_* 的資料同步 (Phase 2)，
+--       若在此處直接 INSERT 會抓到空表。改為由 sync_unified_odbc.py 在 --table all 同步成功後自動呼叫該檔案。
