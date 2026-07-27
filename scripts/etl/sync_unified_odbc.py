@@ -16,6 +16,7 @@ import argparse
 import os
 import yaml
 from pathlib import Path
+from urllib.parse import quote
 from datetime import datetime, timedelta
 import clickhouse_connect
 from clickhouse_connect.driver.summary import QuerySummary
@@ -63,19 +64,24 @@ def is_stale_odbc_connection_error(err_msg: str) -> bool:
     return "IMC06" in err_msg or "connection is broken and recovery is not possible" in err_msg
 
 
+def mask_secrets(msg) -> str:
+    """
+    遮蔽例外訊息中的 MSSQL 密碼。
+    """
+    text = str(msg)
+    if MSSQL_PASSWORD:
+        text = text.replace(MSSQL_PASSWORD, "[HIDDEN]").replace(quote(MSSQL_PASSWORD, safe=""), "[HIDDEN]")
+    text = re.sub(r"(?i)(Pwd%3D)(?:%7B(?:%7D%7D|(?!%7D).)*%7D|(?:(?!%3B)[^&\s])*)", r"\1[HIDDEN]", text)
+    return re.sub(r"(?i)(Pwd=)(?:\{(?:\}\}|[^}])*\}|[^;'\"\s]*)", r"\1[HIDDEN]", text)
+
+
 def has_error_code(err_msg: str, code: int) -> bool:
     """
     判斷例外訊息是否對應某個 ClickHouse 錯誤碼。
-
-    clickhouse_connect 的例外沒有錯誤碼欄位，只能讀訊息文字，而格式有兩種：
-    driver 外層 `received ClickHouse error code 1000` / `exception, code: 1000`（小寫、
-    冒號時有時無），server 內層 `Code: 1000. DB::Exception:`（大寫）。傳輸中斷失敗常
-    只有外層，舊版寫死比對 "Code: 1000" 因此完全打不中，保護形同虛設。
     """
     return re.search(rf"code:?\s*{code}\b", err_msg, re.IGNORECASE) is not None
 
 
-# 連線池關閉設定不放這裡——實測寫在 SQL SETTINGS 子句不生效，改由 CLICKHOUSE_CONFIG 傳。
 ODBC_QUERY_SETTINGS = "SETTINGS max_execution_time = 3600"
 
 
@@ -89,13 +95,6 @@ STALE_ODBC_HINT = (
 def written_rows_of(insert_result, context=""):
     """
     取本次 INSERT 自來源抓取的列數（ClickHouse X-ClickHouse-Summary header）。
-
-    不用 `SELECT count()` 對區間計數：watermark 以 max_data_time 續跑會刻意讓區間重疊
-    （見 get_last_watermark），該 count 會把已同步的列算進去而灌水。
-
-    ⚠ 這是「抓取數」不是「落地數」：optimize_on_insert 會在寫入當下就套用 ReplacingMergeTree
-      收斂，排序鍵相同的列被折疊卻仍計入。實測 written_rows 1,142,277 → 實際落地 783,799。
-      故只可用於觀察 I/O 量，**不可拿來對帳**；完整性請看 sync_full Step 3 的實際計數。
     """
     if isinstance(insert_result, QuerySummary):
         return insert_result.written_rows
@@ -109,7 +108,6 @@ def written_rows_of(insert_result, context=""):
 def parse_source(source_str):
     """
     解析來源字串為資料庫、結構描述與資料表名稱。
-    例如將 'APP_SRV_BPM.dbo.ACT_HI_TASKINST_0108' 解析出對應的 dict。
     """
     parts = source_str.split(".")
     if len(parts) == 3:
@@ -119,15 +117,22 @@ def parse_source(source_str):
     else:
         return {"db": "APP_SRV_BPM", "schema": "dbo", "table": parts[0]}
 
+def odbc_escape_value(value):
+    """
+    將 ODBC 連線字串的 value 用大括號包裹，內部的 `}` 依 ODBC 規則加倍轉義。
+    """
+    return "{" + str(value).replace("}", "}}") + "}"
+
+
 def build_odbc_conn(db_name):
     """
     建立針對特定資料庫的 ODBC 連線字串。
-
-    ⚠ MARS_Connection 必須為 no：MARS 會停用 SQL Server 的 connection resiliency，網路稍有
-    波動就把連線標記 unrecoverable 並拋 IMC06（錯誤訊息「No attempt was made to restore the
-    connection」即為證據）。本腳本每條連線只跑一個查詢，不需要 MARS。
     """
-    return f"DSN={ODBC_DSN};Database={db_name};Uid={MSSQL_USER};Pwd={MSSQL_PASSWORD};MARS_Connection=no"
+    return (
+        f"DSN={ODBC_DSN};Database={db_name};"
+        f"Uid={odbc_escape_value(MSSQL_USER)};Pwd={odbc_escape_value(MSSQL_PASSWORD)};"
+        f"MARS_Connection=no"
+    )
 
 
 def load_configs(config_name="sync_tables.yaml"):
@@ -239,10 +244,6 @@ def update_watermark(client, table_name, last_sync_time_str, row_count, duration
 def get_last_watermark(client, table_name):
     """
     取得續跑接續點（FINAL 確保拿到背景尚未合併的最新版本）。
-
-    以 max_data_time（實際資料前緣）為主、last_sync_time（掃描邊界）為備案：後者可能遠超實際
-    資料（掃到今天但資料只到 5/19），若來源日後補進那段曾是空的區間，從掃描邊界續跑會靜默漏掉。
-    從資料前緣續跑會重掃出重疊批次，由各表 ReplacingMergeTree 去重鍵吸收。
     """
     try:
         db_name = table_name.split('.')[0]
@@ -262,9 +263,6 @@ def get_last_watermark(client, table_name):
 def query_data_min_max(client, table_name, time_col, known_min=None):
     """
     查詢表內實際資料的時間跨度，供 watermark 記錄。
-
-    傳入 known_min 時只查 max：正向批次同步中 min 一旦非空就不會再變，而 time_col 多半不在
-    ORDER BY 前綴，每批重算 min 等於多做一次整欄掃描。
     """
     if not time_col:
         return None, None
@@ -288,10 +286,6 @@ def query_data_min_max(client, table_name, time_col, known_min=None):
 def get_source_min_time(config):
     """
     取得歷史同步起點（僅在沒有 watermark 時使用）：config 的 history_start，無則退回 2025-01-01。
-
-    刻意不動態查來源 MIN(time_col)：ClickHouse 不會把聚合下推到 MSSQL，`min()` 打在 ENGINE=ODBC
-    表上會把整個時間欄拉回本地才聚合（大表等同全欄掃描），且偏偏發生在 ODBC 壓力最大的時刻。
-    來源庫唯讀、odbc() table function 也不接受 raw SQL，無可用下推路徑。
     """
     history_start = config.get('history_start')
     if history_start:
@@ -346,7 +340,7 @@ def sync_batch(client, config, start_str, end_str):
                 logger.info(f"  Fetched {count:,} rows from source in {duration:.2f}s")
                 return count, duration_ms
             except Exception as e:
-                err_msg = str(e)
+                err_msg = mask_secrets(e)
 
                 # 毒池：重試與切窗都救不了，快速失敗並提示修法，避免每批空燒 ~90s
                 if is_stale_odbc_connection_error(err_msg):
@@ -417,9 +411,6 @@ def sync_full(client, config):
     """
     全量同步：建暫存表 → INSERT → 驗證行數 > 0 → 原子替換（RENAME 原表為舊表 → RENAME 暫存表
     為目標表 → DROP 舊表）。
-
-    取代舊的 TRUNCATE + INSERT：任何一步失敗，原表都完整保留（2026-06 曾因 INSERT 失敗留下
-    15 張空表）。替換中途失敗會 rollback；rollback 也失敗時保留舊表供人工恢復。
     """
     target = config['target']
     cols = config.get('columns', '*')
@@ -506,14 +497,14 @@ def sync_full(client, config):
             client.command(f"RENAME TABLE {temp_table} TO {target}")
             original_only_in_old = False  # 新表就位，old_table 不再是唯一副本
             client.command(f"DROP TABLE IF EXISTS {old_table}")
-            logger.info("  [Step 4] ✅ Replacement successful")
+            logger.info("  [Step 4]  Replacement successful")
         except Exception as e:
             logger.error(f"  [Step 4] ❌ Replacement failed: {e}. Attempting rollback...")
             if original_only_in_old:
                 try:
                     client.command(f"RENAME TABLE {old_table} TO {target}")
                     original_only_in_old = False
-                    logger.info(f"  [Rollback] ✅ Original table restored")
+                    logger.info(f"  [Rollback]  Original table restored")
                 except Exception as rb_err:
                     logger.error(
                         f"  [Rollback] ❌ Failed to restore original table: {rb_err}. "
@@ -525,11 +516,11 @@ def sync_full(client, config):
         min_dt, max_dt = query_data_min_max(client, target, config.get('time_col'))
         update_watermark(client, target, datetime.now().strftime("%Y-%m-%d %H:%M:%S"), row_count, insert_duration, min_dt, max_dt)
 
-        logger.info(f"  ✅ Full sync complete: {row_count:,} rows in {insert_duration/1000:.2f}s")
+        logger.info(f"   Full sync complete: {row_count:,} rows in {insert_duration/1000:.2f}s")
         return row_count
 
     except Exception as e:
-        err_msg = str(e)
+        err_msg = mask_secrets(e)
         if is_stale_odbc_connection_error(err_msg):
             logger.error(f"  {STALE_ODBC_HINT}")
         else:
@@ -569,8 +560,8 @@ def main():
     parser.add_argument("--table", choices=list(table_configs.keys()) + ['all'], default='all', help="Table to sync")
     parser.add_argument("--start", help="Start date (YYYY-MM-DD)")
     parser.add_argument("--end", default=datetime.now().strftime("%Y-%m-%d"), help="End date (YYYY-MM-DD)")
-    parser.add_argument("--step-days", type=int, default=7, help="Batch size in days")
-    parser.add_argument("--step-hours", type=int, default=0, help="Batch size in hours")
+    parser.add_argument("--step-days", type=int, default=None, help="Batch size in days (overrides per-table step_days)")
+    parser.add_argument("--step-hours", type=int, default=None, help="Batch size in hours (overrides per-table step_hours)")
     parser.add_argument("--config", default="sync_tables.yaml", help="YAML config file name in config dir")
     parser.add_argument("--dry-run", action="store_true", help="Print batches without executing")
 
@@ -642,8 +633,9 @@ def main():
                         start_date = get_source_min_time(config)
                         logger.info(f"  No watermark. Auto-detected start: {start_date}")
 
-                effective_step_days = config.get('step_days', args.step_days)
-                effective_step_hours = config.get('step_hours', args.step_hours)
+                # 優先序：CLI 明確指定 > 該表 yaml 設定 > 全域預設
+                effective_step_days = args.step_days if args.step_days is not None else config.get('step_days', 7)
+                effective_step_hours = args.step_hours if args.step_hours is not None else config.get('step_hours', 0)
                 batches = generate_batches(start_date, args.end, effective_step_days, effective_step_hours)
                 logger.info(f"Generated {len(batches)} batches from {start_date} to {args.end}")
 
@@ -666,8 +658,9 @@ def main():
                         logger.info("  [DRY RUN] Would execute batch sync via Temp Engine")
 
         except Exception as e:
-            logger.error(f"Stopping sync for {table_key} due to error: {e}")
-            status = f"FAILED: {str(e)[:200]}"
+            err_msg = mask_secrets(e)
+            logger.error(f"Stopping sync for {table_key} due to error: {err_msg}")
+            status = f"FAILED: {err_msg[:200]}"
         finally:
             duration = time.time() - start_t
             stats.append({
@@ -681,7 +674,7 @@ def main():
                 try:
                     client.command(f"DROP TABLE IF EXISTS {temp_name}")
                 except Exception as cleanup_err:
-                    logger.warning(f"  Failed to drop temp ODBC table {temp_name}: {cleanup_err}")
+                    logger.warning(f"  Failed to drop temp ODBC table {temp_name}: {mask_secrets(cleanup_err)}")
 
     # Final Summary Report
     logger.info(f"\n{'='*60}")
