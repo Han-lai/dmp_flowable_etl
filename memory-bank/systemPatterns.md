@@ -45,9 +45,10 @@ MSSQL (APP_SRV_BPM, APP_SRV_COMMON)
     - 確保每一個任務僅關聯到該流程最新、唯一的變數版本。
 - **效能考量**: 雖然 `argMax` 消耗記憶體，但能保證在不使用 `FINAL` 的情況下數據精確，大幅提升前端查詢穩定性。
 
-### 3. VTYPE 分類邏輯 (315 修正)
-- **規則**: 對於工單號開頭為 '196', '199', '200', '210', '212', '213', **'315'** 的任務，強制歸類為 `V1`。
+### 3. VTYPE 分類邏輯
+- **規則**: 對於工單號開頭為 '196', '199', '200', '210', '212', '213' 的任務，強制歸類為 `V1`。
 - **實作**: 使用 `substring(COALESCE(v_pivot.varinst_moNumber, ''), 1, 3)` 進行匹配。
+- **315 規則不適用（2026-07 決策）**: `.kiro/specs/fix-315-work-order-rule-consistency/` 曾要求 `LIKE '315%'` 一律強制歸 V1，但實測 Silver 表中 mo_number 前綴 315 的任務高達 69 萬筆（2025-10-23~2026-01-08），其中 88.5% 現為 V3、11.5% 為 V2，套用該規則會造成大規模重新分類。且 `docs/03_metrics/01_Metrics_and_Data_Definitions.md` 的變更記錄明確指出「315% 規則優先會導致跨流程誤判」，優先序後來改為 TaskDefinitionKey 前綴判斷。經評估後**維持現狀，不將 315 加入強制歸類清單**；該 `.kiro` spec 視為已過時的歷史規格。
 
 ### 4. 計算架構 (Windowed Computation)
 - **實作**: 透過 `ops_metrics.etl_checkpoint` 記錄進度。

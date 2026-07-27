@@ -41,6 +41,10 @@
 - **Host**: <MSSQL_HOST>
 - **Driver**: Microsoft ODBC Driver 18 for SQL Server
 - **Databases**: APP_SRV_BPM, APP_SRV_COMMON
+- **DSN**: `MSSQL_DSN`（設定於 `infra/clickhouse/odbc/odbc.ini`，密碼動態注入）
+- **ODBC 帳號**: `APP_SRV_BPM`（`MSSQL_USER`，預設值）
+- **ODBC 密碼**: 由環境變數 `MSSQL_PASSWORD` 提供，**不得以任何方式寫死**
+  - 若此變數未設定（fallback 為空字串），`sync_unified_odbc.py` 仍會啟動並 TRUNCATE 目標表，但 INSERT 全部失敗，導致維度表被清空（2026-06-17/29/30 事故根因）
 
 ## S3 (MinIO)
 - **Bucket**: mfg-lakehouse
@@ -84,4 +88,29 @@
 **查詢指令**:
 ```bash
 python scripts/etl/execute_etl.py --status
+```
+
+## 監控
+
+### Grafana（`http://<MONITOR_HOST>:9003`，IP 見 `infra/monitoring/.env`）
+
+| Dashboard | 用途 | Datasource |
+|---|---|---|
+| `Bronze Sync Monitoring` | 每日 MSSQL→Bronze 同步健康狀態，含表狀態（🔴/🟠/✅）| ClickHouse `<CLICKHOUSE_HOST>`（正式） |
+| `clickhouse-l5-perf` | L5 查詢效能（CPU/記憶體/慢查詢）| ClickHouse `<MONITOR_HOST>` + Prometheus |
+
+### Bronze 同步狀態快速診斷 SQL
+
+```sql
+-- 最後一次各表同步時間與筆數（_sync_watermark 快查）
+SELECT table_name, row_count, sync_time
+FROM bronze._sync_watermark
+ORDER BY sync_time ASC;
+
+-- 近期同步失敗（query_log，含完整錯誤訊息）
+SELECT event_time, substring(exception,1,400) AS err
+FROM system.query_log
+WHERE type='ExceptionBeforeStart'
+  AND query ILIKE '%bronze.%'
+ORDER BY event_time DESC LIMIT 20;
 ```

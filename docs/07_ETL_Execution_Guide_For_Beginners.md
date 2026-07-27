@@ -9,12 +9,33 @@
 
 ---
 
+## ⚠️ 執行前必確認：環境變數
+
+執行任何步驟前，先確認以下三個環境變數已設定。缺少 `MSSQL_PASSWORD` 是最常見的事故根因（會導致 bronze 維度表被清空）。
+
+```bash
+# 確認已設定（值不為空）
+echo $CLICKHOUSE_HOST
+echo $CLICKHOUSE_PASSWORD
+echo $MSSQL_PASSWORD
+```
+
+若尚未設定，請先 export（Linux/Mac）或 set（Windows CMD）後再繼續：
+```bash
+export CLICKHOUSE_HOST=<IP>
+export CLICKHOUSE_PASSWORD=<password>
+export MSSQL_PASSWORD=<APP_SRV_BPM_password>
+```
+
+---
+
 ## 🎓 教學課程：五個核心步驟
 
 > 教學時學員只需要按順序執行以下五條指令，完成後即可在 ClickHouse 看到完整的 KPI 資料。
 
 | # | 目的 | 指令 |
 |---|---|---|
+| 0 | **確認環境變數** | 見上方說明（必做） |
 | 1 | 建立資料庫結構 | `python scripts/etl/setup_schema.py` |
 | 2 | 從 MSSQL 拉取原始資料 | `python scripts/etl/sync_unified_odbc.py --table all` |
 | 3 | Bronze → Silver → Gold 計算 | `python scripts/etl/execute_etl.py --backfill --low-ram` |
@@ -205,6 +226,46 @@ sum(done_qty)
 ```
 
 這樣即使同一個任務跨兩天都有紀錄，去重邏輯在 ETL 時已確保，前端查詢**不會重複計數**。
+
+---
+
+## 🔧 常見問題排除
+
+### Bronze 維度表被清空（`current_rows = 0`）
+
+**症狀**：`common_hr_employee`、`common_mdm_*` 等維度表沒有資料，下游 Silver/Gold 算出來的維度欄位全是空值。
+
+**診斷**：
+```sql
+-- 在 ClickHouse 查最近的同步失敗
+SELECT event_time, substring(exception, 1, 300) AS err
+FROM system.query_log
+WHERE type = 'ExceptionBeforeStart'
+  AND query ILIKE '%bronze.%'
+ORDER BY event_time DESC LIMIT 20
+```
+
+**根因**：`MSSQL_PASSWORD` 環境變數未設定（fallback 為空字串），ODBC 以空密碼連 MSSQL 被拒絕。
+
+**修復**：
+1. 設定 `MSSQL_PASSWORD` 環境變數（參見本文件開頭的「執行前必確認」）
+2. 手動補跑：`python scripts/etl/sync_unified_odbc.py --table all`
+3. 確認 `bronze._sync_watermark` 所有表的 `sync_time` 已更新至今日
+
+### 同步完成後檢查正確性
+
+```sql
+-- 確認各表最後成功時間與筆數
+SELECT table_name, row_count, sync_time
+FROM bronze._sync_watermark
+ORDER BY sync_time DESC;
+
+-- 確認沒有空表（full 策略表 row_count 不應為 0）
+SELECT table_name, total_rows
+FROM system.tables
+WHERE database = 'bronze' AND total_rows = 0
+  AND name NOT IN ('_sync_watermark', 'etl_checkpoint');
+```
 
 > **💡 小技巧：如何在 ClickHouse 原生終端機查詢 Bitmap 欄位？**
 > 
