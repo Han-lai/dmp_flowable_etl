@@ -1,10 +1,47 @@
 # 當前工作脈絡 (Active Context)
 
-**最後更新**: 2026-07-06
+**最後更新**: 2026-07-29
 
 ---
 
 ## 🎯 當前焦點 (Current Focus)
+
+### ✅ 近期已解決 (2026-07-29 文件整併 + 明細匯出系統確立)
+
+- **20+ 份分散文件整併為單一文件**：新增 `docs/DMP Flowable L5指標系統參考文件.md`（架構設計、業務邏輯、部署與維運指令的唯一依據）與 `docs/ClickHouse 基礎設施建置文件.md`（容器建置、ODBC 設定、config.d/users.d 專用），舊版 20+ 份文件移至 `docs/archive/pre_consolidation_2026-07-29/`（含 `08_ai_agent/`）。
+- **明細匯出系統確立以 S3 為主**：刪除舊版 `scripts/export/export_silver_detail.py`（獨立、無人引用），統一以 `scripts/etl/tools/export_l5_all_months.sql` + `export_l5_to_s3.sh` 為正式匯出管線。重寫 `docs/明細驗證說明.md`（原 `prd_audit/`），新增 dev/qas/prd 三套 S3 環境對應表（`dmp-lakehoused`/`dmp-lakehouseu`/`dmp-lakehousep`）與 `in_month_cohort`/`file_month` 跨月補列機制專節說明。
+- **`exports/` 目錄整理**：`DMP_KPI_V2/DMP_KPI/` 多餘雙層巢狀拉平為 `exports/DMP_KPI/`。
+- **`infra/README.md`、`infra/clickhouse/README.md` 修正**：清除殘留的舊 JDBC Bridge 描述（已改用 ODBC 多時，文件未同步更新），改為指向新文件；監控埠號錯誤（Grafana/Prometheus 誤寫 3000/9090）修正為實際的 9003/9011。
+- **`cube/model/cubes/README_L5_DASHBOARD_CUBE.md`**（自稱已廢棄）移至 `docs/archive/`。
+- **`docs/archive/`、`memory-bank/` 從 git 取消追蹤**（保留本地檔案）：兩者性質皆為會持續累積的本地內容，不再進版控，`.gitignore` 補上 `memory-bank/` 規則。
+- **⚠️ 事故記錄**：重建 pptx 刪除歷史時（`git reset --hard` 重建乾淨的 rebase 分支），`memory-bank/activeContext.md` 與 `progress.md` 在 2026-07-06 之後、本次 session 之前所累積的大量**未提交**內容（差異規模達 577/389 行）遭 cherry-pick 動作連同「取消追蹤」一併當成「檔案刪除」處理，導致工作目錄實體檔案被清空。已從最後一次提交版本（`97c4d24`，07-06）復原兩檔案，但未提交部分的內容**無法從 git 復原**。GitLab 遠端不受影響（該事故發生在本地重建過程，未推送）。
+- **GitLab 推送**：`8a30044`→`17c9b2f` 共 8 個 commit 全數推送完成，含 pptx 移除（改走「新 commit 接在已推送 commit 後」而非直接 amend，因 GitLab `master` 為保護分支不允許 force push）。
+
+### ✅ 近期已解決 (2026-07-27 Gold 層期別上界修復 + init_pipeline --phase)
+
+- **修復 2026-04 Month 資料嚴重偏低的根因**（`462dfac`）：`backfill_gold_summary.sql`/`backfill_gold_summary_historical.sql` 的 Week/Month 分支上界原本卡在原始輸入的 `{end_ts}`，若回填視窗只涵蓋半個月/半週，會用不完整資料通過 `ReplacingMergeTree` 覆蓋掉已存在的完整期別列。實測案例：2026-04 Month total 曾從正確的 **1,228,525** 被覆蓋成 **208,342**（僅剩約 17%）。修復方式：上界改用 `toStartOfWeek(...) + INTERVAL 6 DAY` / `toLastDayOfMonth(...)`，確保任何視窗都會延伸算到完整期末。已重跑修復並驗證恢復正確值。
+- **`init_pipeline.sh` 新增 `--phase` 參數**：可單獨執行 schema 部署 / bronze 同步 / silver-gold 回填，不需每次跑全套三階段。
+- **ODBC 帳密改用大括號跳脫**（`a992789`）：密碼含 `!` 等特殊字元時原本會被 ODBC bridge 拒絕連線（`BAD_ODBC_CONNECTION_STRING`），修正後正常；連線字串中的密碼同時從 log 輸出遮蔽。
+
+### ✅ 近期已解決 (2026-07-23~24 明細匯出雙語意 + Week 邊界修正)
+
+- **Week 粒度邊界對齊週一 2026-03-30**（`f610675`）：修正 2026-W14 週資料被另一條計算管線（歷史 vs 現行邊界）互相覆蓋的問題。
+- **過濾 1970 年哨兵值**（`74e33ac`）：未完工任務的完工時間若誤存成 `1970-01-01` 而非 NULL，週/月結算會被誤判為已完成；修正後正確排除。
+- **新增 L5-to-S3 KPI 匯出工具**（`17d1392`）：`export_l5_all_months.sql` + `export_l5_to_s3.sh`。
+- **UAT 明細檔支援雙重 Day 粒度語意**（`3fd14e4`）：2026-04-01 前後日粒度統計口徑不同（事件日 vs 開單日 cohort），透過跨月補列機制（`in_month_cohort`/`file_month`）讓明細檔案在兩種語意下都能對上報表數字。
+- **`init_pipeline.sh` 新增 `--start`/`--end` 時間窗參數**（`2730466`、`47e9fd4`）：同步與回填視窗改由命令列指定。
+
+### ✅ 近期已解決 (2026-07-21 Bronze 同步非破壞性重構)
+
+- **`sync_full()` 全量同步改為非破壞性**（`11a4030`）：原本 TRUNCATE-before-INSERT 無回滾設計，任何 INSERT 失敗（非密碼問題）仍會留空表；改為建暫存表 → INSERT → 驗證列數 > 0 → 原子替換（RENAME 舊表 → RENAME 新表 → DROP 舊表），失敗時原表完全不受影響。**此項解決了先前列在「進行中/待處理」的結構性風險**。
+- **schema 部署冪等化**（`6bf2130`）：重複執行 `setup_schema.py` 不會再因表已存在而報錯中斷。
+- **`init_pipeline.sh` 移除冗餘參數**（`4726129`）：簡化介面。
+
+### ✅ 近期已解決 (2026-07-16 五階維度重建順序修正)
+
+- **五階維度重建移至同步之後執行**（`e4179fc`、`acb550e`）：原本在 bronze 同步「之前」執行 `mv_dim_mfg_five_level` 重建，會用到舊的維度資料；修正順序後改用新同步完成的資料重建，並將此邏輯移入 `sync_unified_odbc.py` 主流程。
+- **MSSQL_PASSWORD 缺失時 fail-loud**：與同步流程整合，不再有靜默失敗路徑。
+- **註冊遺漏的 DDL**（`f62c8f9`）：`06b_gold_kpi_task_summary.sql` 原本沒有被 `setup_schema.py` 執行到，已補上。
 
 ### ✅ 近期已解決 (2026-07-06 專案清理：暫存檔 + 壞測試 + 死碼 SQL)
 
@@ -40,7 +77,7 @@
 
 **GitHub 機敏資訊清洗**：
 - `git filter-repo` 清洗歷史：移除 ClickHouse 密碼、內部 IP（正式 CH 主機、監控主機）、CUBEJS_API_SECRET 舊密鑰
-- 192 個 commit 作者從 `albee.lai@deltaww.com` 改為 `Han-lai <sh41bee@gmail.com>`，force-push 至 `origin/master`
+- 192 個 commit 作者從公司帳號改為 `Han-lai <sh41bee@gmail.com>`，force-push 至 `origin/master`
 - ClickHouse 密碼已旋轉，CUBEJS_API_SECRET 已換新密鑰並改用環境變數（`infra/.env`）
 - 程式碼環境變數化：5 個追蹤檔案移除寫死 IP/密碼（未 commit，留在工作目錄）
 
@@ -57,7 +94,7 @@
   3. **7 天趨勢（雙線）**：A=失敗次數（紅）/ B=成功同步表數（綠）。B 使用 `match()` regex + `uniq(extract(...))` 正確計算「不重複表數」，`match()` 解決 INSERT 前有 `\n` 縮排導致 ILIKE 錨定失效的問題；每次正常同步凌晨顯示 19 張
   4. **表狀態總覽**：full/batch 策略分流，full 看 `current_rows=0`，batch 看 `hours_since_success>=24`
 - `hours_since_success`：距上次成功同步的小時數；< 24 = 正常，>= 24 = 🟠逾期
-- 告警規則：A→B(reduce)→C(threshold) 結構，`error_type` label 動態帶入郵件主旨與內文，SMTP via deltarelay.deltaww.com:25
+- 告警規則：A→B(reduce)→C(threshold) 結構，`error_type` label 動態帶入郵件主旨與內文，SMTP 設定見 `infra/monitoring/.env`
 
 ### ✅ 近期已解決 (2026-06-09 CH vs MSSQL 全線體對帳腳本)
 
@@ -214,9 +251,10 @@
 ### ⏩ 進行中 / 待處理
 - **語義層對接**: 已建立 `L5TaskDetailsSuper` Cube，準備在前端報表啟用新欄位。
 - **生產環境穩定運轉**: 持續觀察 ReplacingMergeTree 在高頻更新下的合併效能。
-- **sync_unified_odbc.py 結構性風險（未修）**: `sync_full_table()` 採 TRUNCATE-before-INSERT 無回滾設計，任何 INSERT 失敗（非密碼問題）仍會留空表。建議改為先寫暫存表確認成功再替換，或至少 INSERT 失敗時嘗試回填。
-- **未 commit 的修改**: 環境變數化的 5 個檔案（`export_silver_detail.py`、兩個 docker-compose、`init_pipeline.sh`、`claude.md`）以及 `sync_unified_odbc.py` fail-loud、`infra/monitoring/docker-compose.yml` 更新，目前僅在工作目錄，GitLab 未同步。
-- **Grafana `main` 分支待清除**: GitHub 預設分支切到 `master` 後可刪除多餘的 `main`。
+- ~~sync_unified_odbc.py 結構性風險~~：**已於 2026-07-21（`11a4030`）修復**，改為暫存表 + 原子替換。
+- ~~export_silver_detail.py 環境變數化~~：**已於 2026-07-29 隨明細匯出改以 S3 為主而整支刪除**，此項不再適用。
+- **Grafana `main` 分支待清除**: GitHub 預設分支切到 `master` 後可刪除多餘的 `main`（尚未確認是否已清除）。
+- **`docs/archive/`、`memory-bank/` 內容仍為本地 scratch**：兩者已從 git 取消追蹤，後續若有需要保留的內容應主動另外處理（不會再自動進版控）。
 
 ## 🎯 專案當前狀態
 - **整體架構**: **V4.3 超級事實表 (Super Silver Architecture)**。
@@ -251,13 +289,17 @@
 - [x] MSSQL_PASSWORD 環境變數補上，自動排程恢復正常，2026-07-02 首次成功驗證 (2026-07-02)
 - [ ] 觀察 Super Silver 表在前端 Superset 的明細鑽取效能
 - [ ] 清理暫存驗證腳本 check_gold_region.py, verify_silver_region.py, fix_gold_empty_region.py, verify_oct_v2.py
-- [ ] sync_full_table() TRUNCATE 無回滾結構性風險修復（暫存表替換方案）
+- [x] sync_full_table() TRUNCATE 無回滾結構性風險修復（改為暫存表+原子替換，`11a4030`）(2026-07-21)
 - [x] Grafana dashboard 雙線趨勢、精確 filter、GF_SERVER_ROOT_URL 完成調校（2026-07-03）
-- [ ] 將工作目錄未 commit 修改推送至 GitLab（環境變數化 + fail-loud + monitoring docker-compose）
 - [x] 315 工單規則決策：查證影響 69 萬筆任務，維持現狀不套用，.kiro spec 視為過時（2026-07-06）
 - [x] 清洗 5 個含 IP/舊密碼的追蹤檔（memory-bank 三檔、grafana_dashboard_setup.md、monitoring compose→env 插值），commit `263dfa1`；並還原被誤刪的 `.gitignore`（2026-07-06）
-- [ ] **GitHub 同步需走 cherry-pick**：本地 master 與 origin/master（filter-repo 清洗版）歷史完全分叉、本地歷史仍含舊機敏字串，**絕不可直接 force-push master**；需從 origin/master 建分支 cherry-pick 新 commits 後推送
+- [x] 五階維度重建順序修正、MSSQL_PASSWORD fail-loud 整合、補註冊遺漏 DDL（2026-07-16）
+- [x] init_pipeline.sh 新增 --start/--end 時間窗參數、移除冗餘參數（2026-07-21, 07-24）
+- [x] Week 邊界對齊週一 2026-03-30、過濾 1970 哨兵值、UAT 明細雙 Day 粒度語意、新增 L5-to-S3 匯出工具（2026-07-23~24）
+- [x] 修復 2026-04 Month 資料被覆蓋偏低的根因（Week/Month 上界對齊期末）、init_pipeline 新增 --phase、ODBC 帳密大括號跳脫（2026-07-27）
+- [x] **GitHub 同步 cherry-pick 完成**：`push/etl-summary-bounds` 分支已建立、身份改寫為 Han-lai、PR #1 已合併至 `origin/master`（2026-07-29）
 - [ ] 監控主機部署注意：`infra/monitoring/docker-compose.yml` 改用必填變數，重啟前需在該主機建立 `infra/monitoring/.env`（MONITOR_HOST、GRAFANA_ADMIN_PASSWORD）
-- [ ] commit 新建的 AI 知識庫（docs/08_ai_agent/、CLAUDE.md、sql/etl/dml/README.md 修正）與已刪除檔案的處置確認
+- [x] 文件整併：20+ 份分散文件 → 單一系統參考文件 + ClickHouse 基礎設施文件；`docs/08_ai_agent/` 與其餘舊文件移至 `docs/archive/` 並取消 git 追蹤（2026-07-29）
+- [x] 明細匯出系統確立：移除舊版 export_silver_detail.py，統一以 S3 匯出為正式管線，重寫明細驗證說明（2026-07-29）
 
 

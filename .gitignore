@@ -42,9 +42,8 @@ tmp_*
 scratch/
 
 # Documentation Exclusions (Historical/Work-in-progress)
-archive/
-docs/archive/
 docs/reports/
+
 # Validation scripts (excluded from Git for deployment)
 scripts/validation/
 

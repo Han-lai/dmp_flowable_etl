@@ -48,8 +48,7 @@
 
 ## S3 (MinIO)
 - **Bucket**: mfg-lakehouse
-- **Office Access**: https://cnwjns3.deltaww.com/mfg-lakehouse/
-- **Server Farm**: http://cnwjns3.delta.corp/mfg-lakehouse/
+- **連線資訊**: 見 `infra/.env`（不進版控）
 
 ## Python 環境
 - Python 3.10+

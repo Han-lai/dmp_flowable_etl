@@ -5,6 +5,59 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 ## 已完成里程碑 (Milestones)
 
+### 2026-07-29: 文件整併、明細匯出系統確立、GitHub 同步完成
+
+**文件整併**：
+- 20+ 份分散文件（`docs/00~08_ai_agent/`）整併為單一 `docs/DMP Flowable L5指標系統參考文件.md`（架構/業務邏輯/部署指令）+ 新增 `docs/ClickHouse 基礎設施建置文件.md`（容器建置專用）
+- 舊文件移至 `docs/archive/pre_consolidation_2026-07-29/`，`docs/archive/`、`memory-bank/` 從 git 取消追蹤（保留本地檔案，`.gitignore` 補上 `memory-bank/` 規則）
+- 修正 `infra/README.md`、`infra/clickhouse/README.md` 殘留的舊 JDBC Bridge 描述（早已改用 ODBC）、監控埠號錯誤（3000/9090 → 實際 9003/9011）
+
+**明細匯出系統確立以 S3 為主**：
+- 刪除舊版 `scripts/export/export_silver_detail.py`（無人引用的獨立系統）
+- 重寫 `docs/明細驗證說明.md`：新增 dev/qas/prd 三套 S3 環境對應表（`dmp-lakehoused`/`u`/`p`）、`in_month_cohort`/`file_month` 跨月補列機制專節
+- `exports/DMP_KPI_V2/DMP_KPI/` 多餘雙層巢狀拉平為 `exports/DMP_KPI/`
+
+**GitHub 同步完成**：
+- 建立 `push/etl-summary-bounds` 分支，將本地 20 個未同步 commit 整理為 6 段主題 commit，作者改寫為 `Han-lai <sh41bee@gmail.com>`
+- 機敏內容掃描通過（無 IP/明碼密碼），PR #1 已合併至 `origin/master`
+
+**⚠️ 事故記錄（本地限定，GitLab 未受影響）**：
+重建 pptx 刪除的乾淨 commit 歷史時，`git reset --hard` 誤將 `memory-bank/` 的「取消追蹤」動作當成「檔案刪除」套用，導致工作目錄實體檔案被清空。`memory-bank/activeContext.md`、`progress.md` 在 2026-07-06 之後累積的未提交內容（差異規模 577/389 行）**無法從 git 復原**，已從最後一次提交版本（`97c4d24`）復原至可用狀態。
+
+---
+
+### 2026-07-27: Gold 層期別上界修復 + init_pipeline --phase
+
+- **修復 2026-04 Month 資料嚴重偏低根因**（`462dfac`）：`backfill_gold_summary.sql`/`backfill_gold_summary_historical.sql` 的 Week/Month 分支上界原卡在原始輸入 `{end_ts}`，回填視窗若只涵蓋半個月/半週，會用不完整資料透過 `ReplacingMergeTree` 覆蓋掉已存在的完整期別列。2026-04 Month total 曾從正確的 1,228,525 被覆蓋成 208,342。修復：上界改用 `toStartOfWeek(...) + INTERVAL 6 DAY` / `toLastDayOfMonth(...)`，任何視窗都會延伸算到完整期末。已重跑並驗證恢復正確值。
+- **`init_pipeline.sh` 新增 `--phase` 參數**：可單獨執行 schema 部署 / bronze 同步 / silver-gold 回填。
+- **ODBC 帳密大括號跳脫**（`a992789`）：密碼含特殊字元（如 `!`）時原本連線被拒，修正並遮蔽 log 中的密碼輸出。
+
+---
+
+### 2026-07-23~24: 明細匯出雙 Day 粒度語意 + Week 邊界修正
+
+- **Week 粒度邊界對齊週一 2026-03-30**（`f610675`）：修正 2026-W14 資料被歷史/現行兩條計算管線互相覆蓋的問題。
+- **過濾 1970 年哨兵值**（`74e33ac`）：未完工任務完工時間誤存為 `1970-01-01` 而非 NULL，導致週/月結算誤判為 DONE。
+- **新增 L5-to-S3 KPI 匯出工具**（`17d1392`）：`export_l5_all_months.sql` + `export_l5_to_s3.sh`。
+- **UAT 明細檔支援雙重 Day 粒度語意**（`3fd14e4`）：2026-04-01 前後日粒度統計口徑不同，透過 `in_month_cohort`/`file_month` 跨月補列機制讓兩種語意都能對上報表數字。
+- **`init_pipeline.sh` 新增 `--start`/`--end` 時間窗參數**（`2730466`、`47e9fd4`）。
+
+---
+
+### 2026-07-21: Bronze 同步非破壞性重構
+
+- **`sync_full()` 全量同步改為非破壞性**（`11a4030`）：原 TRUNCATE-before-INSERT 無回滾設計，INSERT 失敗仍留空表；改為建暫存表 → INSERT → 驗證列數 > 0 → 原子替換，失敗時原表不受影響。此項解決了先前記錄的結構性風險。
+- **schema 部署冪等化**（`6bf2130`），**init_pipeline 移除冗餘參數**（`4726129`）。
+
+---
+
+### 2026-07-16: 五階維度重建順序修正
+
+- **五階維度重建移至同步之後執行**（`e4179fc`、`acb550e`）：原本在 bronze 同步前執行會用到舊資料，修正順序並移入 `sync_unified_odbc.py` 主流程；MSSQL_PASSWORD 缺失時 fail-loud。
+- **註冊遺漏的 DDL**（`f62c8f9`）：`06b_gold_kpi_task_summary.sql` 補上執行。
+
+---
+
 ### 2026-07-03: Grafana Bronze Sync Monitoring 完整調校
 
 - **GF_SERVER_ROOT_URL** 補入 `infra/monitoring/docker-compose.yml`：告警郵件中的「View Dashboard」按鈕從 localhost 改為正確的 `http://<MONITOR_HOST>:9003`，點擊可直接開啟
@@ -28,7 +81,7 @@ DMP Flowable L5 數據流水線遷移轉換，由 V2 (Silver DISTINCT) 升級至
 
 **GitHub 機敏資訊清洗**：
 - `git filter-repo` 清洗 192 commits 的完整歷史：移除 ClickHouse 真實密碼（已旋轉的舊值）、內部 IP（正式 CH 主機與監控主機）、`CUBEJS_API_SECRET` 舊密鑰——原值一律不再記錄於版控文件
-- 128 筆公司帳號 `albee.lai@deltaww.com` 的 author/committer 全數改寫為 `Han-lai <sh41bee@gmail.com>`
+- 128 筆公司帳號的 author/committer 全數改寫為 `Han-lai <sh41bee@gmail.com>`
 - Force-push 覆蓋 `github.com/Han-lai/dmp_flowable_etl` 的 `master` 與 `main` 分支
 - ClickHouse 密碼已旋轉（新密碼存於 `infra/.env`，不進版控）；CUBEJS_API_SECRET 換新密鑰並改由 `infra/.env` 提供
 - 全域規則寫入 `~/.claude/CLAUDE.md`：push GitHub 前一律禁止 IP/密碼出現，commit 用 Han-lai 身份
