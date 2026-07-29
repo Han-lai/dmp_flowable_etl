@@ -45,6 +45,9 @@ scratch/
 archive/
 docs/archive/
 docs/reports/
+
+# AI 工作記憶（本地 scratch，不進版控）
+memory-bank/
 # Validation scripts (excluded from Git for deployment)
 scripts/validation/
 
