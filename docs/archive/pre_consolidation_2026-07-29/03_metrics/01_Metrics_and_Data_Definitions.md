@@ -1,10 +1,16 @@
 # DMP Flowable 業務指標與數據定義 (Business Metrics & Data Definitions)
 
 **文件編號**: 03-MTR-001  
-**最後更新**: 2026-05-28  
+**最後更新**: 2026-07-22  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering  
-**定位**: 本文件為系統的業務語義辭典，記載 L5 任務指標的精確定義、演進歷程、五階維度血緣與查帳對齊基準。ETL 技術執行細節（SQL 邏輯、管線階段）請見 `02_02_ETL_Transformation_Pipeline.md`。
+**定位**: 本文件為系統的業務語義辭典，記載 L5 任務指標的精確定義、演進歷程、五階維度血緣與查帳對齊基準。ETL 技術執行細節（SQL 邏輯、管線階段）請見 `02_ETL_Transformation_Pipeline.md`。
+
+> ⚠️ **真相優先序**：本專案鐵律為「文件與程式碼衝突時以程式碼為準」。本文所有定義的權威來源為 `sql/etl/dml/backfill_*.sql` 與 `cube/model/cubes/*.js`；若發現不一致，請以程式碼為準並回頭修正本文。關鍵來源檔：
+> - vx_type 分類 / moNumber 前綴白名單 / is_excluded 排除 / 三種狀態結算 → `sql/etl/dml/backfill_silver.sql`
+> - 費率 `floor()` 公式 / 數量指標 → `cube/model/cubes/cube_l5_task_periodic.js`
+> - ACC 7 日滾動窗 → `sql/etl/dml/backfill_gold_acc.sql`
+> - 日/週/月彙總、V3/V4 邊界 → `sql/etl/dml/backfill_gold_summary.sql`（`<2026-04-01` 走 historical V3，`≥2026-04-01` 走 V4）
 
 ---
 
@@ -44,9 +50,35 @@ L5 報表核心圍繞「任務狀態」與「所在時間區間」進行多維�
 | **W42 (`W${x}-2`)** | 前兩完整週 (Mon ~ Sun) 的數據。 |
 | **Dn-1 ~ Dn-7** | 基準日逐日往前推 7 天。**更新**：日維度的 Acc Rate 已優化，分母採用「7日滾動總開單量 (Acc Total Task)」，解決週末破表問題。 |
 
+### 1.4 達成率計算公式 (Rate Formulas — Rule 2 無條件捨去)
+
+**權威來源**：`cube/model/cubes/cube_l5_task_periodic.js`（measures 區塊）。
+
+**Rule 2 規格**：原始比率小數點後第 3 位起**無條件捨去 (`floor`)** 後 ×100 顯示整數；分子 ≥ 分母時直接顯示 100。**嚴禁 `round()`**（2026-06-05 V4.4 已將全部費率由 `round()` 改為 `floor()`）。分母一律為 `total_qty`。
+
+| 費率 (Measure) | 公式 | 說明 |
+| :--- | :--- | :--- |
+| **todoRate** | `floor(todo_qty * 100 / total_qty)` | 待辦率（不做 ≥100 封頂） |
+| **doingRate** | `floor(doing_qty * 100 / total_qty)` | 進行中率（不做 ≥100 封頂） |
+| **doneRate** | `if(done>=total, 100, floor(done*100/total))` | 完成率 |
+| **doingDoneRate** | `if(doing_done>=total, 100, floor(doing_done*100/total))` | 有進度率 |
+| **accRate** | **Day**：`if(acc>=acc_total, 100, floor(acc*100/acc_total))`<br>**Week/Month**：`floor((todo+doing)*100/total)` | 積壓／落後率（維度感知，見 §2.1） |
+
+> **除零保護**：分母一律以 `nullIf(分母, 0)` 包裝，避免除以 0。
+> **數量指標**：`totalQty / todoQty / doingQty / doneQty / doingDoneQty / accQty / accTotalQty` 皆由預聚合表 `gold.rmv_l5_task_summary` 直接 `SUM`（V4.3 起捨棄即時 Bitmap 運算）。
+
 ---
 
 ## 2. 重大邏輯修正紀錄 (Logic Revision History)
+
+### 2.0 費率無條件捨去與 NPE 出貨歸屬修正 (2026-06)
+
+1.  **費率統一改用 `floor()` (2026-06-05, V4.4)**
+    *   新增 `todoRate` / `doingRate` 兩個 measure；`doneRate` / `doingDoneRate` / `accRate` 由 `round()` 改為 `floor()`，統一符合 Rule 2 無條件捨去規格。詳見 §1.4。
+2.  **NPE 廠出貨任務歸屬 (2026-06-08)**
+    *   NPE 廠區的 `V3_` 任務強制歸 **V1**；但 `V2_` 出貨行政任務（如 `V2_2_3_6_x`, `V2_4_3_2_1`）維持 **V2**，不被 NPE 規則吸走。判定寫死於 `backfill_silver.sql`（見 §3.3）。
+3.  **Gold Day 零開單日 ACC 補丁 (2026-06-15)**
+    *   針對假日／停產日（當天 `total=0` 但仍有 7 日積壓）以 `LEFT ANTI JOIN` 補佔位列，確保前端 `acc_qty` 不消失。僅適用 `≥2026-04-01`。
 
 ### 2.1 累積負載率 (Acc Rate) 分母邏輯優化 (2026-05-07)
 為了使 `Acc Rate` (累積負載率) 更具商業參考價值並解決週末數據爆表問題，進行了以下優化：
@@ -90,7 +122,8 @@ L5 報表核心圍繞「任務狀態」與「所在時間區間」進行多維�
 
 1.  **Vx 歸屬優先級確立 (Vx Attribution Priority)**
     *   **變更前**：工單號規則 (315%) 優先，導致跨流程誤判。
-    *   **變更後**：**優先判斷 TaskDefinitionKey 前綴** (V1/V2/V3)。僅在 TaskDef 無法判定時，才套用工單號 (moNumber) 輔助歸屬。
+    *   **變更後 (2026-02-04)**：優先判斷 TaskDefinitionKey 前綴 (V1/V2/V3)，僅在 TaskDef 無法判定時才套用工單號輔助。
+    *   ⚠️ **此描述已被後續程式碼修訂取代**：現行 `backfill_silver.sql` 的判定順序為「**NPE 廠規則 → moNumber 特定前綴白名單 → TaskDefKey**」，即特定 moNumber 前綴（如 `196`）反而**優先於** TaskDefKey。完整現行邏輯請見 §3.3。
 2.  **時點快照狀態 (Point-in-time Status)**
     *   **變更前**：使用任務「目前最新狀態」統計歷史數據，導致昨日的報表今日看會變動。
     *   **變更後改採動態比對**：
@@ -109,23 +142,61 @@ L5 報表核心圍繞「任務狀態」與「所在時間區間」進行多維�
 本節定義了 L5 報表核心維度：**製造五階 (Region → Vx → Plant → Factory → Line)** 的來源與推導邏輯。
 
 ### 3.1 維度串接核心理念
-*   **來源雙重保障**：以 Flowable 原生變數表 (`ACT_HI_VARINST`) 為主，若缺失則以公用主檔 (`APP_SRV_COMMON.dbo.MDM_*`) 補齊。
-*   **實作位置**：`silver.mv_fact_task_vx`。
+*   **來源雙重保障**：以 Flowable 原生變數表 (`ACT_HI_VARINST`，攤平為 `silver.mv_varinst_pivoted`) 為主，若缺失則以製造五階主檔 (`silver.mv_dim_mfg_five_level`) 補齊。
+*   **實作位置**：`silver.mv_fact_task_vx`（`backfill_silver.sql`）。
+*   **空字串陷阱**：ClickHouse LEFT JOIN 失敗時 String 欄位回傳 `''` 而非 `NULL`，故一律 `NULLIF(x,'')` 後再 `COALESCE`；取不到值時保留空字串 `''`，**不填 UNKNOWN**。
 
 ### 3.2 五階推導邏輯速查
 
 | 階層 | 欄位 | 主要來源 (VARINST 優先) | 備用來源 (MDM 補齊) | 備註 |
 | :--- | :--- | :--- | :--- | :--- |
-| **1. 區域** | `region` | `varinst_region` | `mdm_region` (透過 factory 串接) | 如 CNE |
-| **2. 流程** | `vx_type` | `TaskDefinitionKey` | `moNumber` 前綴 | 分為 V1/V2/V3 |
-| **3. 廠區** | `plant` | `varinst_plant` | `mdm_plant` (Business Key 推導) | 如 WJ2 |
-| **4. 工廠** | `factory` | `varinst_factory` | `mdm_factory` | 如 NBU |
-| **5. 產線** | `line` | `varinst_line` | `mdm_line` | 如 E5 |
+| **1. 區域** | `region` | `varinst_region` | ① 精確 MDM (line+plant) → ② 備援 MDM (僅 plant) | 如 CNE。lineName 為空、或有值但不在 MDM（如 NEP1）時走備援 |
+| **2. 流程** | `vx_type` | 見 §3.3（NPE→前綴白名單→TaskDefKey） | — | 分為 V1/V2/V3 |
+| **3. 廠區** | `plant` | `varinst_plant` | `mdm.plant_code` | 如 WJ2 |
+| **4. 工廠** | `factory` | `varinst_factory` | `mdm.factory_code` | 如 NBU |
+| **5. 產線** | `line` | `varinst_line` | `mdm.line_name` | 如 E5 |
 
-*程式碼實現示意:*
+*程式碼實現示意（region 三層備援）:*
 ```sql
-COALESCE(NULLIF(vd.varinst_region, ''), md.mdm_region) AS region
+COALESCE(
+    NULLIF(v_pivot.varinst_region, ''),   -- ① 業務變數
+    NULLIF(mdm.region_code, ''),          -- ② 精確 MDM: line_name + plant_code
+    NULLIF(mdm_plant.region_code, ''),    -- ③ 備援 MDM: 僅 plant_code
+    ''                                    -- 皆無 → 空字串
+) AS region
 ```
+
+> MDM JOIN 為 ReplacingMergeTree，攤平變數子查詢用 `argMax(col, _refresh_time)` 取最新版本，避免 JOIN 列數翻倍。
+
+### 3.3 vx_type 分類判定（含 moNumber 前綴白名單）
+
+**權威來源**：`backfill_silver.sql`。判定為 `CASE ... WHEN`，**由上而下先命中先贏**：
+
+| 優先序 | 條件 | 歸類 |
+| :--- | :--- | :--- |
+| **1** | 廠區 = `NPE` **且** `task_def_key` 非 `V2%`（NPE 廠 V3 任務強制歸 V1；V2 出貨行政任務維持 V2） | **V1** |
+| **2** | `moNumber` 前 3 碼 ∈ **`196` / `199` / `200` / `210` / `212` / `213`**（特殊工單前綴白名單） | **V1** |
+| **3** | `task_def_key LIKE 'V1%'` | V1 |
+| **4** | `task_def_key LIKE 'V2%'` | V2 |
+| **5** | `task_def_key LIKE 'V3%'` | V3 |
+| **6** | 以上皆非 → 取 `task_def_key` 前 2 碼 | （fallback） |
+
+> ⚠️ **已知隱性 bug（不影響結果，user 決定不修）**：第 6 條 fallback 會吐出 `task_def_key` 前 2 碼作為假 vx_type（如 `E5`/`C1`/`EA`），但這些任務同時被 §3.4 的 `E%`/`C%` 排除規則擋掉，故對 KPI 0 影響。
+
+### 3.4 任務排除規則 `is_excluded`（KPI 分母過濾）
+
+**權威來源**：`backfill_silver.sql`（`multiIf`）+ `backfill_exclusion.sql`（autoComplete 補標）。命中任一條件即 `is_excluded = 1`，查詢時自動 `WHERE is_excluded = 0` 排除於分母外，確保 KPI 只統計具商業意義的生產任務。
+
+| 排除條件 | `exclude_reason` | 說明 |
+| :--- | :--- | :--- |
+| `autoComplete` = 1 | `bypass` / `autoComplete_flag` | 系統自動完成節點（兩支 SQL 分別標記） |
+| 處理人 (`assignee_name`) = `SYSTEM` | `system_bypass` | 系統帳號 |
+| `task_def_key LIKE 'E%'` | `system_node` | 系統節點 |
+| `task_def_key LIKE 'C%'` | `system_node` | 系統節點 |
+| `moNumber LIKE 'Q%'` | `Q_order` | Q 測試單 |
+| `moNumber LIKE 'R%'` | `R_order` | R 測試單 |
+| `task_name LIKE '%Notify%'` | `notify_task` | 通知類虛擬任務 |
+| `task_name LIKE '%Dummy%'` | `dummy_task` | 佔位虛擬任務 |
 
 ---
 
@@ -163,6 +234,7 @@ COALESCE(NULLIF(vd.varinst_region, ''), md.mdm_region) AS region
 
 | 業務名稱 (Display Name) | Cube 欄位名 | 說明 |
 | :--- | :--- | :--- |
+| **即時物理狀態** | `taskStatus` | 任務**目前**真實狀態（非結算）：有 `END_TIME`→DONE；有 `ASSIGNEE`→DOING；否則 TODO |
 | **日結算狀態** | `statusDaily` | 開單當日 23:59 結算 → 對應 KPI Cube 的 `todo_daily/doing_daily/done_daily` |
 | **週結算狀態** | `statusWeekly` | 開單週的週日 23:59 結算 → 對應 KPI Cube 的 `todo_weekly/doing_weekly/done_weekly` |
 | **月結算狀態** | `statusMonthly` | 開單月的月底 23:59 結算 → 對應 KPI Cube 的 `todo_monthly/doing_monthly/done_monthly` |
@@ -221,7 +293,7 @@ Superset 明細表 / API 下鑽查詢
 
 *   **KPI 與明細解耦**：`L5TaskDetails` 為純明細模型，不做時間序列聚合。所有 KPI 指標請使用 `L5TaskPeriodic` Cube。
 *   **去重保障**：使用 `FINAL` 關鍵字確保從 ReplacingMergeTree 讀取去重後的唯一版本，避免重複明細。
-*   **自動排除**：查詢時自動過濾 `is_excluded = 1` 的系統自動任務（如 SYSTEM 帳號、autoComplete 節點）。
+*   **自動排除**：查詢時自動過濾 `is_excluded = 1` 的任務（完整 8 條排除規則見 §3.4）。
 *   **業務變數與人員來源**：業務擴充變數（工單號、機種等）與人員姓名（HR 關聯）皆已在 Silver 層 ETL 過程中透過 `backfill_silver.sql` 合併，不需在查詢時另行 JOIN。
 
 
@@ -229,11 +301,13 @@ Superset 明細表 / API 下鑽查詢
 ---
 
 **相關文件**:
-- 完整管線執行細節 → `02_02_ETL_Transformation_Pipeline.md`
+- 完整管線執行細節 → `02_ETL_Transformation_Pipeline.md`
 - 查帳與驗證指南 → `03_Detailed_Audit_Guide.md`
-- SQL 原始模板 → `sql/etl/dml/backfill_*.sql`
+- 計算邏輯演進史 → `05_Calculation_Logic_Changelog.md`
+- SQL 原始模板（權威來源）→ `sql/etl/dml/backfill_*.sql`
+- 費率／數量 measure（權威來源）→ `cube/model/cubes/cube_l5_task_periodic.js`
 
 ---
 
 **文件負責人**: AIT / Data Engineering
-**最後審核日期**: 2026-05-28
+**最後審核日期**: 2026-07-22
