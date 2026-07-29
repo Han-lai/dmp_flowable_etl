@@ -1,7 +1,7 @@
 # ETL 轉換管線技術細節 (Bronze → Silver → Gold)
 
 **文件編號**: 03-ETL-001  
-**最後更新**: 2026-05-28  
+**最後更新**: 2026-07-02  
 **狀態**: 正式發布 (Released)  
 **維護者**: AIT / Data Engineering
 
@@ -29,7 +29,7 @@ Bronze 層資料就緒後，`execute_etl.py` 依 `pipeline_config.yaml` 定義�
 透過「時間視窗批次」驅動 8 個 SQL 步驟，將資料逐步轉換至 Gold 層。
 
 ```
-Bronze 層 (18 張原始表)
+Bronze 層 (19 張原始表：15 full + 4 batch)
         │
         │  execute_etl.py --backfill --step-days 10
         │  取 pipeline_config.yaml 定義的執行順序
@@ -126,7 +126,7 @@ SELECT
 FROM bronze.bpm_act_hi_varinst v
 INNER JOIN target_procs t ON v.PROC_INST_ID_ = t.PROC_INST_ID_
 WHERE v.NAME_ IN ('region','plant','factory','lineName','moNumber','modelName','deliveryArea','scheduleNumber','sapPlant','sapProductGroup','pallet','transferNo','qBlockEventId','defectSn','time','autoComplete')
-  AND v.CREATE_TIME_ >= parseDateTimeBestEffort('{start_ts}') - INTERVAL 180 DAY
+  AND v.CREATE_TIME_ >= parseDateTimeBestEffort('{start_ts}') - INTERVAL 365 DAY
   AND v.CREATE_TIME_ <= '{end_ts}'
 GROUP BY v.PROC_INST_ID_
 ```
@@ -135,7 +135,7 @@ GROUP BY v.PROC_INST_ID_
 
 - **`argMaxIf`**：取同一屬性中 `REV_` 最大（最新）的值，處理流程變數被更新的情境。
 - **`INNER JOIN target_procs`**：只處理本視窗有任務活動的流程實例，大幅縮小掃描量。
-- **`INTERVAL 180 DAY`**：流程變數可能在任務開始前 180 天就已寫入（長期流程），故向前延伸查找。
+- **`INTERVAL 365 DAY`**：流程變數可能在任務開始前很久就已寫入（長期流程），故向前延伸查找。2026-06-04（`d8ade48`）由原 180 天延長至 365 天，覆蓋超過半年的長流程任務。
 
 ---
 

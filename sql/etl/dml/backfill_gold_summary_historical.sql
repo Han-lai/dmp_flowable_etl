@@ -126,8 +126,8 @@ FROM (
     FROM silver.mv_fact_task_vx FINAL
     WHERE is_excluded = 0
       AND task_start_date >= toStartOfWeek(toDate('{start_ts}'), 3)
-      AND task_start_date <= toDate('{end_ts}')
-      AND task_start_date < toDate('2026-04-01')
+      AND task_start_date <= toStartOfWeek(toDate('{end_ts}'), 3) + INTERVAL 6 DAY
+      AND task_start_date < toDate('2026-03-30')
       AND toISOYear(task_start_date) = toYear(task_start_date)
     GROUP BY period_key, period_name, vx_type, region, plant, factory, line
 )
@@ -184,7 +184,7 @@ FROM (
     FROM silver.mv_fact_task_vx FINAL
     WHERE is_excluded = 0
       AND task_start_date >= toStartOfMonth(toDate('{start_ts}'))
-      AND task_start_date <= toDate('{end_ts}')
+      AND task_start_date <= toLastDayOfMonth(toDate('{end_ts}'))
       AND task_start_date < toDate('2026-04-01')
     GROUP BY period_key, period_name, vx_type, region, plant, factory, line
 );

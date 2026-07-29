@@ -11,6 +11,13 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR/../.."
 
+# Fail loud on missing/empty credentials instead of letting downstream scripts silently
+# wipe or fail to sync data. MSSQL_PASSWORD defaulting to "" caused a bronze table wipe
+# incident on 2026-06 (this script runs unattended via cron with no human watching).
+: "${CLICKHOUSE_HOST:?CLICKHOUSE_HOST must be set}"
+: "${CLICKHOUSE_PASSWORD:?CLICKHOUSE_PASSWORD must be set}"
+: "${MSSQL_PASSWORD:?MSSQL_PASSWORD must be set (empty value caused a bronze table wipe incident on 2026-06)}"
+
 echo "[$(date '+%Y-%m-%d %H:%M:%S')] Starting daily ETL sync..."
 
 # 1. Incremental sync for Bronze layer (Auto-fetch based on watermark)

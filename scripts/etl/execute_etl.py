@@ -164,6 +164,29 @@ def show_status(client):
         except Exception:
             print(f" - {t:35}: (Not created)")
 
+def generate_windows(start_str, end_str, step_days):
+    """
+    依據起訖日期字串 (YYYY-MM-DD) 與步進天數，產生運算用的時間窗格列表。
+    每個窗格為 (start_dt, end_dt) 的 datetime tuple，首尾相接（end 為下一窗 start 前一秒）；
+    最後一個窗格若不足一個完整步進天數，會縮短為剩餘天數（remainder window）。
+    """
+    start_dtobj = datetime.datetime.strptime(start_str, "%Y-%m-%d")
+    end_dtobj = datetime.datetime.strptime(end_str, "%Y-%m-%d") + datetime.timedelta(days=1, seconds=-1)
+
+    windows = []
+    curr = start_dtobj
+    while curr <= end_dtobj:
+        next_curr = curr + datetime.timedelta(days=step_days)
+        if next_curr > end_dtobj + datetime.timedelta(seconds=1):
+            next_curr = end_dtobj + datetime.timedelta(seconds=1)
+
+        e = next_curr - datetime.timedelta(seconds=1)
+        windows.append((curr, e))
+        curr = next_curr
+
+    return windows
+
+
 def execute_computation_pipeline(client, args):
     """
     Core Engine: 執行安全的、基於時間窗格 (Time-Bounded) 的核心分析管線。
@@ -204,19 +227,7 @@ def execute_computation_pipeline(client, args):
         print("    Tables and checkpoints cleared.")
 
     # Window Generation (Using datetime for finer granularity)
-    start_dtobj = datetime.datetime.strptime(args.start, "%Y-%m-%d")
-    end_dtobj = datetime.datetime.strptime(args.end, "%Y-%m-%d") + datetime.timedelta(days=1, seconds=-1)
-    
-    windows = []
-    curr = start_dtobj
-    while curr <= end_dtobj:
-        next_curr = curr + datetime.timedelta(days=args.step_days)
-        if next_curr > end_dtobj + datetime.timedelta(seconds=1):
-            next_curr = end_dtobj + datetime.timedelta(seconds=1)
-        
-        e = next_curr - datetime.timedelta(seconds=1)
-        windows.append((curr, e))
-        curr = next_curr
+    windows = generate_windows(args.start, args.end, args.step_days)
 
     # Templates are loaded dynamically from pipeline_config.yaml (see loop below)
 

@@ -5,6 +5,9 @@ import os
 
 # Ensure the project root is in sys.path so tests can import 'api' and 'scripts'
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+# scripts/etl 也要加：該目錄的模組彼此以平面名稱互相 import（sync_unified_odbc → setup_schema），
+# 只加專案根目錄會讓整份 test_sync_odbc.py 在 collection 階段就 ImportError。
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..', 'scripts', 'etl')))
 
 @pytest.fixture
 def mock_clickhouse_client():

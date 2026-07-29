@@ -1,6 +1,84 @@
-# Grafana 儀表板設定指南 (L5 效能監控 - Storytelling Layout)
+# Grafana 儀表板設定指南
 
-這份文件記錄了專為 **L5 指標 (任務完成率)** 效能分析所設計的 Grafana 儀表板設定。本儀表板的核心目的是監控 L5 查詢（包含 MView 刷新與報表讀取）對 ClickHouse 資源的實際消耗。
+**最後更新**: 2026-07-02
+
+本文件涵蓋兩個獨立的 Grafana Dashboard：
+
+| Dashboard | 目的 | Datasource |
+|---|---|---|
+| [Bronze Sync Monitoring](#一-bronze-sync-monitoring-dashboard) | 監控每日 MSSQL→Bronze 同步是否成功 | ClickHouse `<CLICKHOUSE_HOST>`（正式環境） |
+| [clickhouse-l5-perf](#二-l5-效能監控-dashboard) | 監控 L5 查詢對 ClickHouse 資源的消耗 | ClickHouse `<MONITOR_HOST>` + Prometheus |
+
+Grafana 入口：`http://<MONITOR_HOST>:9003`
+
+> 主機實際 IP 不進版控：`<CLICKHOUSE_HOST>` 見 `infra/.env`，`<MONITOR_HOST>` 見 `infra/monitoring/.env`。
+
+---
+
+## 一、Bronze Sync Monitoring Dashboard
+
+**目的**：每日排程（`sync_unified_odbc.py`）同步 MSSQL→Bronze 的健康狀態監控。過去曾因 `MSSQL_PASSWORD` 環境變數缺失，導致 full 策略表在 TRUNCATE 後 INSERT 失敗、15 張維度表連續三天被清空（2026-06-17/29/30 事故）。此 Dashboard 讓異常可見。
+
+**Dashboard uid**: `afe90588-6fc1-494e-9b97-9a4d5e2b0cf6`
+**Datasource**: `grafana-clickhouse-datasource-76`（uid: `cfqkyxfkb2hhcf`），指向正式 ClickHouse `<CLICKHOUSE_HOST>:9000`
+
+### Panel 清單
+
+**Panel 1 — 近 24 小時失敗計數**（type: stat）
+- 資料源：`system.query_log`
+- 顏色閾值：0 筆 = 綠，≥1 筆 = 紅
+```sql
+SELECT count() AS failed_count
+FROM system.query_log
+WHERE type = 'ExceptionBeforeStart'
+  AND query ILIKE '%bronze.%'
+  AND event_time >= now() - INTERVAL 1 DAY
+```
+
+**Panel 2 — 失敗清單**（type: table）
+- 資料源：`system.query_log`
+- 顯示欄位：`event_time`、`query_kind`、`short_query`、`exception`（前 300 字）
+```sql
+SELECT event_time AS time, query_kind,
+       substring(query, 1, 150) AS short_query,
+       substring(exception, 1, 300) AS exception
+FROM system.query_log
+WHERE type = 'ExceptionBeforeStart'
+  AND query ILIKE '%bronze.%'
+  AND event_time >= now() - INTERVAL 7 DAY
+ORDER BY event_time DESC LIMIT 200
+```
+
+**Panel 3 — 失敗次數趨勢（7 天，每小時）**（type: timeseries）
+```sql
+SELECT toStartOfHour(event_time) AS time, count() AS failed_count
+FROM system.query_log
+WHERE type = 'ExceptionBeforeStart'
+  AND query ILIKE '%bronze.%'
+  AND event_time >= now() - INTERVAL 7 DAY
+GROUP BY time ORDER BY time
+```
+
+**Panel 4 — 表狀態總覽**（type: table，最重要）
+- 結合 `bronze._sync_watermark`（最後成功時間，快速查詢）+ `system.query_log`（最後失敗時間）
+- **判斷邏輯依 `sync_tables.yaml` 的 strategy 分流**：
+  - `full` 策略（15 張，有 TRUNCATE）：`current_rows = 0` → 🔴 空表 (TRUNCATE後寫入失敗)
+  - `batch` 策略（4 張，無 TRUNCATE）：不看 `current_rows`，只看 `hours_since_success >= 24` → 🟠 過期未更新
+  - 兩者都正常 → ✅ 正常
+
+| status 值 | 顏色 | 觸發條件 |
+|---|---|---|
+| 🔴 空表 (TRUNCATE後寫入失敗) | 紅 | full 表 `current_rows = 0` |
+| 🟠 過期未更新 (逾24小時未成功) | 橘 | `hours_since_success >= 24` |
+| ✅ 正常 | 綠 | 以上皆不符合 |
+
+> **診斷方法**：看到 🔴 後，前往 Panel 2 找對應表名的 `exception` 欄位，確認是「密碼問題（`Login failed`）」還是「DSN 問題（`Data source name not found`）」，根因不同修復方式也不同。
+
+---
+
+## 二、L5 效能監控 Dashboard
+
+這份設定專為 **L5 指標 (任務完成率)** 效能分析設計。核心目的是監控 L5 查詢（包含 MView 刷新與報表讀取）對 ClickHouse 資源的實際消耗。
 
 ---
 

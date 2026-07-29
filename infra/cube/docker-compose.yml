@@ -7,18 +7,20 @@ services:
     ports:
       - "4002:4000"      # Cube.js REST API
       - "4003:4001"      # Cube.js Playground (開發 UI)
+    env_file:
+      - ../.env
     environment:
       # ClickHouse 連線設定
       - CUBEJS_DB_TYPE=clickhouse
-      - CUBEJS_DB_HOST=REDACTED_IP
+      - CUBEJS_DB_HOST=${CLICKHOUSE_HOST}
       - CUBEJS_DB_PORT=8121
       - CUBEJS_DB_USER=default
-      - CUBEJS_DB_PASS=default
+      - CUBEJS_DB_PASS=${CLICKHOUSE_PASSWORD}
       - CUBEJS_DB_NAME=silver
       
       # Cube.js 設定
       - CUBEJS_DEV_MODE=true
-      - CUBEJS_API_SECRET=REDACTED_SECRET
+      - CUBEJS_API_SECRET=${CUBEJS_API_SECRET}
       - CUBEJS_SCHEDULED_REFRESH_DEFAULT=true
       - CUBEJS_WEB_SOCKETS=true
       

@@ -30,10 +30,10 @@ _SCRIPT_DIR  = os.path.dirname(os.path.abspath(__file__))
 _PROJECT_ROOT = os.path.abspath(os.path.join(_SCRIPT_DIR, '..', '..'))
 
 # ── 環境變數設定 (同 sync_unified_odbc.py 模式) ──────
-CH_HOST     = os.getenv('CLICKHOUSE_HOST',     'REDACTED_IP')
+CH_HOST     = os.environ['CLICKHOUSE_HOST']
 CH_PORT     = int(os.getenv('CLICKHOUSE_PORT', '9000'))
 CH_USER     = os.getenv('CLICKHOUSE_USERNAME', 'default')
-CH_PASSWORD = os.getenv('CLICKHOUSE_PASSWORD', 'REDACTED_PASSWORD')
+CH_PASSWORD = os.environ['CLICKHOUSE_PASSWORD']
 
 START_DATE  = os.getenv('EXPORT_START_DATE',  '2025-10-01')
 END_DATE    = os.getenv('EXPORT_END_DATE',     str(date.today()))
