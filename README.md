@@ -7,7 +7,7 @@
 
 基於 **Flowable BPM** 的自動化資料流與數據分析系統。將分散的 BPM 流程簽核數據透過 ETL Pipeline 整合至 ClickHouse 數據倉儲，產出量化的生產管理指標（L5 任務完成率、累積在途量 ACC 等），供製造業產線管理層即時查詢決策。
 
-> **完整技術文件請見 [`docs/SYSTEM_REFERENCE.md`](docs/SYSTEM_REFERENCE.md)** — 架構設計、業務邏輯、部署與維運指令的唯一依據。本 README 僅提供專案總覽與快速上手。
+> **完整技術文件請見 [`docs/DMP Flowable L5指標系統參考文件.md`](<docs/DMP Flowable L5指標系統參考文件.md>)** — 架構設計、業務邏輯、部署與維運指令的唯一依據。本 README 僅提供專案總覽與快速上手。
 
 ---
 
@@ -36,7 +36,7 @@ MSSQL（唯讀來源） → ODBC → ClickHouse（bronze → silver → gold） 
 - **Gold**：以 Bitmap 運算產生 Todo/Doing/Done 快照與滾動 ACC，再由預聚合彙總表 `gold.rmv_l5_task_summary` 轉為整數，Cube.js 查詢降為純 `SUM` 運算。
 - **Cube.js**：唯一對外語義層，禁止前端直連資料庫。
 
-詳細架構圖、模組職責、雙管線邊界等說明見 [`docs/SYSTEM_REFERENCE.md`](docs/SYSTEM_REFERENCE.md)。
+詳細架構圖、模組職責、雙管線邊界等說明見 [`docs/DMP Flowable L5指標系統參考文件.md`](<docs/DMP Flowable L5指標系統參考文件.md>)。
 
 ---
 
@@ -55,7 +55,7 @@ MSSQL（唯讀來源） → ODBC → ClickHouse（bronze → silver → gold） 
 ## 快速開始
 
 ```bash
-# 0. 載入環境變數（infra/.env 需自行建立，見 docs/SYSTEM_REFERENCE.md §3.1）
+# 0. 載入環境變數（infra/.env 需自行建立，見 docs/DMP Flowable L5指標系統參考文件.md §3.1）
 set -a && . infra/.env && set +a
 
 # 1. 啟動 ClickHouse
@@ -76,7 +76,7 @@ python scripts/etl/execute_etl.py --status
 python -m pytest tests/ -v
 ```
 
-日常增量由 `scripts/etl/daily_etl_wrapper.sh` 排程執行（cron，建議每日凌晨）。逐月回填、單一 phase 執行等進階用法見 [`docs/SYSTEM_REFERENCE.md` §3.3](docs/SYSTEM_REFERENCE.md#33-初次建置唯一入口-init_pipelinesh)。
+日常增量由 `scripts/etl/daily_etl_wrapper.sh` 排程執行（cron，建議每日凌晨）。逐月回填、單一 phase 執行等進階用法見 [`docs/DMP Flowable L5指標系統參考文件.md` §3.3](<docs/DMP Flowable L5指標系統參考文件.md#33-初次建置唯一入口-init_pipelinesh>)。
 
 ---
 
@@ -90,19 +90,20 @@ dmp_flowable/
 │       ├── cubes/                 # Cube.js 語意模型（L5TaskPeriodic 等）
 │       └── views/                 # Cube.js view
 ├── docs/
-│   ├── SYSTEM_REFERENCE.md        # ★ 唯一技術文件依據
+│   ├── DMP Flowable L5指標系統參考文件.md  # ★ 唯一技術文件依據
+│   ├── ClickHouse 基礎設施建置文件.md # ClickHouse 容器建置文件
 │   └── archive/                   # 已過時的歷史文件
 ├── infra/                        # docker-compose 部署設定（clickhouse / cube / api / monitoring）
 ├── memory-bank/                   # 專案工作記憶
 ├── scripts/
-│   ├── etl/
-│   │   ├── init_pipeline.sh       # 初次建置／分階段執行入口
-│   │   ├── daily_etl_wrapper.sh   # 每日排程入口
-│   │   ├── setup_schema.py        # DDL 結構部署
-│   │   ├── sync_unified_odbc.py   # Bronze 層 ODBC 同步引擎
-│   │   ├── execute_etl.py         # Silver/Gold 運算主程式
-│   │   └── config/                # YAML 設定檔
-│   └── export/                    # 明細匯出工具
+│   └── etl/
+│       ├── init_pipeline.sh       # 初次建置／分階段執行入口
+│       ├── daily_etl_wrapper.sh   # 每日排程入口
+│       ├── setup_schema.py        # DDL 結構部署
+│       ├── sync_unified_odbc.py   # Bronze 層 ODBC 同步引擎
+│       ├── execute_etl.py         # Silver/Gold 運算主程式
+│       ├── config/                # YAML 設定檔
+│       └── tools/                 # 明細匯出工具（export_l5_all_months.sql 等）
 ├── sql/
 │   └── etl/
 │       ├── schema/
@@ -135,7 +136,7 @@ dmp_flowable/
 - **費率計算**：一律 `floor(qty*100/total)`，不用四捨五入。
 - **排除規則**：`autoComplete=1`、`SYSTEM` 帳號、系統節點、Q/R 測試工單、Notify/Dummy 任務排除於 KPI 統計外。
 
-完整規則定義（含雙管線邊界、例外處理、watermark 機制）見 [`docs/SYSTEM_REFERENCE.md` §2](docs/SYSTEM_REFERENCE.md#2-業務邏輯)。
+完整規則定義（含雙管線邊界、例外處理、watermark 機制）見 [`docs/DMP Flowable L5指標系統參考文件.md` §2](<docs/DMP Flowable L5指標系統參考文件.md#2-業務邏輯>)。
 
 ---
 
@@ -143,8 +144,8 @@ dmp_flowable/
 
 | 文件 | 用途 |
 |---|---|
-| [`docs/SYSTEM_REFERENCE.md`](docs/SYSTEM_REFERENCE.md) | **唯一技術文件依據**：架構、業務邏輯、部署指令 |
-| [`docs/CLICKHOUSE_INFRA.md`](docs/CLICKHOUSE_INFRA.md) | ClickHouse 容器建置：客製 image、ODBC 設定、server/user 層級設定檔 |
+| [`docs/DMP Flowable L5指標系統參考文件.md`](<docs/DMP Flowable L5指標系統參考文件.md>) | **唯一技術文件依據**：架構、業務邏輯、部署指令 |
+| [`docs/ClickHouse 基礎設施建置文件.md`](<docs/ClickHouse 基礎設施建置文件.md>) | ClickHouse 容器建置：客製 image、ODBC 設定、server/user 層級設定檔 |
 | [`docs/archive/`](docs/archive/) | 已過時的歷史文件，僅供追溯 |
 
 ---
