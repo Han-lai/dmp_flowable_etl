@@ -4,7 +4,7 @@
 
 本文說明 **ClickHouse 容器本身的建置與設定**：客製 image、ODBC 連線設定、server/user 層級設定檔、部署步驟。
 
-與 [`docs/SYSTEM_REFERENCE.md`](SYSTEM_REFERENCE.md) 分工：該文件說明 ETL 架構、業務邏輯與資料管線操作；本文只說明 ClickHouse 容器本身怎麼建置起來、怎麼設定。兩份文件互補，不重複。
+與 [`docs/DMP Flowable L5指標系統參考文件.md`](<DMP Flowable L5指標系統參考文件.md>) 分工：該文件說明 ETL 架構、業務邏輯與資料管線操作；本文只說明 ClickHouse 容器本身怎麼建置起來、怎麼設定。兩份文件互補，不重複。
 
 **閱讀對象**：需要建置、重建或維運 ClickHouse 容器的工程師。
 
@@ -14,7 +14,7 @@
 
 ## 1. 容器架構
 
-ClickHouse 使用**客製 image**，而非官方原生映像，原因是要內建 Native ODBC 連線能力（見 [`SYSTEM_REFERENCE.md` §1.4](SYSTEM_REFERENCE.md#14-技術棧與版本)：ODBC 吞吐量約為 JDBC 方案的 2.7 倍）。
+ClickHouse 使用**客製 image**，而非官方原生映像，原因是要內建 Native ODBC 連線能力（見 [`DMP Flowable L5指標系統參考文件.md` §1.4](<DMP Flowable L5指標系統參考文件.md#14-技術棧與版本>)：ODBC 吞吐量約為 JDBC 方案的 2.7 倍）。
 
 **建置來源**：`infra/clickhouse/odbc/Dockerfile`，以 `clickhouse/clickhouse-server:25.8.18.1` 為基礎，額外安裝：
 - `unixodbc`
@@ -38,7 +38,7 @@ ClickHouse 使用**客製 image**，而非官方原生映像，原因是要內�
 
 ## 2. ODBC 連線設定（`odbc.ini`）
 
-檔案：`infra/clickhouse/odbc/odbc.ini`，定義 DSN 名稱 `MSSQL_DSN`（[`SYSTEM_REFERENCE.md`](SYSTEM_REFERENCE.md) 所有 `odbc()` 查詢與 `sync_unified_odbc.py` 皆引用此 DSN）。
+檔案：`infra/clickhouse/odbc/odbc.ini`，定義 DSN 名稱 `MSSQL_DSN`（[`DMP Flowable L5指標系統參考文件.md`](<DMP Flowable L5指標系統參考文件.md>) 所有 `odbc()` 查詢與 `sync_unified_odbc.py` 皆引用此 DSN）。
 
 ```ini
 [MSSQL_DSN]
@@ -59,7 +59,7 @@ LoginTimeout = 30
 
 **帳密不寫在 `odbc.ini`**：`Uid`/`Pwd` 由 Python 端（`sync_unified_odbc.py` 的 `build_odbc_conn()`）在執行期動態組進連線字串，`odbc.ini` 本身不含任何憑證。
 
-**ODBC bridge 斷線（`IMC06`）的實際防護機制在 ClickHouse 端，不在 `odbc.ini`**：`sync_unified_odbc.py` 以 `odbc_bridge_use_connection_pooling: 0` 關閉 bridge 連線池（[:34-36](../scripts/etl/sync_unified_odbc.py#L34-L36)），避免壞死連線被後續查詢重用而拋出 `IMC06`（"connection is broken and recovery is not possible"）；仍發生時由 `StaleOdbcConnectionError` 攔截，不會嘗試切窗重試（見 [`SYSTEM_REFERENCE.md` §2.3](SYSTEM_REFERENCE.md#23-資料拉取的自適應切窗mssql-減壓機制)）。
+**ODBC bridge 斷線（`IMC06`）的實際防護機制在 ClickHouse 端，不在 `odbc.ini`**：`sync_unified_odbc.py` 以 `odbc_bridge_use_connection_pooling: 0` 關閉 bridge 連線池（[:34-36](../scripts/etl/sync_unified_odbc.py#L34-L36)），避免壞死連線被後續查詢重用而拋出 `IMC06`（"connection is broken and recovery is not possible"）；仍發生時由 `StaleOdbcConnectionError` 攔截，不會嘗試切窗重試（見 [`DMP Flowable L5指標系統參考文件.md` §2.3](<DMP Flowable L5指標系統參考文件.md#23-資料拉取的自適應切窗mssql-減壓機制>)）。
 
 ---
 
