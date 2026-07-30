@@ -81,14 +81,16 @@ if [ "${DRY_RUN}" = "1" ]; then
   echo "== DRY_RUN=1，只對帳不寫出。"; exit 0
 fi
 
-# 寫出 S3：去 5 個混淆欄 + 就地修正 status + 補 cohort 標記 → 37 欄
+# 寫出 S3：去 5 個混淆欄 + 就地修正 status + 補 cohort/file_month 標記 → 38 欄
+# file_month 固定為本次 YM，只為與 export_l5_all_months.sql 的欄位結構對齊（該工具的驗證 SQL 靠 file_month 篩選）
 echo "== 寫出到 S3 ..."
 docker exec -i "${CH_CONTAINER}" clickhouse-client --query "
   INSERT INTO FUNCTION s3('${S3_PATH}', '${S3_AK}', '${S3_SK}', 'CSVWithNames')
   PARTITION BY vx_type
   SELECT * EXCEPT (task_primary_date, task_create_date, ui_time_field, _mview_update_time, task_status)
            REPLACE (${STATUS_W} AS status_weekly, ${STATUS_M} AS status_monthly),
-         ${COHORT} AS in_month_cohort
+         ${COHORT} AS in_month_cohort,
+         '${YM}' AS file_month
   FROM silver.mv_fact_task_vx FINAL
   WHERE ${WHERE}"
 
